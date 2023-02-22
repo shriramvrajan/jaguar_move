@@ -1,0 +1,13 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+.lintr
+scratch/*
+.vscode/*
+docs/*
+data/*
+figures/*
+vasco.sh
+R/old

@@ -7,6 +7,7 @@ library(data.table)
 library(ctmm)
 library(finch)
 library(amt) 
+library(mixtools)
 
 # Functions ====================================================================
 

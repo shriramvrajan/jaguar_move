@@ -54,7 +54,7 @@ loglike_fun <- function(par) {
   attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
                    par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
   attract_h <- exp(par[7] * home)
-  attract_t <- exp(par[8] * turn)
+  attract_t <- exp(par[8] * turn) # think about functional form of h & t
 
   # 'attract' here is basically the pull factor for each cell of nbhd
   attract <- norm_nbhd(attract_e) * norm_nbhd(attract_h) * norm_nbhd(attract_t)
@@ -98,10 +98,13 @@ msg(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
 neigh <- make_nbhd(seq_len(nrow(brdf)), buffersize)
 
 ### Fitting home ranges 
+### https://tinyurl.com/mwus4mca
 if (refit_homes) {
+  msg("Fitting home ranges for each individual")
   for (i in jag_id) {
-    jag_traject <- jag_move[ID == as.numeric(i)]
-    jag_traject <- as.telemetry(jag_traject, timeformat = "auto")
+    # Individual trajectory
+    jag_traject <- as.telemetry(jag_move[ID == as.numeric(i)],
+                                timeformat = "auto")
 
     # Calculate and plot variogram for individual
     var_jag_traject <- variogram(jag_traject); plot(var_jag_traject)
@@ -116,18 +119,25 @@ if (refit_homes) {
 }
 
 ### Fitting turn angle distributions
+### https://tinyurl.com/ye9e7kbs
 if (refit_turns) {
+  msg("Fitting mixture model for turn angle distributions")
   for (i in jag_id) {
-    jag_traject <- jag_move[ID == as.numeric(i), 3:4]
+    # Individual trajectory (using amt::make_track for turn angles)
+    jag_traject <- as.telemetry(jag_move[ID == as.numeric(i)],
+                                timeformat = "auto")
+    jag_traject <- make_track(jag_traject, x, y)
+    turns <- direction_abs(jag_traject)
 
-    ## Fit mixture model here
+    # Fitting a normal mixture model
+    mm_turns <- normalmixEM(turns[-which(is.na(turns))])
+
 
   }
 }
 
 
-### Fitting
-
+### Fitting global parameters
 msg("Fitting each jaguar separately")
 n_iter <- length(jag_id) # Number of iterations (i.e. number of jaguars)
 
@@ -165,6 +175,7 @@ for (i in i_initial:n_iter) {
   # the immediate neighbors? Rows are path cells, columns are neighbors.
   # All row lengths standardized by turning missing neighbors into NAs.
   to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {
+    print(x)
     out <- c(x, rep(NA, ncol(nbhd) - length(x)))
     return(out)
   })

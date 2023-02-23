@@ -12,9 +12,10 @@ if (generate_data) {
 
 if (run_model) {
     i_initial       <- 1              # Individual to start at
-    model_calcnull  <- TRUE           # Calculate null likelihoods?
     buffersize      <- 1              # Jaguars move 1px (1km) at a time
+    model_calcnull  <- TRUE           # Calculate null likelihoods?
     refit_homes     <- FALSE          # Refit home ranges (AKDE) 
+    refit_turns     <- FALSE          # Refit turn distributions (MM)
     # model_fiteach   <- FALSE
     source("R/03_movement_model.R")
 }

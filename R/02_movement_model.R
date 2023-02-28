@@ -39,7 +39,7 @@ loglike_fun <- function(par) {
   # par        : Initial values of parameters for optimization
   # nbhd       : Neighborhood
   # step_range : Step range
-  # n_obs      : Number of 
+  # n_obs      : Number of GPS observations (length of track)
   # steps:     : Number of steps simulated
   # to_dest    : For each cell of the extended neighborhood of the path, what 
   #               are the immediate neighbors? Rows are path cells, columns are 
@@ -73,10 +73,17 @@ loglike_fun <- function(par) {
     # Probabilities across all step range for step j
     step_prob <- as.vector(current[, , j]) * attract[]
 
-    # basically want to do tmp1 = tmp[to_dest]
+    # dest has same dimensions as nbhd
+    # step_prob is a vector of length step_range
+    # to_dest is a matrix with the same dimensions as nbhd
+    #   rows are neighborhood cells, columns are neighbors of those cells
+    #   each entry is the index of the neighbor cell
+    #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
+    #   nbhd is the 3rd cell of nbhd.
     dest[] <- step_prob[as.vector(to_dest)]
-    current[, , j + 1] <- rowSums(dest, na.rm = T)
     # Summing probabilities up to step j to generate step j+1
+    current[, , j + 1] <- rowSums(dest, na.rm = T)
+
   }
   # current has everything - but need to know where the next obs was (row) for
   # each column, and will sum across each time steps
@@ -93,12 +100,7 @@ loglike_fun <- function(par) {
 
 ### Body =======================================================================
 
-ncell <- (buffersize * 2 + 1)^2
-msg(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
-neigh <- make_nbhd(seq_len(nrow(brdf)), buffersize)
-
-### Fitting home ranges 
-### https://tinyurl.com/mwus4mca
+### Fitting home ranges
 if (refit_homes) {
   msg("Fitting home ranges for each individual")
   for (i in jag_id) {
@@ -118,8 +120,7 @@ if (refit_homes) {
   }
 }
 
-### Fitting turn angle distributions
-### https://tinyurl.com/ye9e7kbs
+### Fitting turn angle distributions 
 if (refit_turns) {
   msg("Fitting mixture model for turn angle distributions")
   for (i in jag_id) {
@@ -136,8 +137,11 @@ if (refit_turns) {
   }
 }
 
-
 ### Fitting global parameters
+ncell <- (buffersize * 2 + 1)^2
+msg(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
+nbhd0 <- make_nbhd(seq_len(nrow(brdf)), buffersize)
+
 msg("Fitting each jaguar separately")
 n_iter <- length(jag_id) # Number of iterations (i.e. number of jaguars)
 
@@ -161,9 +165,11 @@ for (i in i_initial:n_iter) {
   nbhd_index <- make_nbhd(jag_traject_cells, size_out)
   # Each entry in the list is the immediate neighborhood of each cell in the 
   # extended neighborhood, as represented by a cell number of brazil_ras
-  nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(x) {
-    cells <- nbhd_index[x, ]
-    out <- neigh[cells, ]; row.names(out) <- as.character(cells)
+  nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {
+    row_num <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
+    names(row_num) <- nbhd_index[i, ] # index names for i
+    out <- matrix(row_num[as.character(nbhd0[nbhd_index[i, ], ])], 
+                  nrow = length(rn), ncol = ncol(nbhd0))
     return(out)
   })
   nbhd <- do.call(rbind, nbhd_list)
@@ -187,6 +193,7 @@ for (i in i_initial:n_iter) {
   env <- sweep(env, 2, colMeans(env), "-")       # Subtract mean
   env <- sweep(env, 2, apply(env, 2, sd), "/")   # Divide by std dev
   row.names(env) <- seq_len(length(nbhd_index))  # same indexing as env
+
 
   # Building observed data to test against
   index_mat <- matrix(

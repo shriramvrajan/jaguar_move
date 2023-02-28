@@ -17,9 +17,9 @@ if (run_model) {
     refit_homes     <- FALSE          # Refit home ranges (AKDE) 
     refit_turns     <- FALSE          # Refit turn distributions (MM)
     # model_fiteach   <- FALSE
-    source("R/03_movement_model.R")
+    source("R/02_movement_model.R")
 }
 
 if (analyse_output) {
-    source("R/04_output_analysis.R")
+    source("R/03_output_analysis.R")
 }

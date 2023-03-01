@@ -1,7 +1,18 @@
 ### Might need to add supercomputer functionality back in.
-## !IMPORTANT!: Run this through master.R
+## !IMPORTANT!: Run 00_basics.R first to set up the environment
 
-## Functions ===================================================================
+## Switches ====================================================================
+
+refit_homes     <- T              # Refit home ranges (AKDE) 
+refit_turns     <- T              # Refit turn distributions (MM)
+refit_model     <- F              # Refit movement model parameters
+
+i_initial       <- 1              # Individual to start at
+buffersize      <- 1              # Jaguars move 1px (1km) at a time
+model_calcnull  <- F              # Calculate null likelihoods?
+n_iter          <- length(jag_id)  # Number of individuals
+
+# Functions ====================================================================
 
 # Outputs a matrix of cell numbers corresponding to brazil_ras
 # based on a central cell (i) and a buffer size around that cell (sz)
@@ -102,157 +113,172 @@ loglike_fun <- function(par) {
 
 ### Fitting home ranges
 if (refit_homes) {
-  msg("Fitting home ranges for each individual")
-  for (i in jag_id) {
+  ## Potentially: run the main fitting algorithm with and without home ranges
+  ## and use model selection to decide whether to include home ranges on a per
+  ## individual basis (?) 
+  for (id in jag_id$jag_id) {
+    msg(paste0("Fitting home range for individual ", id))
     # Individual trajectory
-    jag_traject <- as.telemetry(jag_move[ID == as.numeric(i)],
+    jag_traject <- as.telemetry(jag_move[ID == as.numeric(id)],
                                 timeformat = "auto")
 
     # Calculate and plot variogram for individual
-    var_jag_traject <- variogram(jag_traject); plot(var_jag_traject)
+    var_jag_traject <- variogram(jag_traject)
     # Guess a model for individual
     guess <- ctmm.guess(jag_traject, interactive = F)
     # Fit data to best-guess model
     jag_traject_guess <- ctmm.fit(jag_traject, guess)
     # Fit and plot autocorrelated kernel density estimate
     jag_kde <- akde(jag_traject, jag_traject_guess)
-    plot(jag_kde); plot(jag_traject, add = TRUE)
+
+    # Just saving plots for now
+    name <- paste0("data/output/homeranges/homerange_", id, ".png")
+    png(filename = name, width = 1000, height = 500)
+    par(mfrow = c(1, 2))
+    plot(var_jag_traject)
+    plot(jag_kde); plot(jag_traject, add = TRUE)   
+    dev.off()
   }
+
 }
 
 ### Fitting turn angle distributions 
 if (refit_turns) {
   msg("Fitting mixture model for turn angle distributions")
-  for (i in jag_id) {
+  turn_models <- lapply(jag_id$jag_id, function(id) {
+    msg(paste("Fitting turn angle mixture model for individual", id))
     # Individual trajectory (using amt::make_track for turn angles)
-    jag_traject <- as.telemetry(jag_move[ID == as.numeric(i)],
+    jag_traject <- as.telemetry(jag_move[ID == as.numeric(id)],
                                 timeformat = "auto")
-    jag_traject <- make_track(jag_traject, x, y)
-    turns <- direction_abs(jag_traject)
+    jag_track <- make_track(jag_traject, x, y)
+    turns <- direction_abs(jag_track)
 
     # Fitting a normal mixture model
     mm_turns <- normalmixEM(turns[-which(is.na(turns))])
 
-
-  }
+    name <- paste0("data/output/turnmodels/turnmodel_", id, ".png")
+    png(filename = name, width = 500, height = 500)
+    plot.mixEM(mm_turns, whichplots = 2)
+    dev.off()
+  })
+  # saveRDS(turn_models, "data/output/turn_models.RDS")  
 }
 
-### Fitting global parameters
-ncell <- (buffersize * 2 + 1)^2
-msg(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
-nbhd0 <- make_nbhd(seq_len(nrow(brdf)), buffersize)
+### Fitting environmental parameters
+if(refit_model) {
+  msg("Fitting model parameters")
+  ncell <- (buffersize * 2 + 1)^2
+  msg(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
+  nbhd0 <- make_nbhd(seq_len(nrow(brdf)), buffersize)
 
-msg("Fitting each jaguar separately")
-n_iter <- length(jag_id) # Number of iterations (i.e. number of jaguars)
+  for (i in i_initial:n_iter) {
 
-for (i in i_initial:n_iter) {
+    msg(paste0("Jaguar #: ", i, " / ", n_iter))
+    # Observed trajectory of jaguar i
+    jag_traject <- jag_move[ID == as.numeric(jag_id[i]), 3:4]
+    jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
+    # Calculating step distances; divide by cell size then take hypotenuse
+    dist <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
+            xres(brazil_ras)
+    dist <- (rowSums(dist^2))^.5
+    # Making neighborhoods for each point in trajectory, with buffer size as 
+    # twice maximum step distance
+    max_dist <- max(dist)             
+    size_out <- ceiling(max_dist * 2) 
 
-  msg(paste0("Jaguar #: ", i, " / ", n_iter))
-  # Observed trajectory of jaguar i
-  jag_traject <- jag_move[ID == as.numeric(jag_id[i]), 3:4]
-  jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
-  # Calculating step distances; divide by cell size then take hypotenuse
-  dist <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
-          xres(brazil_ras)
-  dist <- (rowSums(dist^2))^.5
-  # Making neighborhoods for each point in trajectory, with buffer size as 
-  # twice maximum step distance
-  max_dist <- max(dist)             
-  size_out <- ceiling(max_dist * 2) 
+    msg("Building neighborhoods for each cell")
+    # Extended neighborhoods of each cell in individual's trajectory
+    nbhd_index <- make_nbhd(jag_traject_cells, size_out)
+    # Each entry in the list is the immediate neighborhood of each cell in the 
+    # extended neighborhood, as represented by a cell number of brazil_ras
+    nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {
+      row_num <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
+      names(row_num) <- nbhd_index[i, ] # index names for i
+      out <- matrix(row_num[as.character(nbhd0[nbhd_index[i, ], ])], 
+                    nrow = length(rn), ncol = ncol(nbhd0))
+      return(out)
+    })
+    nbhd <- do.call(rbind, nbhd_list)
+    # Reindexing allows linkage of row numbers from nbhd to brazil_ras cells
+    nbhd_index <- as.vector(t(nbhd_index))
 
-  msg("Building neighborhoods for each cell")
-  # Extended neighborhoods of each cell in individual's trajectory
-  nbhd_index <- make_nbhd(jag_traject_cells, size_out)
-  # Each entry in the list is the immediate neighborhood of each cell in the 
-  # extended neighborhood, as represented by a cell number of brazil_ras
-  nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {
-    row_num <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
-    names(row_num) <- nbhd_index[i, ] # index names for i
-    out <- matrix(row_num[as.character(nbhd0[nbhd_index[i, ], ])], 
-                  nrow = length(rn), ncol = ncol(nbhd0))
-    return(out)
-  })
-  nbhd <- do.call(rbind, nbhd_list)
-  # Reindexing allows linkage of row numbers from nbhd to brazil_ras cells
-  nbhd_index <- as.vector(t(nbhd_index))
+    msg("Getting indices of immediate neighborhood of each cell...")
+    # For each cell of the extended neighborhood of the path, what are
+    # the immediate neighbors? Rows are path cells, columns are neighbors.
+    # All row lengths standardized by turning missing neighbors into NAs.
+    to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {
+      print(x)
+      out <- c(x, rep(NA, ncol(nbhd) - length(x)))
+      return(out)
+    })
+    to_dest <- t(matrix(unlist(to_dest), nrow = ncol(nbhd), ncol = nrow(nbhd)))
+    dest <- matrix(0, nrow = nrow(nbhd), ncol = ncol(nbhd))
 
-  msg("Getting indices of immediate neighborhood of each cell...")
-  # For each cell of the extended neighborhood of the path, what are
-  # the immediate neighbors? Rows are path cells, columns are neighbors.
-  # All row lengths standardized by turning missing neighbors into NAs.
-  to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {
-    print(x)
-    out <- c(x, rep(NA, ncol(nbhd) - length(x)))
-    return(out)
-  })
-  to_dest <- t(matrix(unlist(to_dest), nrow = ncol(nbhd), ncol = nrow(nbhd)))
-  dest <- matrix(0, nrow = nrow(nbhd), ncol = ncol(nbhd))
+    # Normalizing desired environmental variables for extended neighborhood
+    env <- brdf[nbhd_index, ]
+    env <- sweep(env, 2, colMeans(env), "-")       # Subtract mean
+    env <- sweep(env, 2, apply(env, 2, sd), "/")   # Divide by std dev
+    row.names(env) <- seq_len(length(nbhd_index))  # same indexing as env
 
-  # Normalizing desired environmental variables for extended neighborhood
-  env <- brdf[nbhd_index, ]
-  env <- sweep(env, 2, colMeans(env), "-")       # Subtract mean
-  env <- sweep(env, 2, apply(env, 2, sd), "/")   # Divide by std dev
-  row.names(env) <- seq_len(length(nbhd_index))  # same indexing as env
+    # Building observed data to test against
+    index_mat <- matrix(
+      data = seq_len(length(nbhd_index)),
+      nrow = (nrow(nbhd) / length(jag_traject_cells)),
+      ncol = length(jag_traject_cells)
+    )
+    obs <- vector(length = ncol(index_mat) - 1)
+    for (y in 1:(ncol(index_mat) - 1)) {
+      test <- which(nbhd_index == jag_traject_cells[y + 1])
+      num <- which(index_mat[1, y] < test & test < index_mat[nrow(index_mat), y])
+      # msg(which(index_mat[,y]==test[num]))
+      obs[y] <- which(index_mat[, y] == test[num])
+      # what is this actually doing I still don't know
+    } 
 
+    step_range <- nrow(nbhd) / length(jag_traject_cells)
+    n_obs <- length(jag_traject_cells)
+    steps <- 25
 
-  # Building observed data to test against
-  index_mat <- matrix(
-    data = seq_len(length(nbhd_index)),
-    nrow = (nrow(nbhd) / length(jag_traject_cells)),
-    ncol = length(jag_traject_cells)
-  )
-  obs <- vector(length = ncol(index_mat) - 1)
-  for (y in 1:(ncol(index_mat) - 1)) {
-    test <- which(nbhd_index == jag_traject_cells[y + 1])
-    num <- which(index_mat[1, y] < test & test < index_mat[nrow(index_mat), y])
-    # msg(which(index_mat[,y]==test[num]))
-    obs[y] <- which(index_mat[, y] == test[num])
-    # what is this actually doing I still don't know
-  } 
+    if (model_calcnull) {
+      msg(paste0("Calculating null likelihood for jaguar ", i))
+      null_likelihood <- loglike_fun(c(rep(0, 6)))
+      saveRDS(null_likelihood, paste0("data/output/null_", i, ".RDS"))
+    }
 
-  step_range <- nrow(nbhd) / length(jag_traject_cells)
-  n_obs <- length(jag_traject_cells)
-  steps <- 25
+    if (model_fiteach) {
+      param <- rnorm(6)
+      msg("Running optim...")
+      ntries <- 0
+      ## Main fitting loop, tries each individual 20 times and moves on if no fit
+      while (ntries <= 20) {
+        tryCatch({
+            par_out <- optim(param, loglike_fun)
+            saveRDS(par_out, paste0("data/output/par_out_", i, ".RDS"))
 
-  if (model_calcnull) {
-    msg(paste0("Calculating null likelihood for jaguar ", i))
-    null_likelihood <- loglike_fun(c(rep(0, 6)))
-    saveRDS(null_likelihood, paste0("data/output/null_", i, ".RDS"))
-  }
+            msg("Running loglike_fun...")
+            likelihood <- loglike_fun(par_out[[1]])
+            saveRDS(likelihood, paste0("data/output/likelihood_", i, ".RDS"))
 
-  if (model_fiteach) {
-    param <- rnorm(6)
-    msg("Running optim...")
-    ntries <- 0
-    ## Main fitting loop, tries each individual 20 times and moves on if no fit
-    while (ntries <= 20) {
-      tryCatch({
-          par_out <- optim(param, loglike_fun)
-          saveRDS(par_out, paste0("data/output/par_out_", i, ".RDS"))
-
-          msg("Running loglike_fun...")
-          likelihood <- loglike_fun(par_out[[1]])
-          saveRDS(likelihood, paste0("data/output/likelihood_", i, ".RDS"))
-
-          cat(paste0("jaguar ", i, " fitted ", date()),
-            file = "data/output/run_log.txt",
-            append = TRUE, sep = "\n"
-          )
-          ntries <- 21 # End while loop
-        },
-        error = function(e) {
-          msg(e)
-          msg(paste("Try #:", ntries))
-          if (ntries == 20) {
-            msg("Skipping, couldn't fit in 20 tries")
-          } else {
-            msg("Retrying")
+            cat(paste0("jaguar ", i, " fitted ", date()),
+              file = "data/output/run_log.txt",
+              append = TRUE, sep = "\n"
+            )
+            ntries <- 21 # End while loop
+          },
+          error = function(e) {
+            msg(e)
+            msg(paste("Try #:", ntries))
+            if (ntries == 20) {
+              msg("Skipping, couldn't fit in 20 tries")
+            } else {
+              msg("Retrying")
+            }
+          },
+          finally = {
+            ntries <- ntries + 1
           }
-        },
-        finally = {
-          ntries <- ntries + 1
-        }
-      )
+        )
+      }
     }
   }
 }

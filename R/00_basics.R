@@ -35,6 +35,32 @@ load_if_exists <- function(files, dir) {
     })
 }
 
+# Outputs a matrix of cell numbers corresponding to brazil_ras
+# based on a central cell (i) and a buffer size around that cell (sz)
+make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
+  # if x is the center square and o are neighbors, and e.g. sz = 2
+  # (2*sz + 1)^2 represents the following:
+  # o o o o o
+  # o o o o o
+  # o o x o o
+  # o o o o o
+  # o o o o o
+
+  mat <- matrix(0, nrow = length(i), ncol = (2 * sz + 1)^2)
+
+  # values to add to central cell's row/col to get neighborhood cells' row/col
+  ind1 <- t(rep(-sz:sz, each = 2 * sz + 1))
+  ind2 <- t(rep(-sz:sz, 2 * sz + 1))
+  for (j in seq_len(length(ind1))) {
+    mat[, j] <- cellFromRowCol(
+      r, rdf$row[i] + ind1[j],
+      rdf$col[i] + ind2[j]
+    )
+  }
+  return(mat)
+}
+
+
 # Data =========================================================================
 
 # WGS84 projection

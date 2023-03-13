@@ -14,30 +14,6 @@ n_iter          <- length(jag_id)  # Number of individuals
 
 # Functions ====================================================================
 
-# Outputs a matrix of cell numbers corresponding to brazil_ras
-# based on a central cell (i) and a buffer size around that cell (sz)
-make_nbhd <- function(i, sz) {
-  # if x is the center square and o are neighbors, and e.g. sz = 2
-  # (2*sz + 1)^2 represents the following:
-  # o o o o o
-  # o o o o o
-  # o o x o o
-  # o o o o o
-  # o o o o o
-
-  mat <- matrix(0, nrow = length(i), ncol = (2 * sz + 1)^2)
-
-  # values to add to central cell's row/col to get neighborhood cells' row/col
-  ind1 <- t(rep(-sz:sz, each = 2 * sz + 1))
-  ind2 <- t(rep(-sz:sz, 2 * sz + 1))
-  for (j in seq_len(length(ind1))) {
-    mat[, j] <- cellFromRowCol(
-      brazil_ras, brdf$row[i] + ind1[j],
-      brdf$col[i] + ind2[j]
-    )
-  }
-  return(mat)
-}
 
 # For vector v with entries corresponding
 norm_nbhd <- function(v) {
@@ -218,7 +194,8 @@ if(refit_model) {
     env <- brdf[nbhd_index, ]
     env <- sweep(env, 2, colMeans(env), "-")       # Subtract mean
     env <- sweep(env, 2, apply(env, 2, sd), "/")   # Divide by std dev
-    row.names(env) <- seq_len(length(nbhd_index))  # same indexing as env
+    # Make indexing consistent with env
+    row.names(env) <- seq_len(length(nbhd_index))
 
     # Building observed data to test against
     index_mat <- matrix(
@@ -230,55 +207,49 @@ if(refit_model) {
     for (y in 1:(ncol(index_mat) - 1)) {
       test <- which(nbhd_index == jag_traject_cells[y + 1])
       num <- which(index_mat[1, y] < test & test < index_mat[nrow(index_mat), y])
-      # msg(which(index_mat[,y]==test[num]))
       obs[y] <- which(index_mat[, y] == test[num])
-      # what is this actually doing I still don't know
     } 
 
     step_range <- nrow(nbhd) / length(jag_traject_cells)
     n_obs <- length(jag_traject_cells)
     steps <- 25
 
+    # Calculate null likelihoods for each jaguar if not already done
     if (model_calcnull) {
       msg(paste0("Calculating null likelihood for jaguar ", i))
       null_likelihood <- loglike_fun(c(rep(0, 6)))
       saveRDS(null_likelihood, paste0("data/output/null_", i, ".RDS"))
     }
 
-    if (model_fiteach) {
-      param <- rnorm(6)
-      msg("Running optim...")
-      ntries <- 0
-      ## Main fitting loop, tries each individual 20 times and moves on if no fit
-      while (ntries <= 20) {
-        tryCatch({
-            par_out <- optim(param, loglike_fun)
-            saveRDS(par_out, paste0("data/output/par_out_", i, ".RDS"))
+    param <- rnorm(6)
+    msg("Running optim...")
+    ntries <- 0
+    ## Main fitting loop, tries each individual 20 times and moves on if no fit
+    while (ntries <= 20) {
+      tryCatch({
+          par_out <- optim(param, loglike_fun)
+          saveRDS(par_out, paste0("data/output/par_out_", i, ".RDS"))
 
-            msg("Running loglike_fun...")
-            likelihood <- loglike_fun(par_out[[1]])
-            saveRDS(likelihood, paste0("data/output/likelihood_", i, ".RDS"))
+          msg("Running loglike_fun...")
+          likelihood <- loglike_fun(par_out[[1]])
+          saveRDS(likelihood, paste0("data/output/likelihood_", i, ".RDS"))
 
-            cat(paste0("jaguar ", i, " fitted ", date()),
-              file = "data/output/run_log.txt",
-              append = TRUE, sep = "\n"
-            )
-            ntries <- 21 # End while loop
-          },
-          error = function(e) {
-            msg(e)
-            msg(paste("Try #:", ntries))
-            if (ntries == 20) {
-              msg("Skipping, couldn't fit in 20 tries")
-            } else {
-              msg("Retrying")
-            }
-          },
-          finally = {
-            ntries <- ntries + 1
+          msg(paste0("jaguar ", i, " fitted ", date()))
+          ntries <- 21 # End while loop
+        },
+        error = function(e) {
+          msg(e)
+          msg(paste("Try #:", ntries))
+          if (ntries == 20) {
+            msg("Skipping, couldn't fit in 20 tries")
+          } else {
+            msg("Retrying")
           }
-        )
-      }
+        },
+        finally = {
+          ntries <- ntries + 1
+        }
+      )
     }
   }
 }

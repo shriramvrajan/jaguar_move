@@ -102,19 +102,35 @@ jag_path <- function(x1, y1, nstep, par = c(1, 1), neighb = 5) {
         step <- sample(seq_len(length(attract)), 1, prob = attract)
         path[i, ] <- rowColFromCell(env1[[1]], nbhd[step])
     }
+    path <- as.data.frame(path)
+    names(path) <- c("x", "y")
     return(path)
 }
 
-# Plot landscape r with jaguar path 
+vgram <- function(path, cut = 100) {
+    var <- sapply(1:cut, function(t) {
+        p1 <- path[1:(100 - t),]
+        p2 <- path[(t + 1):100,]
+
+        out <- sqrt((p1$x - p2$x)^2 + (p1$y - p2$y)^2)
+        return(mean(out))
+    })
+    return(var)
+}
+
+# Plot landscape r with jaguar path and vgram
 plot_path <- function(path) {
-    par(mfrow = c(1, 2))
+    par(mfrow = c(1, 3))
     raster::plot(env1[[1]])
     points(path, col = "red", pch = 19, cex = 0.5)
     lines(path, col = "red")
     raster::plot(env2[[1]])
     points(path, col = "red", pch = 19, cex = 0.5)
     lines(path, col = "red")
+    plot(vgram(path), type = "l", xlab = "Time lag", ylab = "Variance")
 }
+
+
 
 # Data =========================================================================
 

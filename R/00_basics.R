@@ -8,8 +8,11 @@ library(ctmm)
 library(finch)
 library(amt) 
 library(mixtools)
+library(gstat)
 
 # Functions ====================================================================
+
+# General ----------------------------------------------------------------------
 
 # Save raster x as filename fn under ./data/
 save_ras <- function(x, fn) {
@@ -35,7 +38,9 @@ load_if_exists <- function(files, dir) {
     })
 }
 
-# Outputs a matrix of cell numbers corresponding to brazil_ras
+# Simulation -------------------------------------------------------------------
+
+# Outputs a matrix of cell numbers corresponding to raster (r, rdf)
 # based on a central cell (i) and a buffer size around that cell (sz)
 make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
   # if x is the center square and o are neighbors, and e.g. sz = 2
@@ -60,6 +65,56 @@ make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
   return(mat)
 }
 
+# Generates a random field with a given correlation structure
+# b: beta parameter for gstat, s: sill, r: range, n: nugget
+gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {   
+    xy <- expand.grid(1:size, 1:size); names(xy) <- c("x", "y")
+    model <- gstat(formula = z ~ 1, locations = ~x + y, dummy = T, beta = b, 
+                model = vgm(psill = s, range = r, model = "Exp",
+                            nugget = n), nmax = 20)
+    out <- predict(model, newdata = xy, nsim = 1)
+    if (any(out < 0)) out[out < 0] <- 0
+    gridded(out) <- ~x + y; out <- raster(out)
+    raster::plot(out)
+
+    outdf <- as.data.frame(out)
+    outdf <- cbind(outdf, rowColFromCell(out, seq_len(nrow(outdf))))
+    return(list(raster = out, df = outdf))
+}
+
+# Generate a jaguar path of n steps starting from (x1, y1) with environmental
+# preference parameters par[] and search neighborhood size neighb
+jag_path <- function(x1, y1, nstep, par = c(1, 1), neighb = 5) {
+    if (!(x1 %in% 1:100) | !(y1 %in% 1:100)) {
+        print("Jaguar out of bounds")
+        return(NULL)
+    }
+    path <- matrix(NA, nrow = nstep, ncol = 2)
+    x <- x1; y <- y1; path[1, ] <- c(x, y)
+    for (i in 2:nstep) {
+        pos <- path[i - 1, ]
+        nbhd <- make_nbhd(r = env1[[1]], rdf = env1[[2]], sz = neighb,
+                          i = cellFromRowCol(env1[[1]], pos[1], pos[2]))
+        attract <- env1[[1]][nbhd] * par[1] + env2[[1]][nbhd] * par[2]
+        if (any(is.na(attract))) attract[is.na(attract)] <- 0
+        if (any(attract < 0)) attract[attract < 0] <- 0
+        attract <- attract / sum(attract)
+        step <- sample(seq_len(length(attract)), 1, prob = attract)
+        path[i, ] <- rowColFromCell(env1[[1]], nbhd[step])
+    }
+    return(path)
+}
+
+# Plot landscape r with jaguar path 
+plot_path <- function(path) {
+    par(mfrow = c(1, 2))
+    raster::plot(env1[[1]])
+    points(path, col = "red", pch = 19, cex = 0.5)
+    lines(path, col = "red")
+    raster::plot(env2[[1]])
+    points(path, col = "red", pch = 19, cex = 0.5)
+    lines(path, col = "red")
+}
 
 # Data =========================================================================
 

@@ -99,23 +99,27 @@ if (refit_homes) {
                                 timeformat = "auto")
 
     # Calculate and plot variogram for individual
-    var_jag_traject <- variogram(jag_traject)
+    var_jag_traject <- ctmm::variogram(jag_traject)
     # Guess a model for individual
     guess <- ctmm.guess(jag_traject, interactive = F)
     # Fit data to best-guess model
     jag_traject_guess <- ctmm.fit(jag_traject, guess)
     # Fit and plot autocorrelated kernel density estimate
-    jag_kde <- akde(jag_traject, jag_traject_guess)
+    jag_kde <- raster(akde(jag_traject, jag_traject_guess))
 
-    # Just saving plots for now
-    name <- paste0("data/output/homeranges/homerange_", id, ".png")
-    png(filename = name, width = 1000, height = 500)
-    par(mfrow = c(1, 2))
-    plot(var_jag_traject)
-    plot(jag_kde); plot(jag_traject, add = TRUE)   
-    dev.off()
+    # Saving plots
+    # name <- paste0("data/output/homeranges/homerange_", id, ".png")
+    # png(filename = name, width = 1000, height = 500)
+    # par(mfrow = c(1, 2))
+    # plot(var_jag_traject)
+    # plot(jag_kde); plot(jag_traject, add = TRUE)   
+    # dev.off()
+
+    sample_ras <- crop(brazil_ras[[1]], jag_kde)
+    jag_kde <- resample(jag_kde, sample_ras, method = "ngb")
+    save_ras(jag_kde, paste0("data/output/homeranges/homerange_", id, ".tif"))
+
   }
-
 }
 
 ### Fitting turn angle distributions 
@@ -141,7 +145,7 @@ if (refit_turns) {
 }
 
 ### Fitting environmental parameters
-if(refit_model) {
+if (refit_model) {
   msg("Fitting model parameters")
   ncell <- (buffersize * 2 + 1)^2
   msg(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))

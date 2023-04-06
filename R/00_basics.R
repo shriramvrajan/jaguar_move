@@ -8,7 +8,7 @@ library(ctmm)
 library(finch)
 library(amt) 
 library(mixtools)
-library(gstat)
+# library(gstat)
 
 # Functions ====================================================================
 
@@ -44,15 +44,8 @@ load_if_exists <- function(files, dir) {
 # based on a central cell (i) and a buffer size around that cell (sz)
 make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
   # if x is the center square and o are neighbors, and e.g. sz = 2
-  # (2*sz + 1)^2 represents the following:
-  # o o o o o
-  # o o o o o
-  # o o x o o
-  # o o o o o
-  # o o o o o
-
+  # (2*sz + 1)^2 represents total neighborhood size 
   mat <- matrix(0, nrow = length(i), ncol = (2 * sz + 1)^2)
-
   # values to add to central cell's row/col to get neighborhood cells' row/col
   ind1 <- t(rep(-sz:sz, each = 2 * sz + 1))
   ind2 <- t(rep(-sz:sz, 2 * sz + 1))
@@ -69,35 +62,37 @@ make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
 # b: beta parameter for gstat, s: sill, r: range, n: nugget
 gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {   
     xy <- expand.grid(1:size, 1:size); names(xy) <- c("x", "y")
+
+    # Autocorrelation model
     model <- gstat(formula = z ~ 1, locations = ~x + y, dummy = T, beta = b, 
-                model = vgm(psill = s, range = r, model = "Exp",
-                            nugget = n), nmax = 20)
+                   model = vgm(psill = s, range = r, model = "Exp", nugget = n), 
+                   nmax = 20)
     out <- predict(model, newdata = xy, nsim = 1)
     if (any(out < 0)) out[out < 0] <- 0
+
+    # Output as both raster and data frame
     gridded(out) <- ~x + y; out <- raster(out)
     raster::plot(out)
-
     outdf <- as.data.frame(out)
     outdf <- cbind(outdf, rowColFromCell(out, seq_len(nrow(outdf))))
     return(list(raster = out, df = outdf))
 }
 
-# Generate a jaguar path of n steps starting from (x1, y1) with environmental
+# Generate a jaguar path of n steps starting from (x0, y0) with environmental
 # preference parameters par[] and search neighborhood size neighb
-jag_path <- function(x1, y1, nstep, par = c(1, 1), neighb = 5) {
-    if (!(x1 %in% 1:100) | !(y1 %in% 1:100)) {
+jag_path <- function(x0, y0, nstep, par = c(1, 1), neighb = 5) {
+    if (!(x0 %in% 1:100) | !(y0 %in% 1:100)) {
         print("Jaguar out of bounds")
         return(NULL)
     }
     path <- matrix(NA, nrow = nstep, ncol = 2)
-    x <- x1; y <- y1; path[1, ] <- c(x, y)
+    x <- x0; y <- y0; path[1, ] <- c(x, y)
     for (i in 2:nstep) {
         pos <- path[i - 1, ]
         nbhd <- make_nbhd(r = env1[[1]], rdf = env1[[2]], sz = neighb,
                           i = cellFromRowCol(env1[[1]], pos[1], pos[2]))
-        attract <- env1[[1]][nbhd] * par[1] + env2[[1]][nbhd] * par[2]
+        attract <- exp(env1[[1]][nbhd] * par[1]) # + env2[[1]][nbhd] * par[2]
         if (any(is.na(attract))) attract[is.na(attract)] <- 0
-        if (any(attract < 0)) attract[attract < 0] <- 0
         attract <- attract / sum(attract)
         step <- sample(seq_len(length(attract)), 1, prob = attract)
         path[i, ] <- rowColFromCell(env1[[1]], nbhd[step])
@@ -109,8 +104,8 @@ jag_path <- function(x1, y1, nstep, par = c(1, 1), neighb = 5) {
 
 vgram <- function(path, cut = 100) {
     var <- sapply(1:cut, function(t) {
-        p1 <- path[1:(100 - t),]
-        p2 <- path[(t + 1):100,]
+        p1 <- path[1:(nrow(path) - t),]
+        p2 <- path[(t + 1):nrow(path),]
 
         out <- sqrt((p1$x - p2$x)^2 + (p1$y - p2$y)^2)
         return(mean(out))
@@ -119,15 +114,19 @@ vgram <- function(path, cut = 100) {
 }
 
 # Plot landscape r with jaguar path and vgram
-plot_path <- function(path) {
-    par(mfrow = c(1, 3))
+plot_path <- function(path, ...) {
+    par(mfrow = c(1, 2))
+
+    # Plotting environmental variables + path
     raster::plot(env1[[1]])
     points(path, col = "red", pch = 19, cex = 0.5)
     lines(path, col = "red")
-    raster::plot(env2[[1]])
-    points(path, col = "red", pch = 19, cex = 0.5)
-    lines(path, col = "red")
-    plot(vgram(path), type = "l", xlab = "Time lag", ylab = "Variance")
+    # raster::plot(env2[[1]])
+    # points(path, col = "red", pch = 19, cex = 0.5)
+    # lines(path, col = "red")
+
+    # Plotting variogram
+    plot(vgram(path, ...), type = "l", xlab = "Time lag", ylab = "Variance")
 }
 
 

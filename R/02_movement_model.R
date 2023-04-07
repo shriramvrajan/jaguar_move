@@ -3,9 +3,9 @@
 
 ## Switches ====================================================================
 
-refit_homes     <- T              # Refit home ranges (AKDE) 
-refit_turns     <- T              # Refit turn distributions (MM)
-refit_model     <- F              # Refit movement model parameters
+refit_homes     <- F              # Refit home ranges (AKDE) 
+refit_turns     <- F              # Refit turn distributions (MM)
+refit_model     <- T              # Refit movement model parameters
 
 i_initial       <- 1              # Individual to start at
 buffersize      <- 1              # Jaguars move 1px (1km) at a time
@@ -13,13 +13,6 @@ model_calcnull  <- F              # Calculate null likelihoods?
 n_iter          <- length(jag_id)  # Number of individuals
 
 # Functions ====================================================================
-
-
-# For vector v with entries corresponding
-norm_nbhd <- function(v) {
-  out <- matrix(v[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
-  out <- out / rowSums(out, na.rm = T)
-}
 
 # Returns negative of the maximum log likelihood given a set of parameters (par)  
 loglike_fun <- function(par) {
@@ -40,11 +33,11 @@ loglike_fun <- function(par) {
   # Attractiveness function 
   attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
                    par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
-  attract_h <- exp(par[7] * home)
-  attract_t <- exp(par[8] * turn) # think about functional form of h & t
+  attract_h <- exp(par[7] * env$home)
+  # attract_t <- exp(par[8] * turn) # think about functional form of h & t
 
   # 'attract' here is basically the pull factor for each cell of nbhd
-  attract <- norm_nbhd(attract_e) * norm_nbhd(attract_h) * norm_nbhd(attract_t)
+  attract <- norm_nbhd(attract_e) * norm_nbhd(attract_h)# * norm_nbhd(attract_t)
 
   # Array for propagating probabilities forward
   # step_range : (2 * buffersize + 1)^2 (= 9)
@@ -106,7 +99,7 @@ if (refit_homes) {
     jag_traject_guess <- ctmm.fit(jag_traject, guess)
     # Fit and plot autocorrelated kernel density estimate
     jag_kde <- raster(akde(jag_traject, jag_traject_guess))
-
+    jag_kde <- projectRaster(jag_kde, brazil_ras)
     # Saving plots
     # name <- paste0("data/output/homeranges/homerange_", id, ".png")
     # png(filename = name, width = 1000, height = 500)
@@ -114,10 +107,8 @@ if (refit_homes) {
     # plot(var_jag_traject)
     # plot(jag_kde); plot(jag_traject, add = TRUE)   
     # dev.off()
-
-    sample_ras <- crop(brazil_ras[[1]], jag_kde)
-    jag_kde <- resample(jag_kde, sample_ras, method = "ngb")
-    save_ras(jag_kde, paste0("data/output/homeranges/homerange_", id, ".tif"))
+    jag_kde <- resample(jag_kde, brazil_ras[[1]], method = "ngb")
+    save_ras(jag_kde, paste0("output/homeranges/homerange_", id, ".tif"))
 
   }
 }
@@ -149,13 +140,14 @@ if (refit_model) {
   msg("Fitting model parameters")
   ncell <- (buffersize * 2 + 1)^2
   msg(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
-  nbhd0 <- make_nbhd(seq_len(nrow(brdf)), buffersize)
+  nbhd0 <- make_nbhd(i = seq_len(nrow(brdf)), sz = buffersize)                   # 6.4s
 
   for (i in i_initial:n_iter) {
 
     msg(paste0("Jaguar #: ", i, " / ", n_iter))
     # Observed trajectory of jaguar i
-    jag_traject <- jag_move[ID == as.numeric(jag_id[i]), 3:4]
+    id <- as.numeric(jag_id[i])
+    jag_traject <- jag_move[ID == id, 3:4]
     jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
     # Calculating step distances; divide by cell size then take hypotenuse
     dist <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
@@ -168,14 +160,14 @@ if (refit_model) {
 
     msg("Building neighborhoods for each cell")
     # Extended neighborhoods of each cell in individual's trajectory
-    nbhd_index <- make_nbhd(jag_traject_cells, size_out)
+    nbhd_index <- make_nbhd(i = jag_traject_cells, sz = size_out)
     # Each entry in the list is the immediate neighborhood of each cell in the 
     # extended neighborhood, as represented by a cell number of brazil_ras
-    nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {
+    nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                 # 13.5s
       row_num <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
       names(row_num) <- nbhd_index[i, ] # index names for i
       out <- matrix(row_num[as.character(nbhd0[nbhd_index[i, ], ])], 
-                    nrow = length(rn), ncol = ncol(nbhd0))
+                    nrow = length(row_num), ncol = ncol(nbhd0))
       return(out)
     })
     nbhd <- do.call(rbind, nbhd_list)
@@ -186,18 +178,22 @@ if (refit_model) {
     # For each cell of the extended neighborhood of the path, what are
     # the immediate neighbors? Rows are path cells, columns are neighbors.
     # All row lengths standardized by turning missing neighbors into NAs.
-    to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {
-      print(x)
+    to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {                 # 36s
+      # print(x)
       out <- c(x, rep(NA, ncol(nbhd) - length(x)))
       return(out)
     })
     to_dest <- t(matrix(unlist(to_dest), nrow = ncol(nbhd), ncol = nrow(nbhd)))
     dest <- matrix(0, nrow = nrow(nbhd), ncol = ncol(nbhd))
 
+    # Adding individual home range (AKDE) to brdf
+    home <- raster(paste0("data/output/homeranges/homerange_", id, ".grd"))
+    brdf$home <- as.vector(home)
+
     # Normalizing desired environmental variables for extended neighborhood
     env <- brdf[nbhd_index, ]
-    env <- sweep(env, 2, colMeans(env), "-")       # Subtract mean
-    env <- sweep(env, 2, apply(env, 2, sd), "/")   # Divide by std dev
+    env[, 1:6] <- sweep(env[, 1:6], 2, colMeans(env)[1:6], "-") 
+    env[, 1:6] <- sweep(env[, 1:6], 2, apply(env, 2, sd)[1:6], "/") 
     # Make indexing consistent with env
     row.names(env) <- seq_len(length(nbhd_index))
 

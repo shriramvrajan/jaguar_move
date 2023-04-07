@@ -40,6 +40,12 @@ load_if_exists <- function(files, dir) {
 
 # Simulation -------------------------------------------------------------------
 
+# Normalize probabilities across neighbors of each cell
+norm_nbhd <- function(v) {
+  out <- matrix(v[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
+  out <- out / rowSums(out, na.rm = T)
+}
+
 # Outputs a matrix of cell numbers corresponding to raster (r, rdf)
 # based on a central cell (i) and a buffer size around that cell (sz)
 make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {

@@ -4,10 +4,10 @@
 library(raster) # update to terra at some point
 library(tidyverse)
 library(data.table)
-library(ctmm)
-library(finch)
-library(amt) 
-library(mixtools)
+# library(ctmm)
+# library(finch)
+# library(amt) 
+# library(mixtools)
 # library(gstat)
 
 # Functions ====================================================================

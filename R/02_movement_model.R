@@ -7,10 +7,12 @@ refit_homes     <- F              # Refit home ranges (AKDE)
 refit_turns     <- F              # Refit turn distributions (MM)
 refit_model     <- T              # Refit movement model parameters
 
+npar            <- 7              # Number of parameters in current model
+
 i_initial       <- 1              # Individual to start at
 buffersize      <- 1              # Jaguars move 1px (1km) at a time
 model_calcnull  <- F              # Calculate null likelihoods?
-n_iter          <- length(jag_id)  # Number of individuals
+n_iter          <- nrow(jag_id)  # Number of individuals
 
 # Functions ====================================================================
 
@@ -37,7 +39,7 @@ loglike_fun <- function(par) {
   # attract_t <- exp(par[8] * turn) # think about functional form of h & t
 
   # 'attract' here is basically the pull factor for each cell of nbhd
-  attract <- norm_nbhd(attract_e) * norm_nbhd(attract_h)# * norm_nbhd(attract_t)
+  attract <- norm_nbhd(attract_e) * norm_nbhd(attract_h) # * norm_nbhd(attract_t)
 
   # Array for propagating probabilities forward
   # step_range : (2 * buffersize + 1)^2 (= 9)
@@ -217,11 +219,11 @@ if (refit_model) {
     # Calculate null likelihoods for each jaguar if not already done
     if (model_calcnull) {
       msg(paste0("Calculating null likelihood for jaguar ", i))
-      null_likelihood <- loglike_fun(c(rep(0, 6)))
+      null_likelihood <- loglike_fun(c(rep(0, npar)))
       saveRDS(null_likelihood, paste0("data/output/null_", i, ".RDS"))
     }
 
-    param <- rnorm(6)
+    param <- rnorm(npar)
     msg("Running optim...")
     ntries <- 0
     ## Main fitting loop, tries each individual 20 times and moves on if no fit

@@ -6,13 +6,14 @@
 refit_homes     <- F              # Refit home ranges (AKDE) 
 refit_turns     <- F              # Refit turn distributions (MM)
 refit_model     <- T              # Refit movement model parameters
+model_calcnull  <- T              # Calculate null likelihoods 
+                                    # refit_model must be TRUE for this one
 
 npar            <- 7              # Number of parameters in current model
 
 i_initial       <- 1              # Individual to start at
 buffersize      <- 1              # Jaguars move 1px (1km) at a time
-model_calcnull  <- F              # Calculate null likelihoods?
-n_iter          <- nrow(jag_id)  # Number of individuals
+n_iter          <- nrow(jag_id)   # Number of individuals
 
 # Functions ====================================================================
 
@@ -221,37 +222,37 @@ if (refit_model) {
       msg(paste0("Calculating null likelihood for jaguar ", i))
       null_likelihood <- loglike_fun(c(rep(0, npar)))
       saveRDS(null_likelihood, paste0("data/output/null_", i, ".RDS"))
-    }
+    } else {
+      param <- rnorm(npar)
+      msg("Running optim...")
+      ntries <- 0
+      ## Main fitting loop, tries each individual 20 times and moves on if no fit
+      while (ntries <= 20) {
+        tryCatch({
+            par_out <- optim(param, loglike_fun)
+            saveRDS(par_out, paste0("data/output/par_out_", i, ".RDS"))
 
-    param <- rnorm(npar)
-    msg("Running optim...")
-    ntries <- 0
-    ## Main fitting loop, tries each individual 20 times and moves on if no fit
-    while (ntries <= 20) {
-      tryCatch({
-          par_out <- optim(param, loglike_fun)
-          saveRDS(par_out, paste0("data/output/par_out_", i, ".RDS"))
+            msg("Running loglike_fun...")
+            likelihood <- loglike_fun(par_out[[1]])
+            saveRDS(likelihood, paste0("data/output/likelihood_", i, ".RDS"))
 
-          msg("Running loglike_fun...")
-          likelihood <- loglike_fun(par_out[[1]])
-          saveRDS(likelihood, paste0("data/output/likelihood_", i, ".RDS"))
-
-          msg(paste0("jaguar ", i, " fitted ", date()))
-          ntries <- 21 # End while loop
-        },
-        error = function(e) {
-          msg(e)
-          msg(paste("Try #:", ntries))
-          if (ntries == 20) {
-            msg("Skipping, couldn't fit in 20 tries")
-          } else {
-            msg("Retrying")
+            msg(paste0("jaguar ", i, " fitted ", date()))
+            ntries <- 21 # End while loop
+          },
+          error = function(e) {
+            msg(e)
+            msg(paste("Try #:", ntries))
+            if (ntries == 20) {
+              msg("Skipping, couldn't fit in 20 tries")
+            } else {
+              msg("Retrying")
+            }
+          },
+          finally = {
+            ntries <- ntries + 1
           }
-        },
-        finally = {
-          ntries <- ntries + 1
-        }
-      )
+        )
+      }
     }
   }
 }

@@ -144,7 +144,7 @@ wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
 
 # Jaguar movement data, ID numbers, and metadata
 jag_move <- readRDS("data/jag_data_BR.RDS")
-jag_id <- readRDS("data/jag_list.RDS"); njag <- length(jag_id)
+jag_id <- readRDS("data/jag_list.RDS"); njag <- nrow(jag_id)
 jag_meta <- data.table(read.csv("data/input/jaguars/jaguar_metadata.csv"))
 
 # RasterStack of environmental variables 

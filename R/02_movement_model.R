@@ -27,20 +27,22 @@ loglike_fun <- function(par) {
   # to_dest    : For each cell of the extended neighborhood of the path, what 
   #               are the immediate neighbors? Rows are path cells, columns are 
   #               neighbors.
-  # obs        :  
+  # obs        : Index of the cell of the extended neighborhood that corresponds
+  #               to the next GPS observation
+  # env        : Environmental variables
 
-  # Utility function for environmental variables
-  # utility <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-  #   par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+  # Attractiveness function 1: environmental variables + home range
+  # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+  #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+  # attract_h <- exp(par[7] * env$home)
+  # attract <- norm_nbhd(attract_e) * norm_nbhd(attract_h) # * norm_nbhd(attract_t)
 
-  # Attractiveness function 
-  attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-                   par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
-  attract_h <- exp(par[7] * env$home)
+  # Attractiveness function 2: just home range
+  attract_h <- exp(par[1] * env$home)
+  attract <- norm_nbhd(attract_h) 
+
+  # Attractiveness function 3: turn angle
   # attract_t <- exp(par[8] * turn) # think about functional form of h & t
-
-  # 'attract' here is basically the pull factor for each cell of nbhd
-  attract <- norm_nbhd(attract_e) * norm_nbhd(attract_h) # * norm_nbhd(attract_t)
 
   # Array for propagating probabilities forward
   # step_range : (2 * buffersize + 1)^2 (= 9)

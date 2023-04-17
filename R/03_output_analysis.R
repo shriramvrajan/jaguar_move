@@ -28,6 +28,7 @@ park <- runk[[2]]; parrw <- runrw[[2]]; parrwh <- runrwh[[2]]
 
 null_files <- paste0("null_", 1:njag, ".RDS")
 ll0 <- -unlist(load_if_exists(null_files, "data/output/LL_null"))
+ll0h <- -unlist(load_if_exists(null_files, "data/output/LL_null_H"))
 
 dfk <- par_to_df(park)
 dfrw <- par_to_df(parrw)
@@ -57,15 +58,17 @@ res <- data.frame(id = jag_id,
                   llrw = llrw,
                   llrwh = llrwh,
                   ll0 = ll0,
+                  ll0h = ll0h,
                   dek = (1 - llk / ll0),
                   derw = (1 - llrw / ll0),
-                  derwh = (1 - llrwh / ll0))
+                  derwh = (1 - llrwh / ll0h))
 
 res <- res[-which(is.infinite(res$ll0)), ]
 res <- res[-which(res$nmove < 100), ]
-res <- res[order(res$derw - res$dek), ]
+# res <- res[order(res$derw - res$dek), ]
 
-barplot(res$derw, col = rgb(0, 0, 1, 0.3), border = NA)
-barplot(res$dek, col = rgb(1, 0, 0, 0.3), border = NA, add = T)
-barplot(res$derwh, col = rgb(0, 1, 0, 0.3), border = NA, add = T)
-## are sdms too broad of a scale? 
+barplot(sort(res$derw), col = rgb(0, 0, 1, 0.3), border = NA)
+barplot(sort(res$dek), col = rgb(1, 0, 0, 0.3), border = NA, add = T)
+barplot(sort(res$derwh), col = rgb(0, 1, 0, 0.3), border = NA, add = T)
+
+## how to compare deviance explained across models with different npar?

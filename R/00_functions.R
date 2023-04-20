@@ -24,6 +24,7 @@ save_ras <- function(x, fn) {
 # Output message m in logfile f
 msg <- function(m, f = "data/output/run_log.txt") {
     m <- paste(format(Sys.time(), "%d.%m.%y  %R"), m)
+    print(m)
     cat(m, file = f, append = TRUE, sep = "\n")
 }
 
@@ -38,13 +39,104 @@ load_if_exists <- function(files, dir) {
     })
 }
 
-# Simulation -------------------------------------------------------------------
+# Movement model ---------------------------------------------------------------
 
 # Normalize probabilities across neighbors of each cell
 norm_nbhd <- function(v) {
   out <- matrix(v[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
   out <- out / rowSums(out, na.rm = T)
 }
+
+# Returns negative of the maximum log likelihood given a set of parameters (par)  
+loglike_fun <- function(par) {
+  # par        : Initial values of parameters for optimization
+  # nbhd       : Neighborhood
+  # step_range : Step range
+  # n_obs      : Number of GPS observations (length of track)
+  # steps:     : Number of steps simulated
+  # to_dest    : For each cell of the extended neighborhood of the path, what 
+  #               are the immediate neighbors? Rows are path cells, columns are 
+  #               neighbors.
+  # obs        : Index of the cell of the extended neighborhood that corresponds
+  #               to the next GPS observation
+  # env        : Environmental variables
+
+  # Attractiveness function 1: environmental variables + home range ------------
+  # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+  #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+  # attract_h <- exp(par[7] * env$home)
+  # attract <- norm_nbhd(attract_e) * norm_nbhd(attract_h) #* norm_nbhd(attract_t)
+
+  # Attractiveness function 2: just home range ---------------------------------
+  attract_h <- exp(par[1] * env$home)
+  attract <- norm_nbhd(attract_h) 
+
+  # Attractiveness function 3: turn angle --------------------------------------
+  # attract_t <- exp(par[8] * turn) # think about functional form of h & t
+
+
+  # Array for propagating probabilities forward ================================
+  # step_range : (2 * buffersize + 1)^2 (= 529)
+  # n_obs      : Number of GPS observations
+  # steps      : Number of simulated steps
+  current <- array(0, dim = c(step_range, n_obs, steps))
+
+  # center     : Center of step_range (center cell of (2 * buffer + 1)
+  # Set to 1 at step #1 for each observation because that's where it actually is
+  center <- step_range / 2 + 0.5
+  current[center, , 1] <- 1
+  for (j in 1:(steps - 1)) {
+    # Probabilities across entire nbhd for step j
+    step_prob <- as.vector(current[, , j]) * attract[]
+
+    # dest has same dimensions as nbhd
+    # step_prob is a vector of length step_range
+    # to_dest is a matrix with the same dimensions as nbhd
+    #   rows are neighborhood cells, columns are neighbors of those cells
+    #   each entry is the index of the neighbor cell
+    #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
+    #   nbhd is the 3rd cell of nbhd.
+    dest[] <- step_prob[as.vector(to_dest)]
+    # Summing probabilities up to step j to generate step j+1
+    current[, , j + 1] <- rowSums(dest, na.rm = T)
+
+  }
+  
+  # Calculate log likelihood 
+  predictions <- matrix(0, nrow = steps, ncol = n_obs)
+  for (i in 1:n_obs) {
+    predictions[, i] <- current[obs[i], i, ]
+    # returns the probability for the row associated with the next 
+    # observation location, for that observation i, across all time steps
+  }
+  log_likelihood <- rowSums(log(predictions), na.rm = T)
+  # log of product is sum of logs
+  return(-max(log_likelihood))
+  # Return negative of the maximum log likelihood because we want to minimize
+  # Lower negative log likelihood = higher likelihood 
+}
+
+# Output analysis --------------------------------------------------------------
+
+## Load parameters and likelihood
+load_output <- function(name) {
+    dir <- paste0("data/output/", name)
+    # ll_files <- list.files(dir)[grep("likelihood_", list.files(dir))]
+    # par_files <- list.files(dir)[grep("par_out_", list.files(dir))]
+    ll_files <- paste0("likelihood_", 1:njag, ".RDS")
+    par_files <- paste0("par_out_", 1:njag, ".RDS")
+    ll <- load_if_exists(ll_files, dir)
+    par <- load_if_exists(par_files, dir)
+    return(list(unlist(ll), par))
+}
+
+par_to_df <- function(par) {
+    df <- do.call(rbind, lapply(par, function(x) {
+        print(x[[1]])
+    }))
+}
+
+# Simulation -------------------------------------------------------------------
 
 # Outputs a matrix of cell numbers corresponding to raster (r, rdf)
 # based on a central cell (i) and a buffer size around that cell (sz)

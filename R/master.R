@@ -1,6 +1,6 @@
 ## Main script to run others
 
-source("R/00_basics.R")
+source("R/00_functions.R")
 
 generate_data   <- FALSE
 run_model       <- TRUE

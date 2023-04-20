@@ -6,82 +6,14 @@
 refit_homes     <- F              # Refit home ranges (AKDE) 
 refit_turns     <- F              # Refit turn distributions (MM)
 refit_model     <- T              # Refit movement model parameters
-model_calcnull  <- T              # Calculate null likelihoods 
+model_calcnull  <- F              # Calculate null likelihoods 
                                     # refit_model must be TRUE for this one
 
-npar            <- 7              # Number of parameters in current model
+npar            <- 1              # Number of parameters in current model
 
 i_initial       <- 1              # Individual to start at
 buffersize      <- 1              # Jaguars move 1px (1km) at a time
 n_iter          <- nrow(jag_id)   # Number of individuals
-
-# Functions ====================================================================
-
-# Returns negative of the maximum log likelihood given a set of parameters (par)  
-loglike_fun <- function(par) {
-  # par        : Initial values of parameters for optimization
-  # nbhd       : Neighborhood
-  # step_range : Step range
-  # n_obs      : Number of GPS observations (length of track)
-  # steps:     : Number of steps simulated
-  # to_dest    : For each cell of the extended neighborhood of the path, what 
-  #               are the immediate neighbors? Rows are path cells, columns are 
-  #               neighbors.
-  # obs        : Index of the cell of the extended neighborhood that corresponds
-  #               to the next GPS observation
-  # env        : Environmental variables
-
-  # Attractiveness function 1: environmental variables + home range
-  # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-  #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
-  # attract_h <- exp(par[7] * env$home)
-  # attract <- norm_nbhd(attract_e) * norm_nbhd(attract_h) # * norm_nbhd(attract_t)
-
-  # Attractiveness function 2: just home range
-  attract_h <- exp(par[1] * env$home)
-  attract <- norm_nbhd(attract_h) 
-
-  # Attractiveness function 3: turn angle
-  # attract_t <- exp(par[8] * turn) # think about functional form of h & t
-
-  # Array for propagating probabilities forward
-  # step_range : (2 * buffersize + 1)^2 (= 9)
-  # n_obs      : Number of observations
-  # steps      : Number of simulated steps
-  current <- array(0, dim = c(step_range, n_obs, steps))
-
-  # center     : Center of step_range (center cell of (2 * buffer + 1)
-  # Set to 1 at step #1 for each observation because that's where it actually is
-  center <- step_range / 2 + 0.5
-  current[center, , 1] <- 1
-  for (j in 1:(steps - 1)) {
-    # Probabilities across all step range for step j
-    step_prob <- as.vector(current[, , j]) * attract[]
-
-    # dest has same dimensions as nbhd
-    # step_prob is a vector of length step_range
-    # to_dest is a matrix with the same dimensions as nbhd
-    #   rows are neighborhood cells, columns are neighbors of those cells
-    #   each entry is the index of the neighbor cell
-    #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
-    #   nbhd is the 3rd cell of nbhd.
-    dest[] <- step_prob[as.vector(to_dest)]
-    # Summing probabilities up to step j to generate step j+1
-    current[, , j + 1] <- rowSums(dest, na.rm = T)
-
-  }
-  # current has everything - but need to know where the next obs was (row) for
-  # each column, and will sum across each time steps
-  predictions <- matrix(0, nrow = steps, ncol = n_obs)
-  for (i in 1:n_obs) {
-    predictions[, i] <- current[obs[i], i, ]
-    # returns back the probability for the row
-    # associated with the next observation location, for that observation i,
-    # across all time steps
-  }
-  log_likelihood <- rowSums(log(predictions), na.rm = T)
-  return(-max(log_likelihood))
-}
 
 ### Body =======================================================================
 

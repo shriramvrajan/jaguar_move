@@ -9,7 +9,7 @@ refit_model     <- T              # Refit movement model parameters
 model_calcnull  <- F              # Calculate null likelihoods 
                                     # refit_model must be TRUE for this one
 
-npar            <- 1              # Number of parameters in current model
+npar            <- 7              # Number of parameters in current model
 
 i_initial       <- 1              # Individual to start at
 buffersize      <- 1              # Jaguars move 1px (1km) at a time
@@ -157,7 +157,7 @@ if (refit_model) {
       null_likelihood <- loglike_fun(c(rep(0, npar)))
       saveRDS(null_likelihood, paste0("data/output/null_", i, ".RDS"))
     } else {
-      param <- rnorm(npar)
+      param <- rep(0, npar)
       msg("Running optim...")
       ntries <- 0
       ## Main fitting loop, tries each individual 20 times and moves on if no fit

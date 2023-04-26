@@ -100,7 +100,7 @@ if (refit_model) {
     nbhd_index <- make_nbhd(i = jag_traject_cells, sz = size_out)
     # Each entry in the list is the immediate neighborhood of each cell in the 
     # extended neighborhood, as represented by a cell number of brazil_ras
-    nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                 # 13.5s
+    nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                 # 14s
       row_num <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
       names(row_num) <- nbhd_index[i, ] # index names for i
       out <- matrix(row_num[as.character(nbhd0[nbhd_index[i, ], ])], 
@@ -141,7 +141,7 @@ if (refit_model) {
       ncol = length(jag_traject_cells)
     )
     obs <- vector(length = ncol(index_mat) - 1)
-    for (y in 1:(ncol(index_mat) - 1)) {
+    for (y in 1:(ncol(index_mat) - 1)) {                                         # 13s
       test <- which(nbhd_index == jag_traject_cells[y + 1])
       num <- which(index_mat[1, y] < test & test < index_mat[nrow(index_mat), y])
       obs[y] <- which(index_mat[, y] == test[num])

@@ -65,7 +65,7 @@ loglike_fun <- function(par) {
   attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
                    par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
   attract_h <- exp(par[7] * env$home)
-  attract <- norm_nbhd(attract_e) * norm_nbhd(attract_h) #* norm_nbhd(attract_t)
+  attract <- norm_nbhd(attract_e * attract_h) #* norm_nbhd(attract_t)
 
   # Attractiveness function 2: just home range ---------------------------------
   # attract_h <- exp(par[1] * env$home)

@@ -4,11 +4,11 @@
 library(raster) # update to terra at some point
 library(tidyverse)
 library(data.table)
-# library(ctmm)
+library(ctmm)
 # library(finch)
-# library(amt) 
+library(amt) 
 # library(mixtools)
-# library(gstat)
+library(gstat)
 
 # Functions ====================================================================
 
@@ -40,6 +40,24 @@ load_if_exists <- function(files, dir) {
 }
 
 # Movement model ---------------------------------------------------------------
+
+# Outputs a matrix of cell numbers corresponding to raster (r, rdf)
+# based on a central cell (i) and a buffer size around that cell (sz)
+make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
+  # if x is the center square and o are neighbors, and e.g. sz = 2
+  # (2*sz + 1)^2 represents total neighborhood size 
+  mat <- matrix(0, nrow = length(i), ncol = (2 * sz + 1)^2)
+  # values to add to central cell's row/col to get neighborhood cells' row/col
+  ind1 <- t(rep(-sz:sz, each = 2 * sz + 1))
+  ind2 <- t(rep(-sz:sz, 2 * sz + 1))
+  for (j in seq_len(length(ind1))) {
+    mat[, j] <- cellFromRowCol(
+      r, rdf$row[i] + ind1[j],
+      rdf$col[i] + ind2[j]
+    )
+  }
+  return(mat)
+}
 
 # Normalize probabilities across neighbors of each cell
 norm_nbhd <- function(v) {
@@ -138,24 +156,6 @@ par_to_df <- function(par) {
 
 # Simulation -------------------------------------------------------------------
 
-# Outputs a matrix of cell numbers corresponding to raster (r, rdf)
-# based on a central cell (i) and a buffer size around that cell (sz)
-make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
-  # if x is the center square and o are neighbors, and e.g. sz = 2
-  # (2*sz + 1)^2 represents total neighborhood size 
-  mat <- matrix(0, nrow = length(i), ncol = (2 * sz + 1)^2)
-  # values to add to central cell's row/col to get neighborhood cells' row/col
-  ind1 <- t(rep(-sz:sz, each = 2 * sz + 1))
-  ind2 <- t(rep(-sz:sz, 2 * sz + 1))
-  for (j in seq_len(length(ind1))) {
-    mat[, j] <- cellFromRowCol(
-      r, rdf$row[i] + ind1[j],
-      rdf$col[i] + ind2[j]
-    )
-  }
-  return(mat)
-}
-
 # Generates a random field with a given correlation structure
 # b: beta parameter for gstat, s: sill, r: range, n: nugget
 gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {   
@@ -178,32 +178,52 @@ gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {
 
 # Generate a jaguar path of n steps starting from (x0, y0) with environmental
 # preference parameters par[] and search neighborhood size neighb
-jag_path <- function(x0, y0, nstep, par = c(1, 1), neighb = 5) {
+jag_path <- function(x0, y0, nstep, par, neighb = 5, type = 2,
+                     tprob = c(0.2, 0.4)) {
+    # type: 1 = env1 only, 2 = multi-state model
     if (!(x0 %in% 1:100) | !(y0 %in% 1:100)) {
         print("Jaguar out of bounds")
         return(NULL)
     }
-    path <- matrix(NA, nrow = nstep, ncol = 2)
-    x <- x0; y <- y0; path[1, ] <- c(x, y)
+    path <- matrix(NA, nrow = nstep, ncol = 3)
+    state0 <- 1 # Beginning state, irrelevant if type = 1
+    x <- x0; y <- y0; path[1, ] <- c(x, y, state0)
+    
+    if (type == 2) {
+        # Transition probabilities: p12, p21, p11, p22
+        tprob <- c(tprob, 1 - sum(tprob))
+    }
+
     for (i in 2:nstep) {
-        pos <- path[i - 1, ]
+        pos <- path[i - 1, 1:2]
+        state <- path[i - 1, 3]
+        if (type == 2) {
+            # Transition to new state
+            if (state == 1) {
+                if (runif(1) < tprob[1]) state <- 2
+            } else {
+                if (runif(1) < tprob[2]) state <- 1
+            }
+        }
         nbhd <- make_nbhd(r = env1[[1]], rdf = env1[[2]], sz = neighb,
                           i = cellFromRowCol(env1[[1]], pos[1], pos[2]))
-        attract <- exp(env1[[1]][nbhd] * par[1]) # + env2[[1]][nbhd] * par[2]
+        attract <- switch(state, 
+                          exp(env1[[1]][nbhd] * par[1]),
+                          exp(env2[[1]][nbhd] * par[2]))
         if (any(is.na(attract))) attract[is.na(attract)] <- 0
         attract <- attract / sum(attract)
         step <- sample(seq_len(length(attract)), 1, prob = attract)
-        path[i, ] <- rowColFromCell(env1[[1]], nbhd[step])
+        path[i, ] <- c(rowColFromCell(env1[[1]], nbhd[step]), state)
     }
     path <- as.data.frame(path)
-    names(path) <- c("x", "y")
+    names(path) <- c("x", "y", "state")
     return(path)
 }
 
 vgram <- function(path, cut = 100) {
     var <- sapply(1:cut, function(t) {
-        p1 <- path[1:(nrow(path) - t),]
-        p2 <- path[(t + 1):nrow(path),]
+        p1 <- path[1:(nrow(path) - t), 1:2]
+        p2 <- path[(t + 1):nrow(path), 1:2]
 
         out <- sqrt((p1$x - p2$x)^2 + (p1$y - p2$y)^2)
         return(mean(out))
@@ -212,18 +232,24 @@ vgram <- function(path, cut = 100) {
 }
 
 # Plot landscape r with jaguar path and vgram
-plot_path <- function(path, ...) {
-    par(mfrow = c(1, 2))
+plot_path <- function(path, vgram = T, new = T, ...) {
+    par(mfrow = c(1, ifelse(vgram, 2, 1)))
 
+    col1 <- rgb(1, 0, 0, .5)
+    col2 <- rgb(0, 0, 1, .5)
     # Plotting environmental variables + path
-    raster::plot(env1[[1]])
-    points(path, col = "red", pch = 19, cex = 0.5)
-    lines(path, col = "red")
+    if (new) raster::plot(env1[[1]])
+    points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)
+    for (i in 1:(length(path$state) - 1)) {
+        segments(path$x[i], path$y[i], path$x[i + 1], path$y[i + 1], 
+                 col = c(col1, col2)[path$state[i]])
+    }
     # raster::plot(env2[[1]])
     # points(path, col = "red", pch = 19, cex = 0.5)
     # lines(path, col = "red")
 
     # Plotting variogram
+    if (!vgram) return(NULL)
     plot(vgram(path, ...), type = "l", xlab = "Time lag", ylab = "Variance")
 }
 

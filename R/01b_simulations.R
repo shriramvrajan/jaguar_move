@@ -1,49 +1,75 @@
 source("R/00_functions.R")
 
+## Landscape generation ========================================================
+
 env1 <- gen_landscape(size = 100, s = 0.5, r = 30)
 env2 <- gen_landscape(size = 100, s = 1, r = 10)
 # env2 <- gen_landscape(size = 100, s = 0.033, r = 20)
 
+
+## Path generation parameters ==================================================
+
 # x0 <- sample(100, 1); y0 <- sample(100, 1)
 x0 <- 50; y0 <- 50
-par1 <- c(0.5, -0.5)
-tprob1 <- c(0.1, 0.6)
-neighb1 <- 5
+par0 <- c(.5, -.2)
+tprob0 <- c(0.1, 0.6)
+neighb0 <- 6
+step0 <- 500
 n <- 10 # Number of paths to simulate
 
-raster::plot(env1[[1]])
-raster::plot(exp(par1[1] * env1[[1]]))
-raster::plot(env2[[1]])
-raster::plot(exp(par1[2] * env2[[1]]))
-# x0 <- 50; y0 <- 50
-for (i in 1:n) {
-    path <- jag_path(x0, y0, 100, par = par1, neighb = neighb1, tprob = tprob1)
+## Simulation ==================================================================
+
+paths <- lapply(1:n, function(i) jag_path(x0, y0, step0, par = par0, 
+             neighb = neighb0, tprob = tprob0))
+
+## Testing =====================================================================
+
+env11 <- exp(env1[[2]][, 1] * par0[1])
+env22 <- exp(env2[[2]][, 1] * par0[2])
+
+## Fitting =====================================================================
+
+step_range <- neighb0
+n_obs <- step0
+steps <- 25
+
+# to_dest?
+envdf <- env1[[2]]
+env_index <- seq_len(nrow(envdf))
+envdf <- cbind(envdf, env_index)
+adj <- as.data.frame(raster::adjacent(env1[[1]], cells = env_index, include = T,
+                                      directions = 8, id = T, sorted = T))
+to_dest <- do.call(rbind, lapply(env_index, function(i) {
+    out <- adj$from[which(adj$to == i)]
+    if (length(out) < 9) {
+        out <- c(out, rep(NA, 9 - length(out)))
+    }
+    return(out)
+}))
+
+# obs?
+# Building observed data to test against
+nbhd0 <- make_nbhd(r = env1[[1]], rdf = env1[[2]], i = 4950,
+                   sz = neighb0)
+index_mat <- matrix(
+    data = seq_len(length(env_index)),
+    nrow = (2 * neighb0 + 1)^2,
+    ncol = n_obs
+)
+obs <- vector(length = ncol(index_mat) - 1)
+for (y in 1:(ncol(index_mat) - 1)) {                                         # 13s
+    test <- which(nbhd_index == jag_traject_cells[y + 1])
+    num <- which(index_mat[1, y] < test & test < index_mat[nrow(index_mat), y])
+    obs[y] <- which(index_mat[, y] == test[num])
+} 
+
+## Plotting ====================================================================
+
+# raster::plot(env1[[1]])
+# raster::plot(exp(par1[1] * env1[[1]]))
+# raster::plot(env2[[1]])
+# raster::plot(exp(par1[2] * env2[[1]]))
+
+    path <- get(paste0("path", i))
     plot_path(path, new = F, vgram = F,  col = c("red", "blue")[path$state])
     points(x0, y0, pch = 19, cex = 0.8)
-}
-
-### Ideas
-# - Batch simulations to try and recover env AC from path AC
-# - Home range weighting in path generation
-# - Two turn angle distributions?
-
-# Home range idea captures mechanism of other jaguars
-# Coefficient could go to 0 in this case (driven by env AC)
-
-# plan 1. compare AKDE ranges vs env suitability for real jaguars
-# plan 2. simultaneously fit both env and home range parameters
-
-# AKDE: pro, easy, con, maybe not logical
-
-# How to give primacy to measured environmental variables?
-
-# Preference not necessarily the same thing as suitability 
-
-# Test cases.
-# 1. XY GAM with threshold of occurrence
-# 2. Two env layers and try to recover parameter values
-# 3. What happens if you always start in a patch vs 'desert'
-
-# Cardille 
-# Jeff - modeling spatial challenges
-# Melanie - behavioral ecology

@@ -160,7 +160,7 @@ if (refit_model) {
       param <- rep(0, npar)
       msg("Running optim...")
       ntries <- 0
-      ## Main fitting loop, tries each individual 20 times and moves on if no fit
+      ## Main fitting loop, tries each individual 20x and moves on if no fit
       while (ntries <= 20) {
         tryCatch({
             par_out <- optim(param, loglike_fun)

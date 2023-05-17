@@ -80,18 +80,18 @@ loglike_fun <- function(par) {
   # env        : Environmental variables
 
   # Attractiveness function 1: environmental variables + home range ------------
-  attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-                   par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
-  attract_h <- exp(par[7] * env$home)
-  attract <- norm_nbhd(attract_e * attract_h) #* norm_nbhd(attract_t)
+#   attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+#                    par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+#   attract_h <- exp(par[7] * env$home)
+#   attract <- norm_nbhd(attract_e * attract_h) #* norm_nbhd(attract_t)
 
   # Attractiveness function 2: just home range ---------------------------------
   # attract_h <- exp(par[1] * env$home)
   # attract <- norm_nbhd(attract_h) 
 
-  # Attractiveness function 3: turn angle --------------------------------------
-  # attract_t <- exp(par[8] * turn) # think about functional form of h & t
-
+  # Attractiveness function 3: simulations -------------------------------------
+  attract1 <- exp(par[1] * env1[[1]])
+  attract2 <- exp(par[2] * env2[[1]])
 
   # Array for propagating probabilities forward ================================
   # step_range : (2 * buffersize + 1)^2 (= 529)
@@ -236,7 +236,7 @@ plot_path <- function(path, vgram = T, new = T, ...) {
     par(mfrow = c(1, ifelse(vgram, 2, 1)))
 
     col1 <- rgb(1, 0, 0, .5)
-    col2 <- rgb(0, 0, 1, .5)
+    col2 <- rgb(0, 0, 1, .8)
     # Plotting environmental variables + path
     if (new) raster::plot(env1[[1]])
     points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)

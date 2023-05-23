@@ -185,9 +185,11 @@ jag_path <- function(x0, y0, nstep, par, neighb = 5, type = 2,
         print("Jaguar out of bounds")
         return(NULL)
     }
-    path <- matrix(NA, nrow = nstep, ncol = 3)
+    path <- matrix(NA, nrow = nstep, ncol = 4)
     state0 <- 1 # Beginning state, irrelevant if type = 1
-    x <- x0; y <- y0; path[1, ] <- c(x, y, state0)
+    x <- x0
+    y <- y0
+    path[1, ] <- c(x, y, NA, state0)
     
     if (type == 2) {
         # Transition probabilities: p12, p21, p11, p22
@@ -196,7 +198,7 @@ jag_path <- function(x0, y0, nstep, par, neighb = 5, type = 2,
 
     for (i in 2:nstep) {
         pos <- path[i - 1, 1:2]
-        state <- path[i - 1, 3]
+        state <- path[i - 1, 4]
         if (type == 2) {
             # Transition to new state
             if (state == 1) {
@@ -213,10 +215,11 @@ jag_path <- function(x0, y0, nstep, par, neighb = 5, type = 2,
         if (any(is.na(attract))) attract[is.na(attract)] <- 0
         attract <- attract / sum(attract)
         step <- sample(seq_len(length(attract)), 1, prob = attract)
-        path[i, ] <- c(rowColFromCell(env1[[1]], nbhd[step]), state)
+        path[i, ] <- c(rowColFromCell(env1[[1]], nbhd[step]), 
+                       nbhd[step], state)
     }
     path <- as.data.frame(path)
-    names(path) <- c("x", "y", "state")
+    names(path) <- c("x", "y", "cell", "state")
     return(path)
 }
 

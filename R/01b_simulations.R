@@ -14,18 +14,35 @@ x0 <- 50; y0 <- 50
 par0 <- c(.5, -.2)
 tprob0 <- c(0.1, 0.6)
 neighb0 <- 6
-step0 <- 500
-n <- 10 # Number of paths to simulate
+step0 <- 1000
+n <- 5 # Number of paths to simulate
 
 ## Simulation ==================================================================
 
-paths <- lapply(1:n, function(i) jag_path(x0, y0, step0, par = par0, 
-             neighb = neighb0, tprob = tprob0))
+paths <- lapply(1:n, function(i) {
+          msg(paste0("Path #: ", i, " / ", n))
+          jag_path(x0, y0, step0, par = par0, neighb = neighb0, tprob = tprob0)
+          })
 
 ## Testing =====================================================================
 
 env11 <- exp(env1[[2]][, 1] * par0[1])
 env22 <- exp(env2[[2]][, 1] * par0[2])
+
+par(mfrow = c(n, 2))
+for (i in seq_len(n)) {
+    p <- paths[[i]]
+    val1_t <- env11[p$cell][which(p$state == 1)]
+    val1_f <- env11[p$cell][which(p$state == 2)]
+    val2_t <- env22[p$cell][which(p$state == 2)]
+    val2_f <- env22[p$cell][which(p$state == 1)]
+    hist(val1_t, 30, col = rgb(0, 0, 1, 0.4))
+    hist(val1_f, 30, col = rgb(1, 0, 0, 0.4), add = T)
+    hist(val2_f, 30, col = rgb(1, 0, 0, 0.4))
+    hist(val2_t, 30, col = rgb(0, 0, 1, 0.4), add = T)
+}
+
+
 
 ## Fitting =====================================================================
 

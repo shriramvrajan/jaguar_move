@@ -178,8 +178,7 @@ gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {
 
 # Generate a jaguar path of n steps starting from (x0, y0) with environmental
 # preference parameters par[] and search neighborhood size neighb
-jag_path <- function(x0, y0, nstep, par, neighb = 5, type = 2,
-                     tprob = c(0.2, 0.4)) {
+jag_path <- function(x0, y0, nstep, par, neighb = 5, type = 2, tprob) {
     # type: 1 = env1 only, 2 = multi-state model
     if (!(x0 %in% 1:100) | !(y0 %in% 1:100)) {
         print("Jaguar out of bounds")
@@ -193,7 +192,7 @@ jag_path <- function(x0, y0, nstep, par, neighb = 5, type = 2,
     
     if (type == 2) {
         # Transition probabilities: p12, p21, p11, p22
-        tprob <- c(tprob, 1 - sum(tprob))
+        tprob <- c(tprob, 1 - tprob)
     }
 
     for (i in 2:nstep) {

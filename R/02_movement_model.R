@@ -3,13 +3,14 @@
 
 ## Switches ====================================================================
 
-refit_homes     <- F              # Refit home ranges (AKDE) 
-refit_turns     <- F              # Refit turn distributions (MM)
-refit_model     <- T              # Refit movement model parameters
-model_calcnull  <- F              # Calculate null likelihoods 
+refit_homes     <- FALSE            # Refit home ranges (AKDE) 
+refit_turns     <- FALSE            # Refit turn distributions (MM)
+refit_model     <- TRUE             # Refit movement model parameters
+model_calcnull  <- FALSE            # Calculate null likelihoods 
                                     # refit_model must be TRUE for this one
 
 npar            <- 7              # Number of parameters in current model
+nsteps          <- 25             # How many steps to simulate forward
 
 i_initial       <- 1              # Individual to start at
 buffersize      <- 1              # Jaguars move 1px (1km) at a time
@@ -82,10 +83,15 @@ if (refit_model) {
   for (i in i_initial:n_iter) {
 
     msg(paste0("Jaguar #: ", i, " / ", n_iter))
+    
+    # Adding individual home range (AKDE) to brdf
+    home <- raster(paste0("data/output/homeranges/homerange_", id, ".grd"))
+    brdf$home <- as.vector(home)
     # Observed trajectory of jaguar i
     id <- as.numeric(jag_id[i])
     jag_traject <- jag_move[ID == id, 3:4]
     jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
+    n_obs <- length(jag_traject_cells)
     # Calculating step distances; divide by cell size then take hypotenuse
     dist <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
             xres(brazil_ras)
@@ -93,63 +99,15 @@ if (refit_model) {
     # Making neighborhoods for each point in trajectory, with buffer size as 
     # twice maximum step distance
     max_dist <- max(dist)             
-    size_out <- ceiling(max_dist * 2) 
+    step_range <- ceiling(max_dist * 2) 
 
-    msg("Building neighborhoods for each cell")
-    # Extended neighborhoods of each cell in individual's trajectory
-    nbhd_index <- make_nbhd(i = jag_traject_cells, sz = size_out)
-    # Each entry in the list is the immediate neighborhood of each cell in the 
-    # extended neighborhood, as represented by a cell number of brazil_ras
-    nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                 # 14s
-      row_num <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
-      names(row_num) <- nbhd_index[i, ] # index names for i
-      out <- matrix(row_num[as.character(nbhd0[nbhd_index[i, ], ])], 
-                    nrow = length(row_num), ncol = ncol(nbhd0))
-      return(out)
-    })
-    nbhd <- do.call(rbind, nbhd_list)
-    # Reindexing allows linkage of row numbers from nbhd to brazil_ras cells
-    nbhd_index <- as.vector(t(nbhd_index))
-
-    msg("Getting indices of immediate neighborhood of each cell...")
-    # For each cell of the extended neighborhood of the path, what are
-    # the immediate neighbors? Rows are path cells, columns are neighbors.
-    # All row lengths standardized by turning missing neighbors into NAs.
-    to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {                 # 36s
-      # print(x)
-      out <- c(x, rep(NA, ncol(nbhd) - length(x)))
-      return(out)
-    })
-    to_dest <- t(matrix(unlist(to_dest), nrow = ncol(nbhd), ncol = nrow(nbhd)))
-    dest <- matrix(0, nrow = nrow(nbhd), ncol = ncol(nbhd))
-
-    # Adding individual home range (AKDE) to brdf
-    home <- raster(paste0("data/output/homeranges/homerange_", id, ".grd"))
-    brdf$home <- as.vector(home)
+    # Prepare input for fitting, given trajectory, neighborhood size, and number
+    # of steps to simulate forward
+    input_prep(jag_traject_cells, step_range, nsteps)
 
     # Normalizing desired environmental variables for extended neighborhood
-    env <- brdf[nbhd_index, ]
-    env[, 1:6] <- sweep(env[, 1:6], 2, colMeans(env)[1:6], "-") 
-    env[, 1:6] <- sweep(env[, 1:6], 2, apply(env, 2, sd)[1:6], "/") 
-    # Make indexing consistent with env
-    row.names(env) <- seq_len(length(nbhd_index))
-
-    # Building observed data to test against
-    index_mat <- matrix(
-      data = seq_len(length(nbhd_index)),
-      nrow = (nrow(nbhd) / length(jag_traject_cells)),
-      ncol = length(jag_traject_cells)
-    )
-    obs <- vector(length = ncol(index_mat) - 1)
-    for (y in 1:(ncol(index_mat) - 1)) {                                         # 13s
-      test <- which(nbhd_index == jag_traject_cells[y + 1])
-      num <- which(index_mat[1, y] < test & test < index_mat[nrow(index_mat), y])
-      obs[y] <- which(index_mat[, y] == test[num])
-    } 
-
-    step_range <- nrow(nbhd) / length(jag_traject_cells)
-    n_obs <- length(jag_traject_cells)
-    steps <- 25
+    env <- norm_env(brdf[, 1:6], nbhd_index)   
+    
 
     # Calculate null likelihoods for each jaguar if not already done
     if (model_calcnull) {

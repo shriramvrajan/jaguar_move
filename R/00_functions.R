@@ -5,23 +5,22 @@ library(raster) # update to terra at some point
 library(tidyverse)
 library(data.table)
 library(ctmm)
-# library(finch)
 library(amt) 
-# library(mixtools)
 library(gstat)
+library(terra)
+# library(mixtools)
 
 # Functions ====================================================================
 
-# General ----------------------------------------------------------------------
+# Basic ------------------------------------------------------------------------
 
 # Save raster x as filename fn under ./data/
 save_ras <- function(x, fn) {
     # Save raster often because it can get corrupted while working
-    writeRaster(x, paste0("data/", fn), format = "raster",
-                overwrite = TRUE)
+    writeRaster(x, paste0("data/", fn), overwrite = TRUE)
 }
 
-# Output message m in logfile f
+# Output message m both in console and in logfile f
 msg <- function(m, f = "data/output/run_log.txt") {
     m <- paste(format(Sys.time(), "%d.%m.%y  %R"), m)
     print(m)
@@ -62,7 +61,62 @@ make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
 # Normalize probabilities across neighbors of each cell
 norm_nbhd <- function(v) {
   out <- matrix(v[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
-  out <- out / rowSums(out, na.rm = T)
+  out <- out / rowSums(out, na.rm = TRUE)
+}
+
+input_prep <- function(jag_traject_cells, step_range, nsteps) {
+    steps <<- nsteps
+
+    msg("Building neighborhoods for each cell")
+    # Extended neighborhoods of each cell in individual's trajectory
+    nbhd_index <- make_nbhd(i = jag_traject_cells, sz = step_range)
+    # Each entry in the list is the immediate neighborhood of each cell in the 
+    # extended neighborhood, as represented by a cell number of brazil_ras
+    nbhd_list <<- lapply(seq_len(nrow(nbhd_index)), function(i) {                 # 14s
+      row_num <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
+      names(row_num) <- nbhd_index[i, ] # index names for i
+      out <- matrix(row_num[as.character(nbhd0[nbhd_index[i, ], ])], 
+                    nrow = length(row_num), ncol = ncol(nbhd0))
+      return(out)
+    })
+    nbhd <<- do.call(rbind, nbhd_list)
+    # Reindexing allows linkage of row numbers from nbhd to brazil_ras cells
+    nbhd_index <<- as.vector(t(nbhd_index))
+
+    msg("Getting indices of immediate neighborhood of each cell...")
+    # For each cell of the extended neighborhood of the path, what are
+    # the immediate neighbors? Rows are path cells, columns are neighbors.
+    # All row lengths standardized by turning missing neighbors into NAs.
+    to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {                 # 36s
+      # print(x)
+      out <- c(x, rep(NA, ncol(nbhd) - length(x)))
+      return(out)
+    })
+    to_dest <<- t(matrix(unlist(to_dest), nrow = ncol(nbhd), ncol = nrow(nbhd)))
+    dest <<- matrix(0, nrow = nrow(nbhd), ncol = ncol(nbhd))
+
+    msg("Indexing observed data...")
+    # Building observed data to test against
+    index_mat <<- matrix(
+      data = seq_len(length(nbhd_index)),
+      nrow = (nrow(nbhd) / length(jag_traject_cells)),
+      ncol = length(jag_traject_cells)
+    )
+    obs <<- vector(length = ncol(index_mat) - 1)
+    for (y in 1:(ncol(index_mat) - 1)) {                                         # 13s
+      test <- which(nbhd_index == jag_traject_cells[y + 1])
+      num <- which(index_mat[1, y] < test & test < index_mat[nrow(index_mat), y])
+      obs[y] <<- which(index_mat[, y] == test[num])
+    } 
+}
+
+norm_env <- function(envdf, nbhd_index) {
+    env <- envdf[nbhd_index, ]
+    env <- sweep(env, 2, colMeans(env), "-") 
+    env <- sweep(env, 2, apply(env, 2, sd), "/") 
+    # Make indexing consistent with env
+    row.names(env) <- seq_len(length(nbhd_index))
+    return(env)
 }
 
 # Returns negative of the maximum log likelihood given a set of parameters (par)  
@@ -115,11 +169,18 @@ loglike_fun <- function(par) {
     #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
     #   nbhd is the 3rd cell of nbhd.
     dest[] <- step_prob[as.vector(to_dest)]
-    # Summing probabilities up to step j to generate step j+1
-    current[, , j + 1] <- rowSums(dest, na.rm = T)
 
+    # Summing probabilities up to step j to generate step j+1
+    current[, , j + 1] <- rowSums(dest, na.rm = TRUE)
   }
   
+  #### Run likelihood function from fitting with true parameters
+  ### Fitting: best parameter that's a joint likelihood with both processes
+  ### Identify a way to partition before fitting 2nd state
+  
+  ### One of the main differences with other models is that our model sims
+  ### possible paths
+
   # Calculate log likelihood 
   predictions <- matrix(0, nrow = steps, ncol = n_obs)
   for (i in 1:n_obs) {
@@ -127,7 +188,7 @@ loglike_fun <- function(par) {
     # returns the probability for the row associated with the next 
     # observation location, for that observation i, across all time steps
   }
-  log_likelihood <- rowSums(log(predictions), na.rm = T)
+  log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
   # log of product is sum of logs
   return(-max(log_likelihood))
   # Return negative of the maximum log likelihood because we want to minimize
@@ -169,8 +230,9 @@ gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {
     if (any(out < 0)) out[out < 0] <- 0
 
     # Output as both raster and data frame
-    gridded(out) <- ~x + y; out <- raster(out)
-    raster::plot(out)
+    gridded(out) <- ~x + y
+    out <- raster(out)
+    # raster::plot(out)
     outdf <- as.data.frame(out)
     outdf <- cbind(outdf, rowColFromCell(out, seq_len(nrow(outdf))))
     return(list(raster = out, df = outdf))
@@ -178,17 +240,17 @@ gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {
 
 # Generate a jaguar path of n steps starting from (x0, y0) with environmental
 # preference parameters par[] and search neighborhood size neighb
-jag_path <- function(x0, y0, nstep, par, neighb = 5, type = 2, tprob) {
+jag_path <- function(x0, y0, nstep, par, neighb, type = 2, tprob) {
     # type: 1 = env1 only, 2 = multi-state model
-    if (!(x0 %in% 1:100) | !(y0 %in% 1:100)) {
+    if (!(x0 %in% 1:100) || !(y0 %in% 1:100)) {
         print("Jaguar out of bounds")
         return(NULL)
     }
-    path <- matrix(NA, nrow = nstep, ncol = 4)
+    path <- matrix(NA, nrow = nstep, ncol = 6)
     state0 <- 1 # Beginning state, irrelevant if type = 1
     x <- x0
     y <- y0
-    path[1, ] <- c(x, y, NA, state0)
+    path[1, ] <- c(x, y, NA, state0, NA, NA)
     
     if (type == 2) {
         # Transition probabilities: p12, p21, p11, p22
@@ -208,17 +270,19 @@ jag_path <- function(x0, y0, nstep, par, neighb = 5, type = 2, tprob) {
         }
         nbhd <- make_nbhd(r = env1[[1]], rdf = env1[[2]], sz = neighb,
                           i = cellFromRowCol(env1[[1]], pos[1], pos[2]))
-        attract <- switch(state, 
-                          exp(env1[[1]][nbhd] * par[1]),
-                          exp(env2[[1]][nbhd] * par[2]))
-        if (any(is.na(attract))) attract[is.na(attract)] <- 0
-        attract <- attract / sum(attract)
+        a1 <- exp(env1[[1]][nbhd] * par[1])
+        if (any(is.na(a1))) a1[is.na(a1)] <- 0
+        a1 <- a1 / sum(a1)
+        a2 <- exp(env2[[1]][nbhd] * par[2])
+        if (any(is.na(a2))) a2[is.na(a2)] <- 0
+        a2 <- a2 / sum(a2)
+        attract <- switch(state, a1, a2)
         step <- sample(seq_len(length(attract)), 1, prob = attract)
         path[i, ] <- c(rowColFromCell(env1[[1]], nbhd[step]), 
-                       nbhd[step], state)
+                       nbhd[step], state, a1[step], a2[step])
     }
     path <- as.data.frame(path)
-    names(path) <- c("x", "y", "cell", "state")
+    names(path) <- c("x", "y", "cell", "state", "a1", "a2")
     return(path)
 }
 

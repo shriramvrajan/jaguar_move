@@ -64,31 +64,34 @@ norm_nbhd <- function(v) {
   out <- out / rowSums(out, na.rm = TRUE)
 }
 
-input_prep <- function(jag_traject_cells, step_range, nsteps) {
-    steps <<- nsteps
+input_prep <- function(traject, step_range, steps, nbhd0, r, rdf) {
 
     msg("Building neighborhoods for each cell")
     # Extended neighborhoods of each cell in individual's trajectory
-    nbhd_index <- make_nbhd(i = jag_traject_cells, sz = step_range)
+    nbhd_index <- make_nbhd(i = traject, sz = step_range, r = r, rdf = rdf)
     # Each entry in the list is the immediate neighborhood of each cell in the 
-    # extended neighborhood, as represented by a cell number of brazil_ras
-    nbhd_list <<- lapply(seq_len(nrow(nbhd_index)), function(i) {                 # 14s
-      row_num <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
-      names(row_num) <- nbhd_index[i, ] # index names for i
-      out <- matrix(row_num[as.character(nbhd0[nbhd_index[i, ], ])], 
-                    nrow = length(row_num), ncol = ncol(nbhd0))
+    # extended neighborhood, as represented by a cell number of raster r
+    nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                 # 14s
+      # msg(i)
+      # For each actual cell in the path, what are the cells in the extended
+      # neighborhood? Rows are path cells, columns are extended neighborhood.
+      row_inds <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
+      names(row_inds) <- nbhd_index[i, ] # cell numbers as names for indexing
+      out <- matrix(row_inds[as.character(nbhd0[nbhd_index[i, ], ])], 
+                    nrow = length(row_inds), ncol = ncol(nbhd0))
       return(out)
     })
     nbhd <<- do.call(rbind, nbhd_list)
-    # Reindexing allows linkage of row numbers from nbhd to brazil_ras cells
-    nbhd_index <<- as.vector(t(nbhd_index))
+    # Reindexing allows linkage of row numbers from nbhd to raster cells
+    nbhd_index <- as.vector(t(nbhd_index))
+    nbhd_index <<- nbhd_index
 
-    msg("Getting indices of immediate neighborhood of each cell...")
+    msg("Getting indices of immediate neighborhood of each cell")
     # For each cell of the extended neighborhood of the path, what are
     # the immediate neighbors? Rows are path cells, columns are neighbors.
     # All row lengths standardized by turning missing neighbors into NAs.
     to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {                 # 36s
-      # print(x)
+      # msg(paste(x, "to_dest"))
       out <- c(x, rep(NA, ncol(nbhd) - length(x)))
       return(out)
     })
@@ -97,17 +100,21 @@ input_prep <- function(jag_traject_cells, step_range, nsteps) {
 
     msg("Indexing observed data...")
     # Building observed data to test against
-    index_mat <<- matrix(
+    index_mat <- matrix(
       data = seq_len(length(nbhd_index)),
-      nrow = (nrow(nbhd) / length(jag_traject_cells)),
-      ncol = length(jag_traject_cells)
+      nrow = (nrow(nbhd) / length(traject)),
+      ncol = length(traject)
     )
-    obs <<- vector(length = ncol(index_mat) - 1)
+    index_mat <<- index_mat
+    obs <- vector(length = ncol(index_mat) - 1)
     for (y in 1:(ncol(index_mat) - 1)) {                                         # 13s
-      test <- which(nbhd_index == jag_traject_cells[y + 1])
+      msg(y)
+      # browser()
+      test <- which(nbhd_index == traject[y + 1])
       num <- which(index_mat[1, y] < test & test < index_mat[nrow(index_mat), y])
-      obs[y] <<- which(index_mat[, y] == test[num])
+      obs[y] <- which(index_mat[, y] == test[num])
     } 
+    obs <<- obs
 }
 
 norm_env <- function(envdf, nbhd_index) {

@@ -9,8 +9,8 @@ refit_model     <- TRUE             # Refit movement model parameters
 model_calcnull  <- FALSE            # Calculate null likelihoods 
                                     # refit_model must be TRUE for this one
 
-npar            <- 7              # Number of parameters in current model
-nsteps          <- 25             # How many steps to simulate forward
+npar            <- 1              # Number of parameters in current model
+steps           <- 25             # How many steps to simulate forward
 
 i_initial       <- 1              # Individual to start at
 buffersize      <- 1              # Jaguars move 1px (1km) at a time
@@ -83,12 +83,12 @@ if (refit_model) {
   for (i in i_initial:n_iter) {
 
     msg(paste0("Jaguar #: ", i, " / ", n_iter))
-    
+    id <- as.numeric(jag_id[i])
+
     # Adding individual home range (AKDE) to brdf
     home <- raster(paste0("data/output/homeranges/homerange_", id, ".grd"))
     brdf$home <- as.vector(home)
     # Observed trajectory of jaguar i
-    id <- as.numeric(jag_id[i])
     jag_traject <- jag_move[ID == id, 3:4]
     jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
     n_obs <- length(jag_traject_cells)
@@ -98,16 +98,21 @@ if (refit_model) {
     dist <- (rowSums(dist^2))^.5
     # Making neighborhoods for each point in trajectory, with buffer size as 
     # twice maximum step distance
-    max_dist <- max(dist)             
-    step_range <- ceiling(max_dist * 2) 
+    max_dist <- ceiling(max(dist) * 2)           
+    step_range <- (max_dist * 2 + 1) ^ 2
 
     # Prepare input for fitting, given trajectory, neighborhood size, and number
     # of steps to simulate forward
-    input_prep(jag_traject_cells, step_range, nsteps)
+    input_prep(jag_traject_cells, max_dist, nsteps, r = brazil_ras, rdf = brdf,
+               nbhd0 = nbhd0)
 
     # Normalizing desired environmental variables for extended neighborhood
-    env <- norm_env(brdf[, 1:6], nbhd_index)   
-    
+    envdf <- brdf[, c(1:6, 10)]
+    env <- envdf[nbhd_index, ]
+    env <- sweep(env, 2, colMeans(env), "-") 
+    env <- sweep(env, 2, apply(env, 2, sd), "/") 
+    # Make indexing consistent with env
+    row.names(env) <- seq_len(length(nbhd_index))
 
     # Calculate null likelihoods for each jaguar if not already done
     if (model_calcnull) {
@@ -115,7 +120,7 @@ if (refit_model) {
       null_likelihood <- loglike_fun(c(rep(0, npar)))
       saveRDS(null_likelihood, paste0("data/output/null_", i, ".RDS"))
     } else {
-      param <- rep(0, npar)
+      param <- rnorm(npar)
       msg("Running optim...")
       ntries <- 0
       ## Main fitting loop, tries each individual 20x and moves on if no fit

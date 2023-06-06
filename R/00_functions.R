@@ -64,13 +64,15 @@ norm_nbhd <- function(v) {
   out <- out / rowSums(out, na.rm = TRUE)
 }
 
-input_prep <- function(traject, step_range, steps, nbhd0, r, rdf) {
+input_prep <- function(traject, max_dist, steps, nbhd0, r, rdf) {
 
-    msg("Building neighborhoods for each cell")
     # Extended neighborhoods of each cell in individual's trajectory
-    nbhd_index <- make_nbhd(i = traject, sz = step_range, r = r, rdf = rdf)
+    msg("Building neighborhoods for each cell")
+    nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = r, rdf = rdf)
+  
     # Each entry in the list is the immediate neighborhood of each cell in the 
     # extended neighborhood, as represented by a cell number of raster r
+    msg("Getting indices of extended neighborhood of each cell")
     nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                 # 14s
       # msg(i)
       # For each actual cell in the path, what are the cells in the extended
@@ -117,15 +119,6 @@ input_prep <- function(traject, step_range, steps, nbhd0, r, rdf) {
     obs <<- obs
 }
 
-norm_env <- function(envdf, nbhd_index) {
-    env <- envdf[nbhd_index, ]
-    env <- sweep(env, 2, colMeans(env), "-") 
-    env <- sweep(env, 2, apply(env, 2, sd), "/") 
-    # Make indexing consistent with env
-    row.names(env) <- seq_len(length(nbhd_index))
-    return(env)
-}
-
 # Returns negative of the maximum log likelihood given a set of parameters (par)  
 loglike_fun <- function(par) {
   # par        : Initial values of parameters for optimization
@@ -141,18 +134,17 @@ loglike_fun <- function(par) {
   # env        : Environmental variables
 
   # Attractiveness function 1: environmental variables + home range ------------
-#   attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-#                    par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
-#   attract_h <- exp(par[7] * env$home)
-#   attract <- norm_nbhd(attract_e * attract_h) #* norm_nbhd(attract_t)
+  # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+  #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+  # attract_h <- exp(par[7] * env$home)
+  # attract <- norm_nbhd(attract_e * attract_h) #* norm_nbhd(attract_t)
 
   # Attractiveness function 2: just home range ---------------------------------
   # attract_h <- exp(par[1] * env$home)
   # attract <- norm_nbhd(attract_h) 
 
   # Attractiveness function 3: simulations -------------------------------------
-  attract1 <- exp(par[1] * env1[[1]])
-  attract2 <- exp(par[2] * env2[[1]])
+  attract <- norm_nbhd(exp(par[1] * env1)) # + exp(par[2] * env2)
 
   # Array for propagating probabilities forward ================================
   # step_range : (2 * buffersize + 1)^2 (= 529)
@@ -182,11 +174,6 @@ loglike_fun <- function(par) {
   }
   
   #### Run likelihood function from fitting with true parameters
-  ### Fitting: best parameter that's a joint likelihood with both processes
-  ### Identify a way to partition before fitting 2nd state
-  
-  ### One of the main differences with other models is that our model sims
-  ### possible paths
 
   # Calculate log likelihood 
   predictions <- matrix(0, nrow = steps, ncol = n_obs)

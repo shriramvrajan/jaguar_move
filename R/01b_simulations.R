@@ -14,7 +14,7 @@ par0 <- c(-2, 2)
 tprob0 <- c(0.1, 0.6)
 neighb0 <- 1
 step0 <- 1000
-n <- 1 # Number of paths to simulate
+n <- 10 # Number of paths to simulate
 # breaks0 <- c(0:25 * 0.04) # histogram
 
 ## Simulation ==================================================================
@@ -61,18 +61,22 @@ dist <- lapply(jag_traject, function(tr) {
     out <- c(0, sqrt(diff(tr[, 1])^2 + diff(tr[, 2])^2))
     return(out)
 })
-step_range <- ceiling(max(unlist(dist)) * 2)
+max_dist <- ceiling(max(unlist(dist)) * 2)
+step_range <- (2 * max_dist + 1) ^ 2
 
 nbhd0 <- make_nbhd(i = seq_len(nrow(env1[[2]])), sz = buffersize, r = env1[[1]], rdf = env1[[2]]) 
 
-# for (i in 1:n) {
-    i <- 1
+for (i in 1:n) {
+    # i <- 1
     traject <- jag_traject_cells[[i]]
-    input_prep(traject, step_range, steps, nbhd0, r = env1[[1]], rdf = env1[[2]])
-#     env1i <- norm_env(env1[[2]], nbhd_index)
-#     env2i <- norm_env(env2[[2]], nbhd_index)
-#     o <- optim(par0, loglike_fun)
-# # }
+    input_prep(traject, max_dist, steps, nbhd0, r = env1[[1]], rdf = env1[[2]])
+    
+    env1 <- scales::rescale(env1[[2]]$sim1[nbhd_index], to = c(0, 1))
+    env2 <- scales::rescale(env2[[2]]$sim1[nbhd_index], to = c(0, 1))
+    par_optim <- rnorm(1)
+    o <- optim(par_optim, loglike_fun)
+    saveRDS(o, file = paste0("data/output/simulation_optim_", i, ".rds"))
+}
 
 
 ## Testing =====================================================================
@@ -82,25 +86,25 @@ nbhd0 <- make_nbhd(i = seq_len(nrow(env1[[2]])), sz = buffersize, r = env1[[1]],
 # env22 <- exp(env2[[1]] * par0[2])
 # env22 <- env22 / cellStats(env22, sum)
 
-par(mfrow = c(n, 2))
-for (i in seq_len(n)) {
-    p <- paths[[i]]
-    a1_t <- p$a1[which(p$state == 1)]
-    a1_f <- p$a2[which(p$state == 1)]
-    a2_t <- p$a2[which(p$state == 2)]
-    a2_f <- p$a1[which(p$state == 2)]
+# par(mfrow = c(n, 2))
+# for (i in seq_len(n)) {
+#     p <- paths[[i]]
+#     a1_t <- p$a1[which(p$state == 1)]
+#     a1_f <- p$a2[which(p$state == 1)]
+#     a2_t <- p$a2[which(p$state == 2)]
+#     a2_f <- p$a1[which(p$state == 2)]
 
-    breaks1 <- (0:25 * 0.04) * max(c(a1_t, a1_f), na.rm = TRUE)
-    hist(a1_t, 30, col = rgb(0, 0, 1, 0.4), border = NA, breaks = breaks1)
-    abline(v = mean(a1_t, na.rm = TRUE), col = "blue")
-    hist(a1_f, 30, col = rgb(1, 0, 0, 0.4), add = TRUE, border = NA, 
-    breaks = breaks1)
-    abline(v = mean(a1_f, na.rm = TRUE), col = "red")
+#     breaks1 <- (0:25 * 0.04) * max(c(a1_t, a1_f), na.rm = TRUE)
+#     hist(a1_t, 30, col = rgb(0, 0, 1, 0.4), border = NA, breaks = breaks1)
+#     abline(v = mean(a1_t, na.rm = TRUE), col = "blue")
+#     hist(a1_f, 30, col = rgb(1, 0, 0, 0.4), add = TRUE, border = NA, 
+#     breaks = breaks1)
+#     abline(v = mean(a1_f, na.rm = TRUE), col = "red")
 
-    breaks2 <- (0:25 * 0.04) * max(c(a2_t, a2_f), na.rm = TRUE)
-    hist(a2_f, 30, col = rgb(1, 0, 0, 0.4), border = NA, breaks = breaks2)
-    abline(v = mean(a2_f, na.rm = TRUE), col = "red")
-    hist(a2_t, 30, col = rgb(0, 0, 1, 0.4), add = TRUE, border = NA,  
-         breaks = breaks2)
-    abline(v = mean(a2_t, na.rm = TRUE), col = "blue")
-}
+#     breaks2 <- (0:25 * 0.04) * max(c(a2_t, a2_f), na.rm = TRUE)
+#     hist(a2_f, 30, col = rgb(1, 0, 0, 0.4), border = NA, breaks = breaks2)
+#     abline(v = mean(a2_f, na.rm = TRUE), col = "red")
+#     hist(a2_t, 30, col = rgb(0, 0, 1, 0.4), add = TRUE, border = NA,  
+#          breaks = breaks2)
+#     abline(v = mean(a2_t, na.rm = TRUE), col = "blue")
+# }

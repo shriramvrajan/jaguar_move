@@ -4,10 +4,10 @@
 library(raster) # update to terra at some point
 library(tidyverse)
 library(data.table)
-library(ctmm)
-library(amt) 
+# library(ctmm)
+# library(amt) 
 library(gstat)
-library(terra)
+# library(terra)
 # library(mixtools)
 
 # Functions ====================================================================
@@ -110,7 +110,7 @@ input_prep <- function(traject, max_dist, steps, nbhd0, r, rdf) {
     index_mat <<- index_mat
     obs <- vector(length = ncol(index_mat) - 1)
     for (y in 1:(ncol(index_mat) - 1)) {                                         # 13s
-      msg(y)
+      # msg(y)
       # browser()
       test <- which(nbhd_index == traject[y + 1])
       num <- which(index_mat[1, y] < test & test < index_mat[nrow(index_mat), y])
@@ -150,13 +150,13 @@ loglike_fun <- function(par) {
   # step_range : (2 * buffersize + 1)^2 (= 529)
   # n_obs      : Number of GPS observations
   # steps      : Number of simulated steps
-  current <- array(0, dim = c(step_range, n_obs, steps))
+  current <- array(0, dim = c(step_range, n_obs, sim_steps))
 
   # center     : Center of step_range (center cell of (2 * buffer + 1)
   # Set to 1 at step #1 for each observation because that's where it actually is
   center <- step_range / 2 + 0.5
   current[center, , 1] <- 1
-  for (j in 1:(steps - 1)) {
+  for (j in 1:(sim_steps - 1)) {
     # Probabilities across entire nbhd for step j
     step_prob <- as.vector(current[, , j]) * attract[]
 
@@ -176,15 +176,20 @@ loglike_fun <- function(par) {
   #### Run likelihood function from fitting with true parameters
 
   # Calculate log likelihood 
-  predictions <- matrix(0, nrow = steps, ncol = n_obs)
+  predictions <- matrix(0, nrow = sim_steps, ncol = n_obs)
   for (i in 1:n_obs) {
     predictions[, i] <- current[obs[i], i, ]
     # returns the probability for the row associated with the next 
     # observation location, for that observation i, across all time steps
   }
+
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
   # log of product is sum of logs
-  return(-max(log_likelihood))
+
+  saveRDS(predictions, paste0("data/output/simulations/p", current_jag, ".RDS"))
+  # just for simulation test
+
+  return(-max(log_likelihood, na.rm = TRUE))
   # Return negative of the maximum log likelihood because we want to minimize
   # Lower negative log likelihood = higher likelihood 
 }
@@ -262,17 +267,17 @@ jag_path <- function(x0, y0, nstep, par, neighb, type = 2, tprob) {
                 if (runif(1) < tprob[2]) state <- 1
             }
         }
-        nbhd <- make_nbhd(r = env1[[1]], rdf = env1[[2]], sz = neighb,
-                          i = cellFromRowCol(env1[[1]], pos[1], pos[2]))
-        a1 <- exp(env1[[1]][nbhd] * par[1])
+        nbhd <- make_nbhd(r = env01[[1]], rdf = env01[[2]], sz = neighb,
+                          i = cellFromRowCol(env01[[1]], pos[1], pos[2]))
+        a1 <- exp(env01[[1]][nbhd] * par[1])
         if (any(is.na(a1))) a1[is.na(a1)] <- 0
         a1 <- a1 / sum(a1)
-        a2 <- exp(env2[[1]][nbhd] * par[2])
+        a2 <- exp(env02[[1]][nbhd] * par[2])
         if (any(is.na(a2))) a2[is.na(a2)] <- 0
         a2 <- a2 / sum(a2)
         attract <- switch(state, a1, a2)
         step <- sample(seq_len(length(attract)), 1, prob = attract)
-        path[i, ] <- c(rowColFromCell(env1[[1]], nbhd[step]), 
+        path[i, ] <- c(rowColFromCell(env01[[1]], nbhd[step]), 
                        nbhd[step], state, a1[step], a2[step])
     }
     path <- as.data.frame(path)
@@ -292,28 +297,32 @@ vgram <- function(path, cut = 100) {
 }
 
 # Plot landscape r with jaguar path and vgram
-plot_path <- function(path, vgram = T, new = T, ...) {
-    par(mfrow = c(1, ifelse(vgram, 2, 1)))
+plot_path <- function(path, vgram = FALSE, new = TRUE, ...) {
+    # par(mfrow = c(1, ifelse(vgram, 2, 1)))
+    par(mfrow = c(1, 2))
 
     col1 <- rgb(1, 0, 0, .5)
     col2 <- rgb(0, 0, 1, .8)
     # Plotting environmental variables + path
-    if (new) raster::plot(env1[[1]])
+    if (new) raster::plot(env01[[1]])
     points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)
     for (i in 1:(length(path$state) - 1)) {
         segments(path$x[i], path$y[i], path$x[i + 1], path$y[i + 1], 
                  col = c(col1, col2)[path$state[i]])
     }
-    # raster::plot(env2[[1]])
+    raster::plot(env02[[1]])
+    points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)
+    for (i in 1:(length(path$state) - 1)) {
+        segments(path$x[i], path$y[i], path$x[i + 1], path$y[i + 1], 
+                 col = c(col1, col2)[path$state[i]])
+    }
     # points(path, col = "red", pch = 19, cex = 0.5)
     # lines(path, col = "red")
 
     # Plotting variogram
-    if (!vgram) return(NULL)
-    plot(vgram(path, ...), type = "l", xlab = "Time lag", ylab = "Variance")
+    # if (!vgram) return(NULL)
+    # plot(vgram(path, ...), type = "l", xlab = "Time lag", ylab = "Variance")
 }
-
-
 
 # Data =========================================================================
 
@@ -333,4 +342,10 @@ load("data/env_layers.RData")
 
 msg("Loaded data")
 
-# ==============================================================================
+# Global parameters ============================================================
+
+buffersize <- 1 # How far does jaguar move in 1 time step
+
+sim_interval <- 5   # GPS observations taken every n steps, for simulation
+sim_steps    <- 25
+sim_n        <- 30

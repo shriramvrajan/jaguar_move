@@ -1,42 +1,45 @@
 source("R/00_functions.R")
 
-## Landscape generation ========================================================
-
-env1 <- gen_landscape(size = 100, s = 1, r = 10)
-env2 <- gen_landscape(size = 100, s = 5, r = 30)
-
 ## Path generation parameters ==================================================
 
 # x0 <- sample(100, 1); y0 <- sample(100, 1)
 x0 <- 50
 y0 <- 50
-par0 <- c(-2, 2)
-tprob0 <- c(0.1, 0.6)
-neighb0 <- 1
-step0 <- 1000
-n <- 10 # Number of paths to simulate
-# breaks0 <- c(0:25 * 0.04) # histogram
+par0 <- c(-2, 2)           # env scaling parameter for states 1 & 2
+tprob0 <- c(0.3, 0.6)      # transition probabilities 1→2, 2→1
+step0 <- 3000              # number of steps to simulate
+n_obs <- step0 / sim_interval  
+# interval defined as global var in 00_functions.R
+
+envsize <- 100 # size of landscape in cells
+s1 <- 1        # strength of autocorrelation in cells
+s2 <- 5
+r1 <- 10       # range of autocorrelation in cells
+r2 <- 30
+
+## Landscape generation ========================================================
+
+env01 <- gen_landscape(size = envsize, s = s1, r = r1)
+env02 <- gen_landscape(size = envsize, s = s2, r = r2)
+saveRDS(env01, "data/output/simulations/env01.RDS")
+saveRDS(env02, "data/output/simulations/env02.RDS")
 
 ## Simulation ==================================================================
 
-paths <- lapply(1:n, function(i) {
-          msg(paste0("Path #: ", i, " / ", n))
-          jag_path(x0, y0, step0, par = par0, neighb = neighb0, tprob = tprob0)
+paths <- lapply(1:sim_n, function(i) {
+          msg(paste0("Path #: ", i, " / ", sim_n))
+          jag_path(x0, y0, step0, par = par0, neighb = buffersize, 
+                   tprob = tprob0)
           })
+saveRDS(paths, "data/output/simulations/paths.RDS")
 
 ## Fitting =====================================================================
 
-step_range <- neighb0
-n_obs <- step0
-steps <- 25
-interval <- 5 # GPS observations taken every n steps
-buffersize <- 1 # How far does jaguar move in 1 time step
-
 # to_dest?
-envdf <- env1[[2]]
+envdf <- env01[[2]]
 env_index <- seq_len(nrow(envdf))
 envdf <- cbind(envdf, env_index)
-adj <- as.data.frame(raster::adjacent(env1[[1]], cells = env_index, 
+adj <- as.data.frame(raster::adjacent(env01[[1]], cells = env_index, 
                      include = TRUE, directions = 8, id = TRUE, sorted = TRUE))
 to_dest <- do.call(rbind, lapply(env_index, function(i) {
     out <- adj$from[which(adj$to == i)]
@@ -48,13 +51,13 @@ to_dest <- do.call(rbind, lapply(env_index, function(i) {
 
 jag_traject <- lapply(paths, function(p) {
     out <- cbind(p$x, p$y, p$state)
-    ind <- seq(1, nrow(out), interval)
+    ind <- seq(1, nrow(out), sim_interval)
     out <- out[ind, ]
     return(out)
 })
 
 jag_traject_cells <- lapply(jag_traject, function(tr) {
-    raster::cellFromXY(env1[[1]], tr[, 1:2])
+    raster::cellFromXY(env01[[1]], tr[, 1:2])
 })
 
 dist <- lapply(jag_traject, function(tr) {
@@ -64,27 +67,25 @@ dist <- lapply(jag_traject, function(tr) {
 max_dist <- ceiling(max(unlist(dist)) * 2)
 step_range <- (2 * max_dist + 1) ^ 2
 
-nbhd0 <- make_nbhd(i = seq_len(nrow(env1[[2]])), sz = buffersize, r = env1[[1]], rdf = env1[[2]]) 
+nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize, r = env01[[1]], rdf = env01[[2]]) 
 
-for (i in 1:n) {
-    # i <- 1
+for (i in 1:sim_n) {
+    current_jag <- i # for use in loglike_fun
     traject <- jag_traject_cells[[i]]
-    input_prep(traject, max_dist, steps, nbhd0, r = env1[[1]], rdf = env1[[2]])
+    input_prep(traject, max_dist, steps, nbhd0, r = env01[[1]], rdf = env01[[2]])
     
-    env1 <- scales::rescale(env1[[2]]$sim1[nbhd_index], to = c(0, 1))
-    env2 <- scales::rescale(env2[[2]]$sim1[nbhd_index], to = c(0, 1))
-    par_optim <- rnorm(1)
-    o <- optim(par_optim, loglike_fun)
-    saveRDS(o, file = paste0("data/output/simulation_optim_", i, ".rds"))
+    env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))
+    env2 <- scales::rescale(env02[[2]]$sim1[nbhd_index], to = c(0, 1))
+
+    # msg(paste0("Fitting path #: ", i, " / ", n))
+    # par_optim <- rnorm(1)
+    ll <- loglike_fun(par0[1])
+    saveRDS(ll, file = paste0("data/output/simulations/ll", i, ".rds"))
+    # msg(paste0("Done fitting path #: ", i, " / ", n))
 }
 
 
 ## Testing =====================================================================
-
-# env11 <- exp(env1[[1]] * par0[1]) 
-# env11 <- env11 / cellStats(env11, sum)
-# env22 <- exp(env2[[1]] * par0[2])
-# env22 <- env22 / cellStats(env22, sum)
 
 # par(mfrow = c(n, 2))
 # for (i in seq_len(n)) {

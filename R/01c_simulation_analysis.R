@@ -3,23 +3,50 @@ source("R/00_functions.R")
 paths <- readRDS("data/output/simulations/paths.RDS")
 probs <- load_if_exists(paste0("p", 1:sim_n, ".RDS"), 
                         dir = "data/output/simulations")
-ll <- load_if_exists(paste0("ll", 1:sim_n, ".RDS"), 
+lls <- load_if_exists(paste0("ll", 1:sim_n, ".RDS"), 
                        dir = "data/output/simulations")
 
 env01 <- readRDS("data/output/simulations/env01.RDS")
 env02 <- readRDS("data/output/simulations/env02.RDS")
 
+par(mfrow = c(1, 3))
 res <- lapply(1:sim_n, function(i) {
     path <- paths[[i]]
     prob <- probs[[i]]
-    ll  <- ll[[i]]
+    ll  <- lls[[i]]
 
     state <- path$state[seq(1, nrow(path), sim_interval)]
-    p     <- prob[5, ]
+    p     <- prob[nrow(prob), ]
 
-    hist(p[state == 1], 30, main = paste0("Path #", i), col = rgb(0, 0, 1, 0.5),
+    hist(p[state == 1], 11, main = paste0("Path #", i), col = rgb(0, 0, 1, 0.5),
          xlim = c(0, max(p, na.rm = TRUE)), border = NA)
-    hist(p[state == 2], 30, add = TRUE, col = rgb(1, 0, 0, 0.5), border = NA)
+    hist(p[state == 2], 11, add = TRUE, col = rgb(1, 0, 0, 0.5), border = NA)
 
-    x <- readline("Press [enter] to continue") 
+    step_range <- 1 / (2 * sim_steps + 1) ^ 2
+    abline(v = 1 / (21 ^ 2))
+
+    plot_path(path)
+
+    
+
+    # x <- readline("Press [enter] to continue") 
+
+    # a1_t <- path$a1[which(path$state == 1)]
+    # a1_f <- path$a2[which(path$state == 1)]
+    # a2_t <- path$a2[which(path$state == 2)]
+    # a2_f <- path$a1[which(path$state == 2)]
+
+    # breaks1 <- (0:25 * 0.04) * max(c(a1_t, a1_f), na.rm = TRUE)
+    # hist(a1_t, 30, col = rgb(0, 0, 1, 0.4), border = NA, breaks = breaks1)
+    # abline(v = mean(a1_t, na.rm = TRUE), col = "blue")
+    # hist(a1_f, 30, col = rgb(1, 0, 0, 0.4), add = TRUE, border = NA, 
+    # breaks = breaks1)
+    # abline(v = mean(a1_f, na.rm = TRUE), col = "red")
+
+    # breaks2 <- (0:25 * 0.04) * max(c(a2_t, a2_f), na.rm = TRUE)
+    # hist(a2_f, 30, col = rgb(1, 0, 0, 0.4), border = NA, breaks = breaks2)
+    # abline(v = mean(a2_f, na.rm = TRUE), col = "red")
+    # hist(a2_t, 30, col = rgb(0, 0, 1, 0.4), add = TRUE, border = NA,  
+    #      breaks = breaks2)
+    # abline(v = mean(a2_t, na.rm = TRUE), col = "blue")
 })

@@ -1,3 +1,5 @@
+rm(list = ls())
+
 ## Basic functions and libraries
 
 # Libraries
@@ -10,6 +12,25 @@ library(gstat)
 # library(terra)
 # library(mixtools)
 
+# Output message m both in console and in logfile f
+msg <- function(m, f = "data/output/run_log.txt") {
+    m <- paste(format(Sys.time(), "%d.%m.%y  %R"), m)
+    print(m)
+    cat(m, file = f, append = TRUE, sep = "\n")
+}
+
+# Global parameters ============================================================
+
+buffersize <- 1 # How far does jaguar move in 1 time step
+
+sim_interval <- 5   # GPS observations taken every n steps, for simulation
+sim_steps    <- 5
+sim_n        <- 5
+
+msg(paste0("Simulation interval: ", sim_interval, " steps"))
+msg(paste0("Simulation steps: ", sim_steps))
+msg(paste0("Number of simulations: ", sim_n))
+
 # Functions ====================================================================
 
 # Basic ------------------------------------------------------------------------
@@ -18,13 +39,6 @@ library(gstat)
 save_ras <- function(x, fn) {
     # Save raster often because it can get corrupted while working
     writeRaster(x, paste0("data/", fn), overwrite = TRUE)
-}
-
-# Output message m both in console and in logfile f
-msg <- function(m, f = "data/output/run_log.txt") {
-    m <- paste(format(Sys.time(), "%d.%m.%y  %R"), m)
-    print(m)
-    cat(m, file = f, append = TRUE, sep = "\n")
 }
 
 # Load files from a list if they exist in a directory dir
@@ -147,7 +161,7 @@ loglike_fun <- function(par) {
   attract <- norm_nbhd(exp(par[1] * env1)) # + exp(par[2] * env2)
 
   # Array for propagating probabilities forward ================================
-  # step_range : (2 * buffersize + 1)^2 (= 529)
+  # step_range : (2 * max_dist + 1)^2 
   # n_obs      : Number of GPS observations
   # steps      : Number of simulated steps
   current <- array(0, dim = c(step_range, n_obs, sim_steps))
@@ -299,7 +313,8 @@ vgram <- function(path, cut = 100) {
 # Plot landscape r with jaguar path and vgram
 plot_path <- function(path, vgram = FALSE, new = TRUE, ...) {
     # par(mfrow = c(1, ifelse(vgram, 2, 1)))
-    par(mfrow = c(1, 2))
+    # par(mfrow = c(1, 2))
+    path <- path[seq(1, nrow(path), sim_interval), ]
 
     col1 <- rgb(1, 0, 0, .5)
     col2 <- rgb(0, 0, 1, .8)
@@ -341,11 +356,3 @@ brazil_ras <- stack("data/env_layers.grd")
 load("data/env_layers.RData")
 
 msg("Loaded data")
-
-# Global parameters ============================================================
-
-buffersize <- 1 # How far does jaguar move in 1 time step
-
-sim_interval <- 5   # GPS observations taken every n steps, for simulation
-sim_steps    <- 25
-sim_n        <- 30

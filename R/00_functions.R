@@ -23,13 +23,6 @@ msg <- function(m, f = "data/output/run_log.txt") {
 
 buffersize <- 1 # How far does jaguar move in 1 time step
 
-sim_interval <- 5   # GPS observations taken every n steps, for simulation
-sim_steps    <- 5
-sim_n        <- 5
-
-msg(paste0("Simulation interval: ", sim_interval, " steps"))
-msg(paste0("Simulation steps: ", sim_steps))
-msg(paste0("Number of simulations: ", sim_n))
 
 # Functions ====================================================================
 
@@ -50,6 +43,10 @@ load_if_exists <- function(files, dir) {
             return(NA)
         }
     })
+}
+
+brazil_crop <- function(topleft, size) {
+    
 }
 
 # Movement model ---------------------------------------------------------------
@@ -78,6 +75,7 @@ norm_nbhd <- function(v) {
   out <- out / rowSums(out, na.rm = TRUE)
 }
 
+# Prepare input objects for movement model
 input_prep <- function(traject, max_dist, steps, nbhd0, r, rdf) {
 
     # Extended neighborhoods of each cell in individual's trajectory
@@ -158,22 +156,28 @@ loglike_fun <- function(par) {
   # attract <- norm_nbhd(attract_h) 
 
   # Attractiveness function 3: simulations -------------------------------------
-  attract <- norm_nbhd(exp(par[1] * env1)) # + exp(par[2] * env2)
+  attract1 <- norm_nbhd(exp(par[1] * env1)) # + exp(par[2] * env2)
+  attract2 <- norm_nbhd(exp(par[2] * env2))
+  attract <- attract1
 
   # Array for propagating probabilities forward ================================
   # step_range : (2 * max_dist + 1)^2 
   # n_obs      : Number of GPS observations
   # steps      : Number of simulated steps
   current <- array(0, dim = c(step_range, n_obs, sim_steps))
-
+  
   # center     : Center of step_range (center cell of (2 * buffer + 1)
   # Set to 1 at step #1 for each observation because that's where it actually is
   center <- step_range / 2 + 0.5
   current[center, , 1] <- 1
+  
+  current2 <- current  # DEBUG
+  dest2 <- dest
+
   for (j in 1:(sim_steps - 1)) {
     # Probabilities across entire nbhd for step j
     step_prob <- as.vector(current[, , j]) * attract[]
-
+    step_prob2 <- as.vector(current2[, , j]) * attract2[] # DEBUG
     # dest has same dimensions as nbhd
     # step_prob is a vector of length step_range
     # to_dest is a matrix with the same dimensions as nbhd
@@ -182,9 +186,11 @@ loglike_fun <- function(par) {
     #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
     #   nbhd is the 3rd cell of nbhd.
     dest[] <- step_prob[as.vector(to_dest)]
+    dest2[] <- step_prob2[as.vector(to_dest)] # DEBUG
 
     # Summing probabilities up to step j to generate step j+1
     current[, , j + 1] <- rowSums(dest, na.rm = TRUE)
+    current2[, , j + 1] <- rowSums(dest2, na.rm = TRUE) # DEBUG
   }
   
   #### Run likelihood function from fitting with true parameters
@@ -201,11 +207,13 @@ loglike_fun <- function(par) {
   # log of product is sum of logs
 
   saveRDS(predictions, paste0("data/output/simulations/p", current_jag, ".RDS"))
-  # just for simulation test
-
+  current <- list(current, current2) # DEBUG
+  saveRDS(current, paste0("data/output/simulations/current", current_jag, ".RDS")) # DEBUG
   return(-max(log_likelihood, na.rm = TRUE))
   # Return negative of the maximum log likelihood because we want to minimize
   # Lower negative log likelihood = higher likelihood 
+
+  return(list(current, current2)) # DEBUG
 }
 
 # Output analysis --------------------------------------------------------------
@@ -255,15 +263,14 @@ gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {
 # preference parameters par[] and search neighborhood size neighb
 jag_path <- function(x0, y0, nstep, par, neighb, type = 2, tprob) {
     # type: 1 = env1 only, 2 = multi-state model
-    if (!(x0 %in% 1:100) || !(y0 %in% 1:100)) {
-        print("Jaguar out of bounds")
-        return(NULL)
-    }
+    # if (!(x0 %in% 1:100) || !(y0 %in% 1:100)) {
+    #     print("Jaguar out of bounds")
+    #     return(NULL)
+    # }
     path <- matrix(NA, nrow = nstep, ncol = 6)
     state0 <- 1 # Beginning state, irrelevant if type = 1
-    x <- x0
-    y <- y0
-    path[1, ] <- c(x, y, NA, state0, NA, NA)
+
+    path[1, ] <- c(x0, y0, NA, state0, NA, NA)
     
     if (type == 2) {
         # Transition probabilities: p12, p21, p11, p22
@@ -273,7 +280,7 @@ jag_path <- function(x0, y0, nstep, par, neighb, type = 2, tprob) {
     for (i in 2:nstep) {
         pos <- path[i - 1, 1:2]
         state <- path[i - 1, 4]
-        if (type == 2) {
+        if (type == 2 && i %% sim_interval == 0) {
             # Transition to new state
             if (state == 1) {
                 if (runif(1) < tprob[1]) state <- 2
@@ -289,6 +296,12 @@ jag_path <- function(x0, y0, nstep, par, neighb, type = 2, tprob) {
         a2 <- exp(env02[[1]][nbhd] * par[2])
         if (any(is.na(a2))) a2[is.na(a2)] <- 0
         a2 <- a2 / sum(a2)
+        
+        # par(mfrow = c(1, 2))
+        # plot(a1)
+        # plot(a2)
+        # readLines()
+
         attract <- switch(state, a1, a2)
         step <- sample(seq_len(length(attract)), 1, prob = attract)
         path[i, ] <- c(rowColFromCell(env01[[1]], nbhd[step]), 

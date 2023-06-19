@@ -6,10 +6,10 @@ rm(list = ls())
 library(terra)
 library(tidyverse)
 library(data.table)
-# library(ctmm)
-# library(amt) 
+library(finch)
 library(gstat)
-# library(terra)
+library(ctmm)
+# library(amt) 
 # library(mixtools)
 
 # Output message m both in console and in logfile f
@@ -41,6 +41,12 @@ save_ras <- function(x, fn) {
     writeRaster(x, paste0("data/", fn), overwrite = TRUE)
 }
 
+rast_df <- function(r) {
+    outdf <- as.data.frame(r)
+    outdf <- cbind(outdf, rowColFromCell(r, seq_len(nrow(outdf))))
+    return(outdf)
+}
+
 # Load files from a list if they exist in a directory dir
 load_if_exists <- function(files, dir) {
     out <- lapply(files, function(f) {
@@ -65,8 +71,8 @@ make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
   ind2 <- t(rep(-sz:sz, 2 * sz + 1))
   for (j in seq_len(length(ind1))) {
     mat[, j] <- cellFromRowCol(
-      r, rdf$row[i] + ind1[j],
-      rdf$col[i] + ind2[j]
+      r, rdf[i, 2] + ind1[j],
+      rdf[i, 3] + ind2[j]
     )
   }
   return(mat)
@@ -107,7 +113,8 @@ input_prep <- function(traject, max_dist, steps, nbhd0, r, rdf) {
     # the immediate neighbors? Rows are path cells, columns are neighbors.
     # All row lengths standardized by turning missing neighbors into NAs.
     to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {                 # 36s
-      # msg(paste(x, "to_dest"))
+      # print(nbhd[x])
+      # print(ncol(nbhd) - length(x))
       out <- c(x, rep(NA, ncol(nbhd) - length(x)))
       return(out)
     })
@@ -124,8 +131,6 @@ input_prep <- function(traject, max_dist, steps, nbhd0, r, rdf) {
     index_mat <<- index_mat
     obs <- vector(length = ncol(index_mat) - 1)
     for (y in 1:(ncol(index_mat) - 1)) {                                         # 13s
-      # msg(y)
-      # browser()
       test <- which(nbhd_index == traject[y + 1])
       num <- which(index_mat[1, y] < test & test < index_mat[nrow(index_mat), y])
       obs[y] <- which(index_mat[, y] == test[num])
@@ -233,21 +238,20 @@ par_to_df <- function(par) {
 # Generates a random field with a given correlation structure
 # b: beta parameter for gstat, s: sill, r: range, n: nugget
 gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {   
-    xy <- expand.grid(1:size, 1:size); names(xy) <- c("x", "y")
+    xy <- expand.grid(1:size, 1:size)
+    names(xy) <- c("x", "y")
 
     # Autocorrelation model
-    model <- gstat(formula = z ~ 1, locations = ~x + y, dummy = T, beta = b, 
+    model <- gstat(formula = z ~ 1, locations = ~x + y, dummy = TRUE, beta = b, 
                    model = vgm(psill = s, range = r, model = "Exp", nugget = n), 
                    nmax = 20)
     out <- predict(model, newdata = xy, nsim = 1)
     if (any(out < 0)) out[out < 0] <- 0
 
     # Output as both raster and data frame
-    gridded(out) <- ~x + y
-    out <- raster(out)
-    # raster::plot(out)
-    outdf <- as.data.frame(out)
-    outdf <- cbind(outdf, rowColFromCell(out, seq_len(nrow(outdf))))
+    out <- rast(out)
+    # plot(out)
+    outdf <- rast_df(out)
     return(list(raster = out, df = outdf))
 }
 
@@ -281,12 +285,12 @@ jag_path <- function(x0, y0, nstep, par, neighb, type = 2, tprob) {
                 if (runif(1) < tprob[2]) state <- 1
             }
         }
-        nbhd <- make_nbhd(r = env01[[1]], rdf = env01[[2]], sz = neighb,
-                          i = cellFromRowCol(env01[[1]], pos[1], pos[2]))
-        a1 <- exp(env01[[1]][nbhd] * par[1])
+        nbhd <- as.vector(make_nbhd(r = env01[[1]], rdf = env01[[2]], sz = neighb,
+                          i = cellFromRowCol(env01[[1]], pos[1], pos[2])))
+        a1 <- exp(env01[[1]][nbhd] * par[1])$sim1
         if (any(is.na(a1))) a1[is.na(a1)] <- 0
         a1 <- a1 / sum(a1)
-        a2 <- exp(env02[[1]][nbhd] * par[2])
+        a2 <- exp(env02[[1]][nbhd] * par[2])$sim1
         if (any(is.na(a2))) a2[is.na(a2)] <- 0
         a2 <- a2 / sum(a2)
         attract <- switch(state, a1, a2)
@@ -319,13 +323,13 @@ plot_path <- function(path, vgram = FALSE, new = TRUE, ...) {
     col1 <- rgb(1, 0, 0, .5)
     col2 <- rgb(0, 0, 1, .8)
     # Plotting environmental variables + path
-    if (new) raster::plot(env01[[1]])
+    if (new) terra::plot(env01[[1]])
     points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)
     for (i in 1:(length(path$state) - 1)) {
         segments(path$x[i], path$y[i], path$x[i + 1], path$y[i + 1], 
                  col = c(col1, col2)[path$state[i]])
     }
-    raster::plot(env02[[1]])
+    terra::plot(env02[[1]])
     points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)
     for (i in 1:(length(path$state) - 1)) {
         segments(path$x[i], path$y[i], path$x[i + 1], path$y[i + 1], 
@@ -342,17 +346,17 @@ plot_path <- function(path, vgram = FALSE, new = TRUE, ...) {
 # Data =========================================================================
 
 # WGS84 projection
-# wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
+wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
 
-# # Jaguar movement data, ID numbers, and metadata
-# jag_move <- readRDS("data/jag_data_BR.RDS")
-# jag_id <- readRDS("data/jag_list.RDS"); njag <- nrow(jag_id)
-# jag_meta <- data.table(read.csv("data/input/jaguars/jaguar_metadata.csv"))
+# Jaguar movement data, ID numbers, and metadata
+jag_move <- readRDS("data/jag_data_BR.RDS")
+jag_id <- readRDS("data/jag_list.RDS"); njag <- nrow(jag_id)
+jag_meta <- data.table(read.csv("data/input/jaguars/jaguar_metadata.csv"))
 
-# # RasterStack of environmental variables 
-# # see 01_generate_data.R for details
-# brazil_ras <- stack("data/env_layers.grd")
-# # RasterStack of environmental variables, but as a data frame ('brdf')
-# load("data/env_layers.RData")
+# RasterStack of environmental variables 
+# see 01_generate_data.R for details
+brazil_ras <- rast("data/env_layers.grd")
+# RasterStack of environmental variables, but as a data frame ('brdf')
+load("data/env_layers.RData")
 
-# msg("Loaded data")
+msg("Loaded data")

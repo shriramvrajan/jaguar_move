@@ -2,16 +2,19 @@
 ## Generate data frames for jaguar movement analyses
 ## !IMPORTANT!: Run this through master.R
 
-# library(WorldClimTiles)
-# library(gfcanalysis)
-# library(sf)
+library(gfcanalysis)
+library(sf)
+library(WorldClimTiles)
+library(raster) 
+# All data generation was done using package 'raster', but it is recommended
+# to use 'terra' for all subsequent analyses. 
 
 ### Following code chunks only need to be run once, and data saved.
 
 ### Producing environmental data for Brazil ====================================
-brazil_ras <- stack("data/brazil_ras_4.grd")
-merged <- readRDS("data/input/merged.RDS")
-m1 <- stack("data/input/bioclim_masked.grd")
+# brazil_ras <- stack("data/brazil_ras_4.grd")
+# merged <- readRDS("data/input/merged.RDS")
+# m1 <- stack("data/input/bioclim_masked.grd")
 
 ## Finding and downloading the BIOCLIM tiles that make up Brazil ---------------
 bra      <- getData("GADM", country = "BRA", level = 0)
@@ -67,7 +70,7 @@ hansen_list <- data_list[grep("Hansen", data_list)]
 hansen <- lapply(hansen_list, raster) 
 # transforming .tif into raster
 hansen <- hansen[c(-10, -16, -17, -21)] 
-have to remove #s (faulty tif files): 10, 16, 17, 21
+# have to remove #s (faulty tif files): 10, 16, 17, 21
 msg("Merging forest cover tiles")
 forest_cover <- do.call(merge, hansen) # takes a long time
 msg("Reprojecting forest cover")

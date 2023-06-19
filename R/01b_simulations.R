@@ -1,27 +1,40 @@
 source("R/00_functions.R")
 
-## Path generation parameters ==================================================
+## Parameters ==================================================================
 
+### Path generation
 # x0 <- 50
 # y0 <- 50
-par0 <- c(1, 1)           # env scaling parameter for states 1 & 2
-tprob0 <- c(0.5, 0.5)      # transition probabilities 1→2, 2→1
-step0 <- 1000              # number of steps to simulate
-n_obs <- step0 / sim_interval  
-# interval defined as global var in 00_functions.R
 
-envsize <- 200 # size of landscape in cells
-s1 <- 6        # strength of autocorrelation 
+par0 <- c(2, -2)           # env scaling parameter for states 1 & 2
+tprob0 <- c(0.4, 0.7)      # transition probabilities 1→2, 2→1
+
+sim_interval <- 10   # GPS observations taken every n steps, for simulation
+step0        <- 3000 # Number of steps to simulate
+n_obs        <- step0 / sim_interval  
+sim_steps    <- 10  # Number of steps to simulate
+sim_n        <- 5   # Number of simulations to run
+
+msg(paste0("Simulation interval: ", sim_interval))
+msg(paste0("Observations per simulation: ", n_obs))
+msg(paste0("Simulation steps: ", sim_steps))
+msg(paste0("Number of simulations: ", sim_n))
+
+### Landscape generation
+envsize <- 150  # size of landscape in cells
+s1 <- 6         # strength of autocorrelation 
 s2 <- 1
-r1 <- 5       # range of autocorrelation in cells
-r2 <- 60
+r1 <- 10        # range of autocorrelation in cells
+r2 <- 100
 
 ## Landscape generation ========================================================
 
 env01 <- gen_landscape(size = envsize, s = s1, r = r1)
 env02 <- gen_landscape(size = envsize, s = s2, r = r2)
+
 writeRaster(env01[[1]], "data/output/simulations/env01.tif", overwrite = TRUE)
 writeRaster(env02[[1]], "data/output/simulations/env02.tif", overwrite = TRUE)
+
 par(mfrow = c(1, 2))
 terra::plot(env01[[1]])
 terra::plot(env02[[1]])
@@ -34,17 +47,26 @@ paths <- lapply(1:sim_n, function(i) {
           # y0 <- sample(100, 1)
           x0 <- ceiling(envsize / 2)
           y0 <- ceiling(envsize / 2)
-          
-          jag_path(x0, y0, nstep = step0, par = par0, neighb = buffersize, 
+          jag_path(x0, y0, step0, par = par0, neighb = buffersize, 
                    tprob = tprob0)
           })
 saveRDS(paths, "data/output/simulations/paths.RDS")
 
 ## Fitting =====================================================================
 
+# to_dest? 
 envdf <- env01[[2]]
 env_index <- seq_len(nrow(envdf))
 envdf <- cbind(envdf, env_index)
+# adj <- as.data.frame(raster::adjacent(env01[[1]], cells = env_index, 
+#                      include = TRUE, directions = 8, id = TRUE, sorted = TRUE))
+# to_dest <- do.call(rbind, lapply(env_index, function(i) {
+#     out <- adj$from[which(adj$to == i)]
+#     if (length(out) < 9) {
+#         out <- c(out, rep(NA, 9 - length(out)))
+#     }
+#     return(out)
+# }))
 
 jag_traject <- lapply(paths, function(p) {
     out <- cbind(p$x, p$y, p$state)
@@ -79,6 +101,6 @@ for (i in 1:sim_n) {
     env2 <- scales::rescale(env02[[2]]$sim1[nbhd_index], to = c(0, 1))
 
     # par_optim <- rnorm(1)
-    ll <- loglike_fun(par0[1])
+    ll <- loglike_fun(par0)
     saveRDS(ll, file = paste0("data/output/simulations/ll", i, ".rds"))
 }

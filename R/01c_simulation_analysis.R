@@ -3,8 +3,8 @@ source("R/01b_simulations.R")
 paths <- readRDS("data/output/simulations/paths.RDS")
 probs <- load_if_exists(paste0("p", 1:sim_n, ".RDS"), 
                         dir = "data/output/simulations")
-lls <- load_if_exists(paste0("ll", 1:sim_n, ".RDS"), 
-                       dir = "data/output/simulations")
+currents   <- load_if_exists(paste0("current", 1:sim_n, ".RDS"), 
+                        dir = "data/output/simulations")
 
 env01 <- rast("data/output/simulations/env01.tif")
 env01 <- list(env01, rast_df(env01))
@@ -15,21 +15,27 @@ par(mfrow = c(1, 3))
 res <- lapply(1:sim_n, function(i) {
     path <- paths[[i]]
     prob <- probs[[i]]
-    ll  <- lls[[i]]
+    curr1  <- currents[[i]][[1]]
+    curr2  <- currents[[i]][[2]]
+    side <- sqrt(dim(curr1)[1])
 
     state <- path$state[seq(1, nrow(path), sim_interval)]
     p     <- prob[nrow(prob), ]
 
+    s <- 99
+    ss <- 10
+    r1 <- raster(nrows = side, ncols = side, vals = curr1[, s, ss])
+    r2 <- raster(nrows = side, ncols = side, vals = curr2[, s, ss])
+    plot(r1, main = paste0("Kernel #", i))
+    plot(r2, main = paste0("Kernel #", i))
     hist(p[state == 1], 11, main = paste0("Path #", i), col = rgb(0, 0, 1, 0.5),
          xlim = c(0, max(p, na.rm = TRUE)), border = NA)
     hist(p[state == 2], 11, add = TRUE, col = rgb(1, 0, 0, 0.5), border = NA)
-
-    step_range <- 1 / (2 * sim_steps + 1) ^ 2
+    abline(v = mean(p[state == 1], na.rm = TRUE), col = "blue")
+    abline(v = mean(p[state == 2], na.rm = TRUE), col = "red")
     abline(v = 1 / (21 ^ 2))
 
-    plot_path(path)
-
-    
+    # plot_path(path)
 
     # x <- readline("Press [enter] to continue") 
 

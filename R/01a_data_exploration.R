@@ -1,8 +1,4 @@
-# library(finch)
-# library(OpenStreetMap)
-# library(ggmap)
-
-# ggmap::register_google(key = "AIzaSyC4Ewh1nlrRtvivd2qg2yXbr3lALhZv8a0")
+source("R/00_functions.R")
 
 ### Data =======================================================================
 
@@ -34,7 +30,7 @@ map_jag <- function(i, type = 2) {
     moves <- jag_move[ID == as.numeric(i)]
 
     # Get bounding box of all GPS measurements
-    bbox <- raster::extent(data.frame(x = moves$longitude, y = moves$latitude))
+    bbox <- ext(data.frame(x = moves$longitude, y = moves$latitude))
 
     # Get total tracking period
     dates <- as.Date(sapply(moves$timestamp, function(dt) {
@@ -68,18 +64,17 @@ map_jag <- function(i, type = 2) {
 jag_move <- jag_move[, !c("study_name", "country")]
 jag_moveid <- unique(jag_move$ID)
 
-
-
-
 ##### require('ctmm') ----------------------------------------------------------
 
 jj <- jag_move[ID == as.numeric(jag_id[3])]
 jj <- as.telemetry(jj, timeformat = "auto")
-vjj <- variogram(jj); plot(vjj)
+vjj <- variogram(jj)
+plot(vjj)
 guess <- ctmm.guess(jj, interactive = F)
 jjg <- ctmm.fit(jj, guess)
 kde <- akde(jj, jjg)
-plot(kde); plot(jj, add = T)
+plot(kde)
+plot(jj, add = T)
 
 ##### require('amt') -----------------------------------------------------------
 # jag_tracks <- lapply(jag_moveid, function(id) {

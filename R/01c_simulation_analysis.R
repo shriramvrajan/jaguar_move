@@ -1,4 +1,3 @@
-source("R/00_functions.R")
 source("R/01b_simulations.R")
 
 paths <- readRDS("data/output/simulations/paths.RDS")
@@ -7,8 +6,10 @@ probs <- load_if_exists(paste0("p", 1:sim_n, ".RDS"),
 currents   <- load_if_exists(paste0("current", 1:sim_n, ".RDS"), 
                         dir = "data/output/simulations")
 
-env01 <- readRDS("data/output/simulations/env01.RDS")
-env02 <- readRDS("data/output/simulations/env02.RDS")
+env01 <- rast("data/output/simulations/env01.tif")
+env01 <- list(env01, rast_df(env01))
+env02 <- rast("data/output/simulations/env02.tif")
+env02 <- list(env02, rast_df(env02))
 
 par(mfrow = c(1, 3))
 res <- lapply(1:sim_n, function(i) {

@@ -2,9 +2,12 @@
 ## Generate data frames for jaguar movement analyses
 ## !IMPORTANT!: Run this through master.R
 
-# library(WorldClimTiles)
-# library(gfcanalysis)
-# library(sf)
+library(gfcanalysis)
+library(sf)
+library(WorldClimTiles)
+library(raster) 
+# All data generation was done using package 'raster', but it is recommended
+# to use 'terra' for all subsequent analyses. 
 
 ### Following code chunks only need to be run once, and data saved.
 
@@ -14,72 +17,72 @@
 # m1 <- stack("data/input/bioclim_masked.grd")
 
 ## Finding and downloading the BIOCLIM tiles that make up Brazil ---------------
-# bra      <- getData("GADM", country = "BRA", level = 0)
-# tilename <- tile_name(bra)
-# tile     <- tile_get(tilename, "bio") 
-# # Makes list with all the data for each of the tiles for Brazil
-# merged   <- tile_merge(tile) # takes a while
-# saveRDS(merged, "data/merged.RDS")
+bra      <- getData("GADM", country = "BRA", level = 0)
+tilename <- tile_name(bra)
+tile     <- tile_get(tilename, "bio") 
+# Makes list with all the data for each of the tiles for Brazil
+merged   <- tile_merge(tile) # takes a while
+saveRDS(merged, "data/merged.RDS")
 
 ## Crop to required range: need shapefile with boundaries of interest ----------
 # Making sure projection of outline is same as projection of bioclim data
-# proj4string(spdf) == proj4string(brazil_ras)
-# Masking
-# msg("Masking bioclim tiles to Brazil's borders...")
-# m1 <- mask(merged, spdf) # takes a while 
-# m1 <- brick("data/input/bioclim_masked.grd")
-# # save_ras(m1, "input/bioclim_masked.grd")
-# # Cropping (using created mask to crop to the extent of Brazil)
-# msg("Cropping bioclim tiles to Brazil's borders")
-# brazil_ras <- crop(m1, extent(bra_shp)) # takes a while
-# msg("Saving initial brazil_ras.grd")
-# save_ras(brazil_ras, "input/brazil_ras.grd")
+proj4string(spdf) == proj4string(brazil_ras)
+Masking
+msg("Masking bioclim tiles to Brazil's borders...")
+m1 <- mask(merged, spdf) # takes a while 
+m1 <- brick("data/input/bioclim_masked.grd")
+# save_ras(m1, "input/bioclim_masked.grd")
+# Cropping (using created mask to crop to the extent of Brazil)
+msg("Cropping bioclim tiles to Brazil's borders")
+brazil_ras <- crop(m1, extent(bra_shp)) # takes a while
+msg("Saving initial brazil_ras.grd")
+save_ras(brazil_ras, "input/brazil_ras.grd")
 
 ## Human footprint -------------------------------------------------------------
-# footprint             <- raster("data/input/wildareas-v3-2009-human-footprint.tif") 
-# footprint_rast        <- projectRaster(footprint, brazil_ras) 
-# # brazil_ras <- stack("data/input/brazil_ras.grd")
-# footprint_rast <- raster("data/input/footprint_raster.grd")
-# msg("Adding footprint layer")
-# brazil_ras <- addLayer(brazil_ras, footprint_rast) 
-# save_ras(brazil_ras, "input/brazil_ras.grd")
+footprint             <- raster("data/input/wildareas-v3-2009-human-footprint.tif") 
+footprint_rast        <- projectRaster(footprint, brazil_ras) 
+# brazil_ras <- stack("data/input/brazil_ras.grd")
+footprint_rast <- raster("data/input/footprint_raster.grd")
+msg("Adding footprint layer")
+brazil_ras <- addLayer(brazil_ras, footprint_rast) 
+save_ras(brazil_ras, "input/brazil_ras.grd")
 
 ## Elevation and slope ---------------------------------------------------------
-# msg("Adding elevation and slope")
-# dem_ras <- raster("data/input/srtm30_dem.grd")
-# dem_ras <- crop(dem_ras, brazil_ras)
-# slope_ras <- terrain(dem_ras, opt = "slope")
-# brazil_ras <- addLayer(brazil_ras, dem_ras)
-# brazil_ras <- addLayer(brazil_ras, slope_ras)
-# save_ras(brazil_ras, "input/brazil_ras.grd")
+msg("Adding elevation and slope")
+dem_ras <- raster("data/input/srtm30_dem.grd")
+dem_ras <- crop(dem_ras, brazil_ras)
+slope_ras <- terrain(dem_ras, opt = "slope")
+brazil_ras <- addLayer(brazil_ras, dem_ras)
+brazil_ras <- addLayer(brazil_ras, slope_ras)
+save_ras(brazil_ras, "input/brazil_ras.grd")
 
 # ## Forest cover --------------------------------------------------------------
-# brazil_ras <- brick("data/input/brazil_ras.grd")
-# # tiles <- calc_gfc_tiles(spdf) # tiles of forest cover that cover Brazil
-# # download_tiles(tiles,
-# #     output_folder = paste0(getwd(), "/data"),
-# #     images = "treecover2000",
-# #     dataset = "GFC-2019-v1.7"
-# # )
-# # Might have to rerun a couple times to get everything, connection times out
-# data_list <- list.files(path = "data/input", all.files = T, full.names = T)
-# hansen_list <- data_list[grep("Hansen", data_list)]
-# hansen <- lapply(hansen_list, raster) 
+brazil_ras <- brick("data/input/brazil_ras.grd")
+# tiles <- calc_gfc_tiles(spdf) # tiles of forest cover that cover Brazil
+# download_tiles(tiles,
+#     output_folder = paste0(getwd(), "/data"),
+#     images = "treecover2000",
+#     dataset = "GFC-2019-v1.7"
+# )
+# Might have to rerun a couple times to get everything, connection times out
+data_list <- list.files(path = "data/input", all.files = TRUE, full.names = TRUE)
+hansen_list <- data_list[grep("Hansen", data_list)]
+hansen <- lapply(hansen_list, raster) 
 # transforming .tif into raster
-# hansen <- hansen[c(-10, -16, -17, -21)] 
+hansen <- hansen[c(-10, -16, -17, -21)] 
 # have to remove #s (faulty tif files): 10, 16, 17, 21
-# msg("Merging forest cover tiles")
-# forest_cover <- do.call(merge, hansen) # takes a long time
-# msg("Reprojecting forest cover")
-# forest_rast <- projectRaster(forest_cover, brazil_ras, method = "ngb")
-# save_ras(forest_rast, "input/forest_cover.grd")
-# forest_rast <- raster("data/input/forest_cover.grd")
-# msg("Resampling forest cover layer")
-# forest_rast <- resample(forest_rast, brazil_ras)
-# msg("Adding forest cover layer")
-# brazil_ras <- addLayer(brazil_ras, forest_rast)
-# msg("Saving brazil_ras with forest cover")
-# save_ras(brazil_ras, "input/brazil_ras.grd")
+msg("Merging forest cover tiles")
+forest_cover <- do.call(merge, hansen) # takes a long time
+msg("Reprojecting forest cover")
+forest_rast <- projectRaster(forest_cover, brazil_ras, method = "ngb")
+save_ras(forest_rast, "input/forest_cover.grd")
+forest_rast <- raster("data/input/forest_cover.grd")
+msg("Resampling forest cover layer")
+forest_rast <- resample(forest_rast, brazil_ras)
+msg("Adding forest cover layer")
+brazil_ras <- addLayer(brazil_ras, forest_rast)
+msg("Saving brazil_ras with forest cover")
+save_ras(brazil_ras, "input/brazil_ras.grd")
 
 # ## Modifications by Shriram Varadarajan (2022)==================================
 

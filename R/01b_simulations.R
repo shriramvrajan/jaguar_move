@@ -5,6 +5,7 @@ source("R/00_functions.R")
 ### Path generation
 # x0 <- 50
 # y0 <- 50
+
 par0 <- c(2, -2)           # env scaling parameter for states 1 & 2
 tprob0 <- c(0.4, 0.7)      # transition probabilities 1→2, 2→1
 
@@ -30,15 +31,13 @@ r2 <- 100
 
 env01 <- gen_landscape(size = envsize, s = s1, r = r1)
 env02 <- gen_landscape(size = envsize, s = s2, r = r2)
-# env02 <- env01
-# emax <- maxValue(env02[[1]])
-# env02[[1]][] <- emax - env02[[1]][]
-# env02[[2]]$sim1 <- 1 - env02[[2]]$sim1
-saveRDS(env01, "data/output/simulations/env01.RDS")
-saveRDS(env02, "data/output/simulations/env02.RDS")
+
+writeRaster(env01[[1]], "data/output/simulations/env01.tif", overwrite = TRUE)
+writeRaster(env02[[1]], "data/output/simulations/env02.tif", overwrite = TRUE)
+
 par(mfrow = c(1, 2))
-plot(env01[[1]])
-plot(env02[[1]])
+terra::plot(env01[[1]])
+terra::plot(env02[[1]])
 
 ## Simulation ==================================================================
 

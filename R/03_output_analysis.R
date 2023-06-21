@@ -24,8 +24,9 @@ dfrw <- par_to_df(parrw)
 dfh <- par_to_df(parh)
 dfrwh <- par_to_df(parrwh)
 
-nmove <- sapply(1:njag, function(x) length(which(jag_move$ID == 
-                                                 as.numeric(jag_id[x]))))
+nmove <- sapply(1:njag, function(x) {
+                  length(which(jag_move$ID == as.numeric(jag_id[x])))
+                  })
 ndays <- sapply(1:njag, function(x) {
     moves <- jag_move[ID == as.numeric(jag_id[x])]
     dates <- sort(as.Date(sapply(moves$timestamp, function(dt) {

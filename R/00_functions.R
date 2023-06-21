@@ -9,7 +9,8 @@ library(data.table)
 library(finch)
 library(gstat)
 library(ctmm)
-# library(amt) 
+library(amt) 
+library(lubridate)
 # library(mixtools)
 
 # Output message m both in console and in logfile f
@@ -22,6 +23,10 @@ msg <- function(m, f = "data/output/run_log.txt") {
 # Global parameters ============================================================
 
 buffersize <- 1 # How far does jaguar move in 1 time step
+
+wgs84 <- "+proj=longlat +datum=WGS84 +no_defs +type=crs"
+epsg5880 <- "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000 
++ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs"
 
 
 # Functions ====================================================================
@@ -51,8 +56,76 @@ load_if_exists <- function(files, dir) {
     })
 }
 
-brazil_crop <- function(topleft, size) {
-    
+# Data exploration -------------------------------------------------------------
+
+# Plot environmental layers for path 
+plot_env <- function(layer, bounds, path, ras = env) {
+    terra::plot(crop(ras[[layer]], bounds), main = names(ras)[layer])
+    lines(as.data.frame(path), col = rgb(1, 0, 0, 0.3), pch = 4)
+}
+
+# Map path of jaguar i
+map_jag <- function(i, type = 2) {
+    # type: 1 is satellite map using ggmap, 2 is env layers
+    moves <- jag_move[ID == as.numeric(i)]
+
+    # Get bounding box of all GPS measurements
+    gps <- vect(moves[, 3:4], geom = c("longitude", "latitude"))
+    bbox <- ext(gps)
+
+    # Get total tracking period
+    dates <- as.Date(sapply(moves$timestamp, function(dt) {
+        strsplit(as.character(dt), " ")[[1]][1]
+    }), format = "%m/%d/%y")
+    period <- difftime(dates[length(dates)], dates[1])
+
+    names(moves)[3:4] <- c("x", "y")
+    path <- sp::SpatialPoints(coords = moves[, 3:4], sp::CRS("+init=epsg:4326"))
+    # path2 <- as.data.frame(sp::spTransform(path, OpenStreetMap::osm()))
+
+    if (type == 1) {
+        bboxgg <- bbox[c(1, 3, 2, 4)]
+        names(bboxgg) <- c("left", "bottom", "right", "top")
+        map0 <- ggmap::get_map(location = bboxgg, maptype = "satellite")
+        ggmap(map0) +
+            geom_point(aes(x = x, y = y),
+                data = as.data.frame(path),
+                color = "red"
+            )
+    } else if (type == 2) {
+        par(mfrow = c(2, 3))
+        for (i in 1:6) {
+            plot_env(layer = i, bounds = bbox, path = path)
+        }
+    }
+}
+
+# Map home range of jaguar i
+map_homerange <- function(id, vgram = FALSE) {
+  msg(paste0("Mapping home range of jaguar ", id, "..."))
+  path <- jag_move[ID == as.numeric(id)]
+  path <- as.telemetry(path, timeformat = "auto")
+  if (vgram == TRUE) {
+    vpath <- variogram(path)
+    plot(vpath)
+  }
+  guess <- ctmm.guess(path, interactive = FALSE)
+  path_guess <- ctmm.fit(path, guess)
+  kde <- akde(path, path_guess)
+  par(mfrow = c(1, 1))
+  plot(kde)
+  plot(path, add = TRUE)
+}
+
+# Produce amt::track object for jaguar i
+jag_track <- function(id) {
+    id <- as.numeric(id)
+    path <- jag_move[ID == id]
+    path$t <- lubridate::mdy_hm(as.character(path$timestamp))
+    path <- vect(path, geom = c("longitude", "latitude"), crs = wgs84)
+    path <- project(path, epsg5880)
+    path <- track(x = crds(path)[, 1], y = crds(path)[, 2], 
+                  t = path$t, id = path$ID, crs = epsg5880)
 }
 
 # Movement model ---------------------------------------------------------------

@@ -26,8 +26,8 @@ res <- lapply(1:sim_n, function(i) {
     ss <- 10
     r1 <- raster(nrows = side, ncols = side, vals = curr1[, s, ss])
     r2 <- raster(nrows = side, ncols = side, vals = curr2[, s, ss])
-    plot(r1, main = paste0("Kernel #", i))
-    plot(r2, main = paste0("Kernel #", i))
+    terra::plot(r1, main = paste0("Kernel #", i))
+    terra::plot(r2, main = paste0("Kernel #", i))
     hist(p[state == 1], 11, main = paste0("Path #", i), col = rgb(0, 0, 1, 0.5),
          xlim = c(0, max(p, na.rm = TRUE)), border = NA)
     hist(p[state == 2], 11, add = TRUE, col = rgb(1, 0, 0, 0.5), border = NA)

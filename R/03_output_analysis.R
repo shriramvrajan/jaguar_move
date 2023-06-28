@@ -65,8 +65,8 @@ res <- res[-which(res$nmove < 100), ]
 # res <- res[order(res$derw - res$dek), ]
 
 hist(aic_k, 100, col = rgb(1, 0, 0, 0.4), border = NA)
-hist(aic_rw, 100, col = rgb(0, 0, 1, 0.4), add = T, border = NA)
-hist(aic_rwh, 100, col = rgb(0, 1, 0, 0.4), add = T, border = NA)
+hist(aic_rw, 100, col = rgb(0, 0, 1, 0.4), add = TRUE, border = NA)
+hist(aic_rwh, 100, col = rgb(0, 1, 0, 0.4), add = TRUE, border = NA)
 
 plot(aic_k, pch = 19)
 points(aic_rw, pch = 19, col = "blue")
@@ -74,6 +74,6 @@ points(aic_rwh, pch = 19, col = "green")
 points(aic_h, pch = 19, col = "red")
 
 barplot(aic_k, col = rgb(1, 0, 0, 0.4), border = NA)
-barplot(aic_rw, col = rgb(0, 0, 1, 0.4), add = T, border = NA)
-barplot(aic_rwh, col = rgb(0, 1, 0, 0.4), add = T, border = NA)
-barplot(aic_h, col = rgb(0.5, 0.5, 0, 0.4), add = T, border = NA)
+barplot(aic_rw, col = rgb(0, 0, 1, 0.4), add = TRUE, border = NA)
+barplot(aic_rwh, col = rgb(0, 1, 0, 0.4), add = TRUE, border = NA)
+barplot(aic_h, col = rgb(0.5, 0.5, 0, 0.4), add = TRUE, border = NA)

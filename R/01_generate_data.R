@@ -84,7 +84,7 @@ brazil_ras <- addLayer(brazil_ras, forest_rast)
 msg("Saving brazil_ras with forest cover")
 save_ras(brazil_ras, "input/brazil_ras.grd")
 
-# ## Modifications by Shriram Varadarajan (2022)==================================
+# ## Modifications by Shriram Varadarajan (2022)================================
 
 # ## Adding distance to water & road
 # brazil_ras <- stack("data/input/brazil_ras.grd")
@@ -119,6 +119,19 @@ brdf$index <- seq_len(nrow(brdf))
 msg("Saving brdf")
 save(brdf, file = "data/env_layers.RData")
 
+## Adding biome ================================================================
 
+library(terra)
+# Eventually will shift to terra for previous steps as well
+
+biome <- vect("data/input/Brazil_biomes/Brazil_biomes.shp")
+jags <- readRDS("data/jag_data_BR.RDS")
+jags <- do.call(rbind, by(jags, jags$ID, function(x) x[1, ]))
+jags$biome <- terra::extract(biome, jags[, 3:4])$name
+
+jag_meta <- data.table(read.csv("data/input/jaguars/jaguar_metadata.csv"))
+jag_meta <- merge(jag_meta, jags[, c("ID", "biome")], by = "ID")
+jag_meta$biome[42] <- "Mata Atlântica" # fix for one jaguar, Argentina border
+write.csv(jag_meta, "data/input/jaguars/jaguar_metadata.csv", row.names = FALSE)
 
 msg("Environmental layers saved, end of generate_data.R.")

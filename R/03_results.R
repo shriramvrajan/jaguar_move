@@ -1,6 +1,7 @@
 source("R/00_functions.R")
 
-jagmeta_br <- jag_meta[jag_id[[1]], ]
+jagmeta_br <- jag_meta[ID %in% jag_id[[1]], ]
+env <- brazil_ras
 
 runk <- load_output("LL_K")
 runrw <- load_output("LL_RW")
@@ -37,10 +38,11 @@ ndays <- sapply(1:njag, function(x) {
 meandist <- tapply(jag_move$dist, jag_move$ID, function(x) mean(x, na.rm = T))
 totdist <- tapply(jag_move$dist, jag_move$ID, function(x) sum(x, na.rm = T))
 
-res <- data.frame(id = jag_id,
+res <- data.table(id = jag_id,
                   sex = as.factor(jagmeta_br$Sex),
                   age = as.numeric(jagmeta_br$Estimated.Age),
                   weight = as.numeric(jagmeta_br$Weight),
+                  bio = as.factor(jagmeta_br$biome),
                   nmove = nmove,
                   ndays = ndays,
                   meandist = meandist,
@@ -60,20 +62,29 @@ res <- data.frame(id = jag_id,
                   aic_h = aic_h,
                   aic_rwh = aic_rwh)
 
+res <- cbind(res, do.call(rbind, sapply(1:njag, function(i) {
+    parrwh[[i]][[1]]
+})))
+names(res)[24:30] <- paste0("p", 1:7)
+
 res <- res[-which(is.infinite(res$ll0)), ]
-res <- res[-which(res$nmove < 100), ]
-# res <- res[order(res$derw - res$dek), ]
+# res <- res[-which(res$nmove < 100), ]
 
-hist(aic_k, 100, col = rgb(1, 0, 0, 0.4), border = NA)
-hist(aic_rw, 100, col = rgb(0, 0, 1, 0.4), add = TRUE, border = NA)
-hist(aic_rwh, 100, col = rgb(0, 1, 0, 0.4), add = TRUE, border = NA)
+msg("Results compiled")
 
-plot(aic_k, pch = 19)
-points(aic_rw, pch = 19, col = "blue")
-points(aic_rwh, pch = 19, col = "green")
-points(aic_h, pch = 19, col = "red")
+if (FALSE) {
+   hist(aic_k, 100, col = rgb(1, 0, 0, 0.4), border = NA)
+    hist(aic_rw, 100, col = rgb(0, 0, 1, 0.4), add = TRUE, border = NA)
+    hist(aic_rwh, 100, col = rgb(0, 1, 0, 0.4), add = TRUE, border = NA)
 
-barplot(aic_k, col = rgb(1, 0, 0, 0.4), border = NA)
-barplot(aic_rw, col = rgb(0, 0, 1, 0.4), add = TRUE, border = NA)
-barplot(aic_rwh, col = rgb(0, 1, 0, 0.4), add = TRUE, border = NA)
-barplot(aic_h, col = rgb(0.5, 0.5, 0, 0.4), add = TRUE, border = NA)
+    plot(aic_k, pch = 19)
+    points(aic_rw, pch = 19, col = "blue")
+    points(aic_rwh, pch = 19, col = "green")
+    points(aic_h, pch = 19, col = "red")
+
+    barplot(aic_k, col = rgb(1, 0, 0, 0.4), border = NA)
+    barplot(aic_rw, col = rgb(0, 0, 1, 0.4), add = TRUE, border = NA)
+    barplot(aic_rwh, col = rgb(0, 1, 0, 0.4), add = TRUE, border = NA)
+    barplot(aic_h, col = rgb(0.5, 0.5, 0, 0.4), add = TRUE, border = NA)
+
+}

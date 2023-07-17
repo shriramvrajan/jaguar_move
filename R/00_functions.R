@@ -13,13 +13,6 @@ library(amt)
 library(lubridate)
 # library(mixtools)
 
-# Output message m both in console and in logfile f
-msg <- function(m, f = "data/output/run_log.txt") {
-    m <- paste(format(Sys.time(), "%d.%m.%y  %R"), m)
-    print(m)
-    cat(m, file = f, append = TRUE, sep = "\n")
-}
-
 # Global parameters ============================================================
 
 buffersize <- 1 # How far does jaguar move in 1 time step
@@ -28,10 +21,35 @@ wgs84 <- "+proj=longlat +datum=WGS84 +no_defs +type=crs"
 epsg5880 <- "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000 
 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs"
 
+# Data =========================================================================
+
+# WGS84 projection
+wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
+
+# Jaguar movement data, ID numbers, and metadata
+jag_move <- readRDS("data/jag_data_BR.RDS")
+jag_id <- readRDS("data/jag_list.RDS")
+njag <- nrow(jag_id)
+jag_meta <- data.table(read.csv("data/input/jaguars/jaguar_metadata.csv"))
+
+# RasterStack of environmental variables 
+# see 01_generate_data.R for details
+brazil_ras <- rast("data/env_layers.grd")
+# RasterStack of environmental variables, but as a data frame ('brdf')
+load("data/env_layers.RData")
+
+biome <- vect("data/input/Brazil_biomes/Brazil_biomes.shp")
 
 # Functions ====================================================================
 
-# Basic ------------------------------------------------------------------------
+# 0. Basic ---------------------------------------------------------------------
+
+# Output message m both in console and in logfile f
+msg <- function(m, f = "data/output/run_log.txt") {
+    m <- paste(format(Sys.time(), "%d.%m.%y  %R"), m)
+    print(m)
+    cat(m, file = f, append = TRUE, sep = "\n")
+}
 
 # Save raster x as filename fn under ./data/
 save_ras <- function(x, fn) {
@@ -56,16 +74,32 @@ load_if_exists <- function(files, dir) {
     })
 }
 
-# Data exploration -------------------------------------------------------------
+# 1. Data exploration ----------------------------------------------------------
 
 # Plot environmental layers for path 
-plot_env <- function(layer, bounds, path, ras = env) {
-    terra::plot(crop(ras[[layer]], bounds), main = names(ras)[layer])
-    lines(as.data.frame(path), col = rgb(1, 0, 0, 0.3), pch = 4)
+plot_env <- function(layer, bounds, path, grad = 20, ras = env) {
+    terra::plot(crop(ras[[layer]], bounds), main = names(ras)[layer], 
+                col = rev(grey.colors(50, start = 0.7, end = 1)))
+    pal <- colorRampPalette(c("#ff0000", "#1bbe29"))(grad)
+    path <- as.data.frame(path)
+    path$col <- rep(pal, each = ceiling(nrow(path) / grad))[seq_len(nrow(path))]
+    points(x = path$x, y = path$y, pch = 19, cex = 0.8, col = path$col)
+    # lines(x = path$x, y = path$y, col = rgb(0, 0, 0, 0.3), lwd = 0.3)
+    # for (i in seq_len(nrow(path) - 1)){
+    #     segments(path$x[i], path$y[i], path$x[i+1], path$y[i+1], 
+    #              col = path$col[i])
+    #     # segments(df$x[i], df$y[i], df$x[i+1], df$y[i+1], col=df$col[i])
+    # }
+
+}
+
+plot_ts <- function(tr) {
+    plot_ly(x = tr$x_, y = tr$y_, z = tr$t_, type = "scatter3d", 
+        mode = "lines", line = list(width = 1))
 }
 
 # Map path of jaguar i
-map_jag <- function(i, type = 2) {
+map_jag <- function(i, grad = 20, type = 2) {
     # type: 1 is satellite map using ggmap, 2 is env layers
     moves <- jag_move[ID == as.numeric(i)]
 
@@ -95,7 +129,7 @@ map_jag <- function(i, type = 2) {
     } else if (type == 2) {
         par(mfrow = c(2, 3))
         for (i in 1:6) {
-            plot_env(layer = i, bounds = bbox, path = path)
+            plot_env(layer = i, bounds = bbox, path = path, grad = grad)
         }
     }
 }
@@ -128,7 +162,7 @@ jag_track <- function(id) {
                   t = path$t, id = path$ID, crs = epsg5880)
 }
 
-# Movement model ---------------------------------------------------------------
+# 2. Movement model ------------------------------------------------------------
 
 # Outputs a matrix of cell numbers corresponding to raster (r, rdf)
 # based on a central cell (i) and a buffer size around that cell (sz)
@@ -294,27 +328,7 @@ loglike_fun <- function(par) {
   return(list(current, current2)) # DEBUG
 }
 
-# Output analysis --------------------------------------------------------------
-
-## Load parameters and likelihood
-load_output <- function(name) {
-    dir <- paste0("data/output/", name)
-    # ll_files <- list.files(dir)[grep("likelihood_", list.files(dir))]
-    # par_files <- list.files(dir)[grep("par_out_", list.files(dir))]
-    ll_files <- paste0("likelihood_", 1:njag, ".RDS")
-    par_files <- paste0("par_out_", 1:njag, ".RDS")
-    ll <- load_if_exists(ll_files, dir)
-    par <- load_if_exists(par_files, dir)
-    return(list(unlist(ll), par))
-}
-
-par_to_df <- function(par) {
-    df <- do.call(rbind, lapply(par, function(x) {
-        print(x[[1]])
-    }))
-}
-
-# Simulation -------------------------------------------------------------------
+# 2b. Simulation ---------------------------------------------------------------
 
 # Generates a random field with a given correlation structure
 # b: beta parameter for gstat, s: sill, r: range, n: nugget
@@ -373,7 +387,6 @@ jag_path <- function(x0, y0, nstep, par, neighb, type = 2, tprob) {
         a2 <- exp(env02[[1]][nbhd] * par[2])$sim1
         if (any(is.na(a2))) a2[is.na(a2)] <- 0
         a2 <- a2 / sum(a2)
-        
         # par(mfrow = c(1, 2))
         # plot(a1)
         # plot(a2)
@@ -389,6 +402,7 @@ jag_path <- function(x0, y0, nstep, par, neighb, type = 2, tprob) {
     return(path)
 }
 
+# Calculate variogram of jaguar path
 vgram <- function(path, cut = 100) {
     var <- sapply(1:cut, function(t) {
         p1 <- path[1:(nrow(path) - t), 1:2]
@@ -429,21 +443,22 @@ plot_path <- function(path, vgram = FALSE, new = TRUE, ...) {
     # plot(vgram(path, ...), type = "l", xlab = "Time lag", ylab = "Variance")
 }
 
-# Data =========================================================================
+# 3. Output analysis -----------------------------------------------------------
 
-# WGS84 projection
-wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
+## Load parameters and likelihood
+load_output <- function(name) {
+    dir <- paste0("data/output/", name)
+    # ll_files <- list.files(dir)[grep("likelihood_", list.files(dir))]
+    # par_files <- list.files(dir)[grep("par_out_", list.files(dir))]
+    ll_files <- paste0("likelihood_", 1:njag, ".RDS")
+    par_files <- paste0("par_out_", 1:njag, ".RDS")
+    ll <- load_if_exists(ll_files, dir)
+    par <- load_if_exists(par_files, dir)
+    return(list(unlist(ll), par))
+}
 
-# Jaguar movement data, ID numbers, and metadata
-jag_move <- readRDS("data/jag_data_BR.RDS")
-jag_id <- readRDS("data/jag_list.RDS")
-njag <- nrow(jag_id)
-jag_meta <- data.table(read.csv("data/input/jaguars/jaguar_metadata.csv"))
-
-# RasterStack of environmental variables 
-# see 01_generate_data.R for details
-brazil_ras <- rast("data/env_layers.grd")
-# RasterStack of environmental variables, but as a data frame ('brdf')
-load("data/env_layers.RData")
-
-msg("Loaded data")
+par_to_df <- function(par) {
+    df <- do.call(rbind, lapply(par, function(x) {
+        print(x[[1]])
+    }))
+}

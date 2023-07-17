@@ -124,7 +124,7 @@ save(brdf, file = "data/env_layers.RData")
 library(terra)
 # Eventually will shift to terra for previous steps as well
 
-biome <- vect("data/input/Brazil_biomes/Brazil_biomes.shp")
+
 jags <- readRDS("data/jag_data_BR.RDS")
 jags <- do.call(rbind, by(jags, jags$ID, function(x) x[1, ]))
 jags$biome <- terra::extract(biome, jags[, 3:4])$name

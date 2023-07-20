@@ -11,6 +11,7 @@ library(gstat)
 library(ctmm)
 library(amt) 
 library(lubridate)
+library(plotly)
 # library(mixtools)
 
 # Global parameters ============================================================
@@ -93,10 +94,29 @@ plot_env <- function(layer, bounds, path, grad = 20, ras = env) {
 
 }
 
+# Plot time series as 3D line plot (x, y, t)
 plot_ts <- function(tr) {
     plot_ly(x = tr$x_, y = tr$y_, z = tr$t_, type = "scatter3d", 
         mode = "lines", line = list(width = 1))
 }
+
+# Decompose time series into 28d chunks
+monthly <- function(tel, n = 1) {
+
+    lunar <- 28 * 24 * 60 * 60
+    t0 <- tel$t[1]
+    start <- t0 + (n - 1) * lunar
+    end   <- t0 + n * lunar
+    
+    tel1 <- tel[tel$t %in% start:end, ]
+    pgram <- periodogram(tel1)    
+    vgram <- variogram(tel1)
+
+    par(mfrow = c(1, 2))
+    plot(pgram, max = TRUE, diagnostic = TRUE, pch = 19, cex = 0.8)
+    plot(vgram)
+}
+
 
 # Map path of jaguar i
 map_jag <- function(i, grad = 20, type = 2) {
@@ -403,14 +423,18 @@ jag_path <- function(x0, y0, nstep, par, neighb, type = 2, tprob) {
 }
 
 # Calculate variogram of jaguar path
-vgram <- function(path, cut = 100) {
+vgram <- function(path, cut = 10, window = 14, start = 1) {
+    date0 <- as.Date(path$t_[start])
+    date1 <- date0 + window
+    path <- path[which(path$t_ >= date0 & path$t_ <= date1), ]
     var <- sapply(1:cut, function(t) {
         p1 <- path[1:(nrow(path) - t), 1:2]
         p2 <- path[(t + 1):nrow(path), 1:2]
 
-        out <- sqrt((p1$x - p2$x)^2 + (p1$y - p2$y)^2)
-        return(mean(out))
+        out <- sqrt((p1[, 1] - p2[, 1])^2 + (p1[, 2] - p2[, 2])^2)
+        return(mean(unlist(out)))
     })
+    plot(var, type = "l")
     return(var)
 }
 

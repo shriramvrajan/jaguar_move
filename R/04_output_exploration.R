@@ -1,10 +1,11 @@
-plot_res <- FALSE
-plot_indiv <- TRUE
 load_source <- TRUE
 
 if (load_source) {
     source("R/03_results.R")
 }
+
+plot_res <- FALSE
+plot_indiv <- TRUE
 
 ### Data =======================================================================
 
@@ -47,19 +48,62 @@ if (plot_res) {
 
 # Plotting for individual jaguar
 if (plot_indiv) {
-    n <- which(jag_id == 20)
+    n <- 99
+    map_jag(n)
 
-    tr <- jag_track(jag_id[n])
-    st <- steps(tr)
-
-    print(summarize_speed(tr))
-    print(summarize_sl(tr))
-
+    tr <- jag_track(n)
+    # st <- steps(tr)
+    # print(summarize_speed(tr))
+    # print(summarize_sl(tr))
     print(diff(sampling_period(tr)))
 
-    # ggplot(aes(x = t_, y = y_), data = tr)
-    plot_ly(x = x_, y = y_, z = t_, type = "scatter3d", mode = "markers", color = temp)
-    # print(map_homerange(jag_id[n]))
+    # ctmm stuff
+    tel <- as.telemetry(jag_move[ID == n], timeformat = "auto")
+   
+    # monthly(tel, 1)
+ 
+    km <- kmeans(tel[, 4:6], centers = 3)
+    tel$clus <- km$cluster
+    fig <- plot_ly(x = tel$x, y = tel$y, z = tel$t, type = "scatter3d", 
+                   mode = "lines", line = list(width = 1, color = tel$clus)) %>% 
+                   add_trace(x = km$centers[, 2], y = km$centers[, 3], 
+                             z = km$centers[, 1], type = "scatter3d", 
+                             mode = "markers", marker = list(size = 5),
+                             line = list(color = "white"))
+    fig
+
+    wss <- vector()
+    for (k in seq_len(10)) {
+        km <- kmeans(tel[, 4:6], centers = k)
+        wss[k] <- km$tot.withinss
+    }
+    plot(wss)
+    ## switch points how to treat
+    ## just run 5 home range estimates (brown, OUx3)
+    ## k-means clustering spacetime?
+
+    ## Initial model is already cool, but serves as a baseline for a plethora of possibilities
+    ## Sets stage for us to examine world in some different ways
+
+    ## Two foundational products, conceptual map and model as basis of comparison. 
+    ## COOL way to conceptualize the literature and how we are bringing together.
+    ## Basic model, application to jaguars
+
+    ## Landscape kind of stuff
+    ## Examination of home range
+    ## Landscape level connectivity stuff
+    ## SDMs, does this kind of thing improve it
+
+    ## Attractors, spatial bounds, periodicity - what model captures those?    
+
+    ### Home range stuff etc, patterns of movement concrete
+    ### Hypothesis generation, capture that process in the meeting
+
+    #### Fractals, rugosity, tortuosity?
+
+    #### Ecological theory - what do they tell us about how to think about this?
+
+    ### Some set of switches allowing us to test different hypotheses
 }
 
 ## Movebank stuff ==============================================================

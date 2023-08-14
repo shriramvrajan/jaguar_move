@@ -8,7 +8,7 @@ scratch/*
 .vscode/*
 docs/*
 data/*
-figures/*
+figs/*
 vasco.sh
 R/old
 jaguar_movement.md

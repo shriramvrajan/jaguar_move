@@ -86,7 +86,7 @@ if (refit_model) {
     id <- as.numeric(jag_id[i])
 
     # Adding individual home range (AKDE) to brdf
-    home <- raster(paste0("data/output/homeranges/homerange_", id, ".grd"))
+    home <- rast(paste0("data/homeranges/homerange_", id, ".grd"))
     brdf$home <- as.vector(home)
     # Observed trajectory of jaguar i
     jag_traject <- jag_move[ID == id, 3:4]

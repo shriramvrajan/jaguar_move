@@ -98,6 +98,8 @@ plot_env <- function(layer, bounds, path, grad = 20, ras = env) {
 plot_ts <- function(tr) {
     plot_ly(x = tr$x_, y = tr$y_, z = tr$t_, type = "scatter3d", 
         mode = "lines", line = list(width = 1))
+    
+
 }
 
 # Decompose time series into 28d chunks

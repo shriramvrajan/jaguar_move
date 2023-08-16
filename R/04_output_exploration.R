@@ -19,27 +19,7 @@ plot_indiv <- TRUE
 
 ### Analyses ===================================================================
 
-
-# Basic dataset exploration
-jm <- jag_move
-jm$year <- as.numeric(format(as.POSIXct(jm$timestamp, 
-                        format = "%m/%d/%Y %H:%M"), "%Y"))
-jm$year <- ifelse(jm$year > 24, jm$year + 1900, jm$year + 2000)
-
-jm$mon <- format(as.POSIXct(jm$timestamp, format = "%m/%d/%Y %H:%M"), "%m")
-jm$day <- format(as.POSIXct(jm$timestamp, format = "%m/%d/%Y %H:%M"), "%d")
-jm$time <- format(as.POSIXct(jm$timestamp, format = "%m/%d/%Y %H:%M"), "%H:%M")
-jm <- jm[, timestamp := NULL]
-
-jag_meta$start <- sapply(jag_meta$ID, function(id) {
-    min(jm[ID == id]$year)
-})
-jag_meta$end <- sapply(jag_meta$ID, function(id) {
-    max(jm[ID == id]$year)
-})
-
-
-# Plotting from results
+# Plotting from results --------------------------------------------------------
 if (plot_res) {
     # vars: 1 footprint, 2 elev, 3 slope, 4 forestcover, 5 distwater, 
     #       6 distroad, 7 homerange
@@ -69,22 +49,17 @@ if (plot_res) {
 }
 
 
-# Plotting for individual jaguar
+# Plotting for individual jaguar -----------------------------------------------
 if (plot_indiv) {
-    n <- 89
+    n <- 20
     map_jag(n)
 
-    tr <- jag_track(n)
-    # st <- steps(tr)
-    # print(summarize_speed(tr))
-    # print(summarize_sl(tr))
-    print(diff(sampling_period(tr)))
+    j <- jag_datafill(n)
+    hist(j$ta)
 
-    # ctmm stuff
+    # ctmm + plotly stuff for 3D plot ------------------------------------------
     tel <- as.telemetry(jag_move[ID == n], timeformat = "auto")
-   
     # monthly(tel, 1)
- 
     fig <- plot_ly(x = tel$x, y = tel$y, z = tel$t, type = "scatter3d", 
                    mode = "lines", line = list(width = 1)) 
     # km <- kmeans(tel[, 4:6], centers = 1)
@@ -97,39 +72,14 @@ if (plot_indiv) {
     #                          line = list(color = "white"))
     fig
     
-
+    # kmeans stuff -------------------------------------------------------------
     wss <- vector()
     for (k in seq_len(10)) {
         km <- kmeans(tel[, 4:6], centers = k)
         wss[k] <- km$tot.withinss
     }
     plot(wss)
-    ## switch points how to treat
-    ## just run 5 home range estimates (brown, OUx3)
-    ## k-means clustering spacetime?
 
-    ## Initial model is already cool, but serves as a baseline for a plethora of possibilities
-    ## Sets stage for us to examine world in some different ways
-
-    ## Two foundational products, conceptual map and model as basis of comparison. 
-    ## COOL way to conceptualize the literature and how we are bringing together.
-    ## Basic model, application to jaguars
-
-    ## Landscape kind of stuff
-    ## Examination of home range
-    ## Landscape level connectivity stuff
-    ## SDMs, does this kind of thing improve it
-
-    ## Attractors, spatial bounds, periodicity - what model captures those?    
-
-    ### Home range stuff etc, patterns of movement concrete
-    ### Hypothesis generation, capture that process in the meeting
-
-    #### Fractals, rugosity, tortuosity?
-
-    #### Ecological theory - what do they tell us about how to think about this?
-
-    ### Some set of switches allowing us to test different hypotheses
 }
 
 ## Movebank stuff ==============================================================

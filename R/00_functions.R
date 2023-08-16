@@ -12,6 +12,8 @@ library(ctmm)
 library(amt) 
 library(lubridate)
 library(plotly)
+library(apcluster)
+library(suncalc)
 # library(mixtools)
 
 # Global parameters ============================================================
@@ -31,7 +33,8 @@ wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
 jag_move <- readRDS("data/jag_data_BR.RDS")
 jag_id <- readRDS("data/jag_list.RDS")
 njag <- nrow(jag_id)
-jag_meta <- data.table(read.csv("data/input/jaguars/jaguar_metadata.csv"))
+jag_meta <- data.table(read.csv("data/input/jaguars/jaguar_metadata2.csv"))
+
 
 # RasterStack of environmental variables 
 # see 01_generate_data.R for details
@@ -182,6 +185,33 @@ jag_track <- function(id) {
     path <- project(path, epsg5880)
     path <- track(x = crds(path)[, 1], y = crds(path)[, 2], 
                   t = path$t, id = path$ID, crs = epsg5880)
+}
+
+jag_datafill <- function(id) {
+    dat <- jag_move[ID == id]
+    dat$year <- as.numeric(format(as.POSIXct(dat$timestamp, 
+                            format = "%m/%d/%Y %H:%M"), "%Y"))
+    dat$year <- ifelse(dat$year > 23, dat$year + 1900, dat$year + 2000)
+
+    dat$mon <- as.numeric(format(as.POSIXct(dat$timestamp, 
+                           format = "%m/%d/%Y %H:%M"), "%m"))
+    dat$day <- as.numeric(format(as.POSIXct(dat$timestamp, 
+                           format = "%m/%d/%Y %H:%M"), "%d"))
+    dat$hr <- format(as.POSIXct(dat$timestamp, format = "%m/%d/%Y %H:%M"), "%H:%M")
+    dat$hr <- as.numeric(gsub(":[0-9][0-9]", "", dat$hr))
+    dat <- dat[, timestamp := NULL]
+
+    tr <- jag_track(id)
+    st <- steps(tr)
+    dat$sl <- c(NA, st$sl_)             # step lengths in m
+    dat$ta <- c(NA, st$ta_)             # turn angles in radians
+    dat$dir <- c(NA, st$direction_p)    # bearing in radians
+    dat$dt <- c(NA, as.numeric(st$dt_)) # time interval in minutes
+    dat$spd <- dat$sl / dat$dt
+
+
+    return(dat[, c("longitude", "latitude", "ID", "year", "mon", "day", "hr", 
+                   "sl", "ta", "dir", "dt", "spd")])
 }
 
 # 2. Movement model ------------------------------------------------------------

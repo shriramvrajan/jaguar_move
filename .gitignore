@@ -9,6 +9,7 @@ scratch/*
 docs/*
 data/*
 figs/*
+gis/*
 vasco.sh
 R/old
 jaguar_movement.md

@@ -135,3 +135,7 @@ jag_meta$biome[42] <- "Mata Atlântica" # fix for one jaguar, Argentina border
 write.csv(jag_meta, "data/input/jaguars/jaguar_metadata.csv", row.names = FALSE)
 
 msg("Environmental layers saved, end of generate_data.R.")
+
+# Adding information to move tracks ============================================
+
+jagm2 <- do.call(rbind, lapply(unlist(jag_id), jag_datafill))

@@ -14,6 +14,7 @@ library(lubridate)
 library(plotly)
 library(apcluster)
 library(suncalc)
+library(fractaldim)
 # library(mixtools)
 
 # Global parameters ============================================================
@@ -121,7 +122,6 @@ monthly <- function(tel, n = 1) {
     plot(pgram, max = TRUE, diagnostic = TRUE, pch = 19, cex = 0.8)
     plot(vgram)
 }
-
 
 # Map path of jaguar i
 map_jag <- function(i, grad = 20, type = 2) {

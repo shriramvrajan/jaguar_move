@@ -52,14 +52,14 @@ if (plot_res) {
 # Plotting for individual jaguar -----------------------------------------------
 if (plot_indiv) {
     n <- 20
-    map_jag(n)
+    map_track(n)
 
-    j <- jag_datafill(n)
+    j <- add_track_metadata(n)
     hist(j$ta)
 
     # ctmm + plotly stuff for 3D plot ------------------------------------------
     tel <- as.telemetry(jag_move[ID == n], timeformat = "auto")
-    # monthly(tel, 1)
+    # lunarize(tel, 1)
     fig <- plot_ly(x = tel$x, y = tel$y, z = tel$t, type = "scatter3d", 
                    mode = "lines", line = list(width = 1)) 
     # km <- kmeans(tel[, 4:6], centers = 1)

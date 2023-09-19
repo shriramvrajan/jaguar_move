@@ -70,7 +70,7 @@ names(res)[24:30] <- paste0("p", 1:7)
 res <- res[-which(is.infinite(res$ll0)), ]
 # res <- res[-which(res$nmove < 100), ]
 
-msg("Results compiled")
+message("Results compiled")
 
 if (FALSE) {
    hist(aic_k, 100, col = rgb(1, 0, 0, 0.4), border = NA)

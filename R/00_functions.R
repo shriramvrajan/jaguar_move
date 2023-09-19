@@ -1,6 +1,10 @@
 rm(list = ls())
 
-## Basic functions and libraries
+## Basic functions and libraries ===============================================
+
+# 
+
+
 
 # Libraries
 library(terra)
@@ -15,20 +19,18 @@ library(plotly)
 library(apcluster)
 library(suncalc)
 library(fractaldim)
-# library(mixtools)
 
 # Global parameters ============================================================
 
-buffersize <- 1 # How far does jaguar move in 1 time step
+# How many pixels does jaguar move in 1 time step?
+buffersize <- 1 
 
-wgs84 <- "+proj=longlat +datum=WGS84 +no_defs +type=crs"
+# CRS definitions
+wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
 epsg5880 <- "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000 
 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs"
 
 # Data =========================================================================
-
-# WGS84 projection
-wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
 
 # Jaguar movement data, ID numbers, and metadata
 jag_move <- readRDS("data/jag_data_BR.RDS")
@@ -36,13 +38,11 @@ jag_id <- readRDS("data/jag_list.RDS")
 njag <- nrow(jag_id)
 jag_meta <- data.table(read.csv("data/input/jaguars/jaguar_metadata2.csv"))
 
-
-# RasterStack of environmental variables 
-# see 01_generate_data.R for details
+# RasterStack of environmental variables -- see 01_generate_data.R for details
 brazil_ras <- rast("data/env_layers.grd")
-# RasterStack of environmental variables, but as a data frame ('brdf')
-load("data/env_layers.RData")
+load("data/env_layers.RData") # as a data frame ('brdf')
 
+# Brazil biomes shapefile
 biome <- vect("data/input/Brazil_biomes/Brazil_biomes.shp")
 
 # Functions ====================================================================
@@ -50,19 +50,19 @@ biome <- vect("data/input/Brazil_biomes/Brazil_biomes.shp")
 # 0. Basic ---------------------------------------------------------------------
 
 # Output message m both in console and in logfile f
-msg <- function(m, f = "data/output/run_log.txt") {
+message <- function(m, f = "data/output/run_log.txt") {
     m <- paste(format(Sys.time(), "%d.%m.%y  %R"), m)
     print(m)
     cat(m, file = f, append = TRUE, sep = "\n")
 }
 
 # Save raster x as filename fn under ./data/
-save_ras <- function(x, fn) {
+save_raster <- function(x, fn) {
     # Save raster often because it can get corrupted while working
     writeRaster(x, paste0("data/", fn), overwrite = TRUE)
 }
 
-rast_df <- function(r) {
+raster_to_df <- function(r) {
     outdf <- as.data.frame(r)
     outdf <- cbind(outdf, rowColFromCell(r, seq_len(nrow(outdf))))
     return(outdf)
@@ -79,9 +79,53 @@ load_if_exists <- function(files, dir) {
     })
 }
 
+# Produce amt::track object for jaguar i
+make_track <- function(id) {
+    id <- as.numeric(id)
+    path <- jag_move[ID == id]
+    path$t <- lubridate::mdy_hm(as.character(path$timestamp))
+    path <- vect(path, geom = c("longitude", "latitude"), crs = wgs84)
+    path <- project(path, epsg5880)
+    path <- track(x = crds(path)[, 1], y = crds(path)[, 2], 
+                  t = path$t, id = path$ID, crs = epsg5880)
+}
+
+# Decompose timestamp into year, month, day, hour and add metadata to track
+add_track_metadata <- function(id) {
+    dat <- jag_move[ID == id]
+    dat$year <- as.numeric(format(as.POSIXct(dat$timestamp, 
+                            format = "%m/%d/%Y %H:%M"), "%Y"))
+    dat$year <- ifelse(dat$year > 23, dat$year + 1900, dat$year + 2000)
+
+    dat$mon <- as.numeric(format(as.POSIXct(dat$timestamp, 
+                           format = "%m/%d/%Y %H:%M"), "%m"))
+    dat$day <- as.numeric(format(as.POSIXct(dat$timestamp, 
+                           format = "%m/%d/%Y %H:%M"), "%d"))
+    dat$hr <- format(as.POSIXct(dat$timestamp, format = "%m/%d/%Y %H:%M"), "%H:%M")
+    dat$hr <- as.numeric(gsub(":[0-9][0-9]", "", dat$hr))
+    dat <- dat[, timestamp := NULL]
+
+    tr <- make_track(id)
+    st <- steps(tr)
+    dat$sl <- c(NA, st$sl_)             # step lengths in m
+    dat$ta <- c(NA, st$ta_)             # turn angles in radians
+    dat$dir <- c(NA, st$direction_p)    # bearing in radians
+    dat$dt <- c(NA, as.numeric(st$dt_)) # time interval in minutes
+    dat$spd <- dat$sl / dat$dt
+
+
+    return(dat[, c("longitude", "latitude", "ID", "year", "mon", "day", "hr", 
+                   "sl", "ta", "dir", "dt", "spd")])
+}
+
 # 1. Data exploration ----------------------------------------------------------
 
 # Plot environmental layers for path 
+# layer: layer number of raster
+# bounds: bounding box of path
+# path: path of jaguar
+# grad: number of colors to use for path
+# ras: raster stack of environmental layers
 plot_env <- function(layer, bounds, path, grad = 20, ras = env) {
     terra::plot(crop(ras[[layer]], bounds), main = names(ras)[layer], 
                 col = rev(grey.colors(50, start = 0.7, end = 1)))
@@ -98,33 +142,18 @@ plot_env <- function(layer, bounds, path, grad = 20, ras = env) {
 
 }
 
-# Plot time series as 3D line plot (x, y, t)
-plot_ts <- function(tr) {
+# Plot time series (in track form) as 3D line plot (x, y, t)
+# tr: track object
+plot_xyt <- function(tr) {
     plot_ly(x = tr$x_, y = tr$y_, z = tr$t_, type = "scatter3d", 
         mode = "lines", line = list(width = 1))
-    
-
-}
-
-# Decompose time series into 28d chunks
-monthly <- function(tel, n = 1) {
-
-    lunar <- 28 * 24 * 60 * 60
-    t0 <- tel$t[1]
-    start <- t0 + (n - 1) * lunar
-    end   <- t0 + n * lunar
-    
-    tel1 <- tel[tel$t %in% start:end, ]
-    pgram <- periodogram(tel1)    
-    vgram <- variogram(tel1)
-
-    par(mfrow = c(1, 2))
-    plot(pgram, max = TRUE, diagnostic = TRUE, pch = 19, cex = 0.8)
-    plot(vgram)
 }
 
 # Map path of jaguar i
-map_jag <- function(i, grad = 20, type = 2) {
+# i: ID number of jaguar
+# grad: number of colors to use for path
+# type: 1 is satellite map using ggmap, 2 is env layers
+map_track <- function(i, grad = 20, type = 2) {
     # type: 1 is satellite map using ggmap, 2 is env layers
     moves <- jag_move[ID == as.numeric(i)]
 
@@ -159,9 +188,13 @@ map_jag <- function(i, grad = 20, type = 2) {
     }
 }
 
-# Map home range of jaguar i
+# Map home range of jaguar across environmental layers
+# id: ID number of jaguar
+# vgram: TRUE to plot variogram of path
 map_homerange <- function(id, vgram = FALSE) {
-  msg(paste0("Mapping home range of jaguar ", id, "..."))
+
+
+  message(paste0("Mapping home range of jaguar ", id, "..."))
   path <- jag_move[ID == as.numeric(id)]
   path <- as.telemetry(path, timeformat = "auto")
   if (vgram == TRUE) {
@@ -176,42 +209,22 @@ map_homerange <- function(id, vgram = FALSE) {
   plot(path, add = TRUE)
 }
 
-# Produce amt::track object for jaguar i
-jag_track <- function(id) {
-    id <- as.numeric(id)
-    path <- jag_move[ID == id]
-    path$t <- lubridate::mdy_hm(as.character(path$timestamp))
-    path <- vect(path, geom = c("longitude", "latitude"), crs = wgs84)
-    path <- project(path, epsg5880)
-    path <- track(x = crds(path)[, 1], y = crds(path)[, 2], 
-                  t = path$t, id = path$ID, crs = epsg5880)
-}
+# Decompose time series (in telemetry form) into 28d chunks
+# tel: telemetry object
+# n:   which 28d chunk to plot
+lunarize <- function(tel, n = 1) {
+    lunar <- 28 * 24 * 60 * 60
+    t0 <- tel$t[1]
+    start <- t0 + (n - 1) * lunar
+    end   <- t0 + n * lunar
+    
+    tel1 <- tel[tel$t %in% start:end, ]
+    pgram <- periodogram(tel1)    
+    vgram <- variogram(tel1)
 
-jag_datafill <- function(id) {
-    dat <- jag_move[ID == id]
-    dat$year <- as.numeric(format(as.POSIXct(dat$timestamp, 
-                            format = "%m/%d/%Y %H:%M"), "%Y"))
-    dat$year <- ifelse(dat$year > 23, dat$year + 1900, dat$year + 2000)
-
-    dat$mon <- as.numeric(format(as.POSIXct(dat$timestamp, 
-                           format = "%m/%d/%Y %H:%M"), "%m"))
-    dat$day <- as.numeric(format(as.POSIXct(dat$timestamp, 
-                           format = "%m/%d/%Y %H:%M"), "%d"))
-    dat$hr <- format(as.POSIXct(dat$timestamp, format = "%m/%d/%Y %H:%M"), "%H:%M")
-    dat$hr <- as.numeric(gsub(":[0-9][0-9]", "", dat$hr))
-    dat <- dat[, timestamp := NULL]
-
-    tr <- jag_track(id)
-    st <- steps(tr)
-    dat$sl <- c(NA, st$sl_)             # step lengths in m
-    dat$ta <- c(NA, st$ta_)             # turn angles in radians
-    dat$dir <- c(NA, st$direction_p)    # bearing in radians
-    dat$dt <- c(NA, as.numeric(st$dt_)) # time interval in minutes
-    dat$spd <- dat$sl / dat$dt
-
-
-    return(dat[, c("longitude", "latitude", "ID", "year", "mon", "day", "hr", 
-                   "sl", "ta", "dir", "dt", "spd")])
+    par(mfrow = c(1, 2))
+    plot(pgram, max = TRUE, diagnostic = TRUE, pch = 19, cex = 0.8)
+    plot(vgram)
 }
 
 # 2. Movement model ------------------------------------------------------------
@@ -234,24 +247,24 @@ make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
   return(mat)
 }
 
-# Normalize probabilities across neighbors of each cell
-norm_nbhd <- function(v) {
+# Normalize probabilities across neighbors of each cell ------------------------
+normalize_nbhd <- function(v) {
   out <- matrix(v[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
   out <- out / rowSums(out, na.rm = TRUE)
 }
 
-# Prepare input objects for movement model
-input_prep <- function(traject, max_dist, steps, nbhd0, r, rdf) {
+# Prepare input objects for movement model -------------------------------------
+prep_model_objects <- function(traject, max_dist, steps, nbhd0, r, rdf) {
 
     # Extended neighborhoods of each cell in individual's trajectory
-    msg("Building neighborhoods for each cell")
+    message("Building neighborhoods for each cell")
     nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = r, rdf = rdf)
   
     # Each entry in the list is the immediate neighborhood of each cell in the 
     # extended neighborhood, as represented by a cell number of raster r
-    msg("Getting indices of extended neighborhood of each cell")
+    message("Getting indices of extended neighborhood of each cell")
     nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                 # 14s
-      # msg(i)
+      # message(i)
       # For each actual cell in the path, what are the cells in the extended
       # neighborhood? Rows are path cells, columns are extended neighborhood.
       row_inds <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
@@ -265,7 +278,7 @@ input_prep <- function(traject, max_dist, steps, nbhd0, r, rdf) {
     nbhd_index <- as.vector(t(nbhd_index))
     nbhd_index <<- nbhd_index
 
-    msg("Getting indices of immediate neighborhood of each cell")
+    message("Getting indices of immediate neighborhood of each cell")
     # For each cell of the extended neighborhood of the path, what are
     # the immediate neighbors? Rows are path cells, columns are neighbors.
     # All row lengths standardized by turning missing neighbors into NAs.
@@ -278,7 +291,7 @@ input_prep <- function(traject, max_dist, steps, nbhd0, r, rdf) {
     to_dest <<- t(matrix(unlist(to_dest), nrow = ncol(nbhd), ncol = nrow(nbhd)))
     dest <<- matrix(0, nrow = nrow(nbhd), ncol = ncol(nbhd))
 
-    msg("Indexing observed data...")
+    message("Indexing observed data...")
     # Building observed data to test against
     index_mat <- matrix(
       data = seq_len(length(nbhd_index)),
@@ -295,8 +308,26 @@ input_prep <- function(traject, max_dist, steps, nbhd0, r, rdf) {
     obs <<- obs
 }
 
-# Returns negative of the maximum log likelihood given a set of parameters (par)  
-loglike_fun <- function(par) {
+# Fit null model to empirical data ---------------------------------------------
+null_model <- function(par, empirical) {
+  # par        : Initial values of parameters for optimization
+  # empirical  : Empirical parameters for step and turn distributions
+  #              c(shape, rate, shape, rate)
+
+  
+  
+
+  
+  avail_steps <- rgamma(100, shape = empirical[1], rate = empirical[2])
+  avail_turns <- rgamma(100, shape = empirical[3], rate = empirical[4])
+
+   
+    
+
+}
+
+# Return -(maximum log likelihood) given a set of parameters -------------------
+log_likelihood <- function(par) {
   # par        : Initial values of parameters for optimization
   # nbhd       : Neighborhood
   # step_range : Step range
@@ -309,20 +340,22 @@ loglike_fun <- function(par) {
   #               to the next GPS observation
   # env        : Environmental variables
 
-  # Attractiveness function 1: environmental variables + home range ------------
-  # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-  #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+#   Attractiveness function 1: environmental variables + home range ------------
+  attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+                   par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6] +
+                   par[7] * env$home)
   # attract_h <- exp(par[7] * env$home)
-  # attract <- norm_nbhd(attract_e * attract_h) #* norm_nbhd(attract_t)
+  # attract <- normalize_nbhd(attract_e * attract_h) #* normalize_nbhd(attract_t)
+  attract <- normalize_nbhd(attract_e)
 
   # Attractiveness function 2: just home range ---------------------------------
   # attract_h <- exp(par[1] * env$home)
-  # attract <- norm_nbhd(attract_h) 
+  # attract <- normalize_nbhd(attract_h) 
 
   # Attractiveness function 3: simulations -------------------------------------
-  attract1 <- norm_nbhd(exp(par[1] * env1)) # + exp(par[2] * env2)
-  attract2 <- norm_nbhd(exp(par[2] * env2))
-  attract <- attract1
+  # attract1 <- normalize_nbhd(exp(par[1] * env1)) # + exp(par[2] * env2)
+  # attract2 <- normalize_nbhd(exp(par[2] * env2))
+  # attract <- attract1
 
   # Array for propagating probabilities forward ================================
   # step_range : (2 * max_dist + 1)^2 
@@ -398,7 +431,7 @@ gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {
     # Output as both raster and data frame
     out <- rast(out)
     # plot(out)
-    outdf <- rast_df(out)
+    outdf <- raster_to_df(out)
     return(list(raster = out, df = outdf))
 }
 

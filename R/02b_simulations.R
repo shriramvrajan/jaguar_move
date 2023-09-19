@@ -15,10 +15,10 @@ n_obs        <- step0 / sim_interval
 sim_steps    <- 10  # Number of steps to simulate
 sim_n        <- 5   # Number of simulations to run
 
-msg(paste0("Simulation interval: ", sim_interval))
-msg(paste0("Observations per simulation: ", n_obs))
-msg(paste0("Simulation steps: ", sim_steps))
-msg(paste0("Number of simulations: ", sim_n))
+message(paste0("Simulation interval: ", sim_interval))
+message(paste0("Observations per simulation: ", n_obs))
+message(paste0("Simulation steps: ", sim_steps))
+message(paste0("Number of simulations: ", sim_n))
 
 ### Landscape generation
 envsize <- 150  # size of landscape in cells
@@ -42,7 +42,7 @@ terra::plot(env02[[1]])
 ## Simulation ==================================================================
 
 paths <- lapply(1:sim_n, function(i) {
-          msg(paste0("Path #: ", i, " / ", sim_n))
+          message(paste0("Path #: ", i, " / ", sim_n))
           # x0 <- sample(100, 1)
           # y0 <- sample(100, 1)
           x0 <- ceiling(envsize / 2)
@@ -91,16 +91,16 @@ nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize,
                    r = env01[[1]], rdf = env01[[2]]) 
 
 for (i in 1:sim_n) {
-    msg(paste0("Testing path #: ", i, " / ", sim_n))
+    message(paste0("Testing path #: ", i, " / ", sim_n))
     current_jag <- i # for use in loglike_fun
     traject <- jag_traject_cells[[i]]
-    input_prep(traject, max_dist, steps, nbhd0, r = env01[[1]], 
+    prep_model_objects(traject, max_dist, steps, nbhd0, r = env01[[1]], 
                rdf = env01[[2]])
     
     env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))
     env2 <- scales::rescale(env02[[2]]$sim1[nbhd_index], to = c(0, 1))
 
     # par_optim <- rnorm(1)
-    ll <- loglike_fun(par0)
+    ll <- log_likelihood(par0)
     saveRDS(ll, file = paste0("data/output/simulations/ll", i, ".rds"))
 }

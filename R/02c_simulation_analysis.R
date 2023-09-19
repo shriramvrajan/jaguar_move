@@ -7,9 +7,9 @@ currents   <- load_if_exists(paste0("current", 1:sim_n, ".RDS"),
                         dir = "data/output/simulations")
 
 env01 <- rast("data/output/simulations/env01.tif")
-env01 <- list(env01, rast_df(env01))
+env01 <- list(env01, raster_to_df(env01))
 env02 <- rast("data/output/simulations/env02.tif")
-env02 <- list(env02, rast_df(env02))
+env02 <- list(env02, raster_to_df(env02))
 
 par(mfrow = c(1, 3))
 res <- lapply(1:sim_n, function(i) {

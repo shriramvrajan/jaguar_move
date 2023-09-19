@@ -9,7 +9,7 @@ refit_model     <- TRUE             # Refit movement model parameters
 model_calcnull  <- FALSE            # Calculate null likelihoods 
                                     # refit_model must be TRUE for this one
 
-npar            <- 1              # Number of parameters in current model
+npar            <- 7              # Number of parameters in current model
 steps           <- 25             # How many steps to simulate forward
 
 i_initial       <- 1              # Individual to start at
@@ -24,7 +24,7 @@ if (refit_homes) {
   ## and use model selection to decide whether to include home ranges on a per
   ## individual basis (?) 
   for (id in jag_id$jag_id) {
-    msg(paste0("Fitting home range for individual ", id))
+    message(paste0("Fitting home range for individual ", id))
     # Individual trajectory
     jag_traject <- as.telemetry(jag_move[ID == as.numeric(id)],
                                 timeformat = "auto")
@@ -46,16 +46,16 @@ if (refit_homes) {
     # plot(jag_kde); plot(jag_traject, add = TRUE)   
     # dev.off()
     jag_kde <- resample(jag_kde, brazil_ras[[1]], method = "ngb")
-    save_ras(jag_kde, paste0("output/homeranges/homerange_", id, ".tif"))
+    save_raster(jag_kde, paste0("output/homeranges/homerange_", id, ".tif"))
 
   }
 }
 
 ### Fitting turn angle distributions 
 if (refit_turns) {
-  msg("Fitting mixture model for turn angle distributions")
+  message("Fitting mixture model for turn angle distributions")
   turn_models <- lapply(jag_id$jag_id, function(id) {
-    msg(paste("Fitting turn angle mixture model for individual", id))
+    message(paste("Fitting turn angle mixture model for individual", id))
     # Individual trajectory (using amt::make_track for turn angles)
     jag_traject <- as.telemetry(jag_move[ID == as.numeric(id)],
                                 timeformat = "auto")
@@ -75,14 +75,14 @@ if (refit_turns) {
 
 ### Fitting environmental parameters
 if (refit_model) {
-  msg("Fitting model parameters")
+  message("Fitting model parameters")
   ncell <- (buffersize * 2 + 1)^2
-  msg(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
+  message(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
   nbhd0 <- make_nbhd(i = seq_len(nrow(brdf)), sz = buffersize)                   # 6.4s
 
   for (i in i_initial:n_iter) {
 
-    msg(paste0("Jaguar #: ", i, " / ", n_iter))
+    message(paste0("Jaguar #: ", i, " / ", n_iter))
     id <- as.numeric(jag_id[i])
 
     # Adding individual home range (AKDE) to brdf
@@ -103,7 +103,7 @@ if (refit_model) {
 
     # Prepare input for fitting, given trajectory, neighborhood size, and number
     # of steps to simulate forward
-    input_prep(jag_traject_cells, max_dist, nsteps, r = brazil_ras, rdf = brdf,
+    prep_model_objects(jag_traject_cells, max_dist, nsteps, r = brazil_ras, rdf = brdf,
                nbhd0 = nbhd0)
 
     # Normalizing desired environmental variables for extended neighborhood
@@ -116,12 +116,12 @@ if (refit_model) {
 
     # Calculate null likelihoods for each jaguar if not already done
     if (model_calcnull) {
-      msg(paste0("Calculating null likelihood for jaguar ", i))
-      null_likelihood <- loglike_fun(c(rep(0, npar)))
+      message(paste0("Calculating null likelihood for jaguar ", i))
+      null_likelihood <- log_likelihood(c(rep(0, npar)))
       saveRDS(null_likelihood, paste0("data/output/null_", i, ".RDS"))
     } else {
       param <- rnorm(npar)
-      msg("Running optim...")
+      message("Running optim...")
       ntries <- 0
       ## Main fitting loop, tries each individual 20x and moves on if no fit
       while (ntries <= 20) {
@@ -129,20 +129,20 @@ if (refit_model) {
             par_out <- optim(param, loglike_fun)
             saveRDS(par_out, paste0("data/output/par_out_", i, ".RDS"))
 
-            msg("Running loglike_fun...")
-            likelihood <- loglike_fun(par_out[[1]])
+            message("Running loglike_fun...")
+            likelihood <- log_likelihood(par_out[[1]])
             saveRDS(likelihood, paste0("data/output/likelihood_", i, ".RDS"))
 
-            msg(paste0("jaguar ", i, " fitted ", date()))
+            message(paste0("jaguar ", i, " fitted ", date()))
             ntries <- 21 # End while loop
           },
           error = function(e) {
-            msg(e)
-            msg(paste("Try #:", ntries))
+            message(e)
+            message(paste("Try #:", ntries))
             if (ntries == 20) {
-              msg("Skipping, couldn't fit in 20 tries")
+              message("Skipping, couldn't fit in 20 tries")
             } else {
-              msg("Retrying")
+              message("Retrying")
             }
           },
           finally = {

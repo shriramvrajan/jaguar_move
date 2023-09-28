@@ -2,23 +2,19 @@ rm(list = ls())
 
 ## Basic functions and libraries ===============================================
 
-# 
-
-
-
 # Libraries
 library(terra)
 library(tidyverse)
 library(data.table)
-library(finch)
 library(gstat)
 library(ctmm)
 library(amt) 
 library(lubridate)
-library(plotly)
-library(apcluster)
-library(suncalc)
-library(fractaldim)
+# library(plotly)
+# library(apcluster)
+# library(suncalc)
+# library(fractaldim)
+# library(finch)
 
 # Global parameters ============================================================
 
@@ -80,7 +76,7 @@ load_if_exists <- function(files, dir) {
 }
 
 # Produce amt::track object for jaguar i
-make_track <- function(id) {
+make_track0 <- function(id) {
     id <- as.numeric(id)
     path <- jag_move[ID == id]
     path$t <- lubridate::mdy_hm(as.character(path$timestamp))
@@ -91,7 +87,7 @@ make_track <- function(id) {
 }
 
 # Decompose timestamp into year, month, day, hour and add metadata to track
-add_track_metadata <- function(id) {
+make_track <- function(id) {
     dat <- jag_move[ID == id]
     dat$year <- as.numeric(format(as.POSIXct(dat$timestamp, 
                             format = "%m/%d/%Y %H:%M"), "%Y"))
@@ -105,7 +101,7 @@ add_track_metadata <- function(id) {
     dat$hr <- as.numeric(gsub(":[0-9][0-9]", "", dat$hr))
     dat <- dat[, timestamp := NULL]
 
-    tr <- make_track(id)
+    tr <- make_track0(id)
     st <- steps(tr)
     dat$sl <- c(NA, st$sl_)             # step lengths in m
     dat$ta <- c(NA, st$ta_)             # turn angles in radians
@@ -239,22 +235,19 @@ make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
   ind1 <- t(rep(-sz:sz, each = 2 * sz + 1))
   ind2 <- t(rep(-sz:sz, 2 * sz + 1))
   for (j in seq_len(length(ind1))) {
-    mat[, j] <- cellFromRowCol(
-      r, rdf[i, 2] + ind1[j],
-      rdf[i, 3] + ind2[j]
-    )
+    mat[, j] <- cellFromRowCol(r, rdf$row[i] + ind1[j], rdf$col[i] + ind2[j])
   }
   return(mat)
 }
 
-# Normalize probabilities across neighbors of each cell ------------------------
+# Normalize probabilities across neighbors of each cell 
 normalize_nbhd <- function(v) {
   out <- matrix(v[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
   out <- out / rowSums(out, na.rm = TRUE)
 }
 
-# Prepare input objects for movement model -------------------------------------
-prep_model_objects <- function(traject, max_dist, steps, nbhd0, r, rdf) {
+# Prepare input objects for movement model 
+prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
 
     # Extended neighborhoods of each cell in individual's trajectory
     message("Building neighborhoods for each cell")
@@ -278,13 +271,12 @@ prep_model_objects <- function(traject, max_dist, steps, nbhd0, r, rdf) {
     nbhd_index <- as.vector(t(nbhd_index))
     nbhd_index <<- nbhd_index
 
+    # browser()
     message("Getting indices of immediate neighborhood of each cell")
     # For each cell of the extended neighborhood of the path, what are
     # the immediate neighbors? Rows are path cells, columns are neighbors.
     # All row lengths standardized by turning missing neighbors into NAs.
     to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {                 # 36s
-      # print(nbhd[x])
-      # print(ncol(nbhd) - length(x))
       out <- c(x, rep(NA, ncol(nbhd) - length(x)))
       return(out)
     })
@@ -308,29 +300,54 @@ prep_model_objects <- function(traject, max_dist, steps, nbhd0, r, rdf) {
     obs <<- obs
 }
 
-# Fit null model to empirical data ---------------------------------------------
-null_model <- function(par, empirical) {
-  # par        : Initial values of parameters for optimization
-  # empirical  : Empirical parameters for step and turn distributions
-  #              c(shape, rate, shape, rate)
-
+make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, minimum = 0) {
   
+  avail <- data.frame(sl = sample(sl_emp, n, replace = TRUE),
+                      ta = sample(ta_emp, n, replace = TRUE))
+  avail$x <- avail$sl * cos(avail$ta) / 1000
+  avail$y <- avail$sl * sin(avail$ta) / 1000
+  avail$xi <- sapply(avail$x, function(x) ifelse(x > 0, floor(x), ceiling(x)))
+  avail$yi <- sapply(avail$y, function(y) ifelse(y > 0, floor(y), ceiling(y)))
+  density <- tapply(avail$x, list(avail$yi, avail$xi), length)
+  density <- reshape2::melt(density)
+  names(density) <- c("x", "y", "n")
   
+  size <- max_dist * 2 + 1
+  out <- data.frame(x = rep(-max_dist:max_dist, times = size),
+                    y = rep(-max_dist:max_dist, each = size))
 
+  out <- merge(out, density, by = c("x", "y"), all.x = TRUE)
+  out$n[is.na(out$n)] <- 0
+  out$n <- out$n + minimum
+  out$n <- out$n / sum(out$n)
   
-  avail_steps <- rgamma(100, shape = empirical[1], rate = empirical[2])
-  avail_turns <- rgamma(100, shape = empirical[3], rate = empirical[4])
-
-   
-    
-
+  return(out$n)
 }
 
-# Return -(maximum log likelihood) given a set of parameters -------------------
+# Return -(maximum log likelihood) given a set of parameters
+log_likelihood0 <- function(par) {
+  # par        : Initial values of parameters for optimization
+
+  # Attractiveness function 0: traditional SSF 
+  attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+                   par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+
+  step_range <- (max_dist * 2 + 1) ^ 2
+  
+  p_obs <- sapply(seq_len(n_obs - 1), function(t) {
+    env_local <- attract_e[(step_range * (t - 1)):(step_range * t)]
+    env_local <- env_local / sum(env_local)
+    p <- par[7] * env_local + (1 - par[7]) * mk # mk = movement kernel
+    p[obs[t]]
+  })
+  
+  return(-sum(log(p_obs)))
+}
+
 log_likelihood <- function(par) {
   # par        : Initial values of parameters for optimization
   # nbhd       : Neighborhood
-  # step_range : Step range
+  # max_dist   : Maximum distance in pixels for one step
   # n_obs      : Number of GPS observations (length of track)
   # steps:     : Number of steps simulated
   # to_dest    : For each cell of the extended neighborhood of the path, what 
@@ -340,7 +357,8 @@ log_likelihood <- function(par) {
   #               to the next GPS observation
   # env        : Environmental variables
 
-#   Attractiveness function 1: environmental variables + home range ------------
+
+  # Attractiveness function 1: environmental variables + home range ------------
   attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
                    par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6] +
                    par[7] * env$home)
@@ -358,9 +376,10 @@ log_likelihood <- function(par) {
   # attract <- attract1
 
   # Array for propagating probabilities forward ================================
-  # step_range : (2 * max_dist + 1)^2 
+  # 
   # n_obs      : Number of GPS observations
   # steps      : Number of simulated steps
+  step_range <- (2 * max_dist + 1)^2 
   current <- array(0, dim = c(step_range, n_obs, sim_steps))
   
   # center     : Center of step_range (center cell of (2 * buffer + 1)
@@ -409,8 +428,47 @@ log_likelihood <- function(par) {
   return(-max(log_likelihood, na.rm = TRUE))
   # Return negative of the maximum log likelihood because we want to minimize
   # Lower negative log likelihood = higher likelihood 
+  # return(list(current, current2)) # DEBUG
+}
 
-  return(list(current, current2)) # DEBUG
+loglike <- function(x) {
+    # Wrapper function for log_likelihood and log_likelihood0
+    if (refit_model0 == TRUE) {
+        return(log_likelihood0(x))
+    } else {
+        return(log_likelihood(x))
+    }
+}
+
+run_optim <- function(param) {
+    ntries <- 0
+      ## Main fitting loop, tries each individual 20x and moves on if no fit
+    while (ntries <= 20) {
+        tryCatch({
+            par_out <- optim(param, loglike)
+            saveRDS(par_out, paste0("data/output/par_out_", i, ".RDS"))
+
+            message("Running loglike_fun...")
+            likelihood <- loglike(par_out[[1]])
+            saveRDS(likelihood, paste0("data/output/likelihood_", i, ".RDS"))
+
+            message(paste0("jaguar ", i, " fitted ", date()))
+            ntries <- 21 # End while loop
+          },
+          error = function(e) {
+            message(e)
+            message(paste("Try #:", ntries))
+            if (ntries == 20) {
+              message("Skipping, couldn't fit in 20 tries")
+            } else {
+              message("Retrying")
+            }
+          },
+          finally = {
+            ntries <- ntries + 1
+          }
+        )
+    }
 }
 
 # 2b. Simulation ---------------------------------------------------------------

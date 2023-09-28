@@ -70,7 +70,6 @@ if (plot_indiv) {
     #                          z = km$centers[, 1], type = "scatter3d", 
     #                          mode = "markers", marker = list(size = 5),
     #                          line = list(color = "white"))
-    fig
     
     # kmeans stuff -------------------------------------------------------------
     wss <- vector()

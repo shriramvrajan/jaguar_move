@@ -1,5 +1,5 @@
 ### Might need to add supercomputer functionality back in.
-## !IMPORTANT!: Run 00_basics.R first to set up the environment
+## !IMPORTANT!: Run through master.R 
 
 ## Switches ====================================================================
 
@@ -8,10 +8,10 @@ refit_turns     <- FALSE            # Refit turn distributions (MM)
 refit_model     <- TRUE             # Refit movement model parameters
 model_calcnull  <- FALSE            # Calculate null likelihoods 
                                     # refit_model must be TRUE for this one
-refit_model0    <- TRUE             # Refit traditional SSF model
+refit_model0    <- FALSE            # Refit traditional SSF model
                                     
 npar            <- 7              # Number of parameters in current model
-steps           <- 25             # How many steps to simulate forward
+sim_steps           <- 25             # How many steps to simulate forward
 
 i_initial       <- 1              # Individual to start at
 buffersize      <- 1              # Jaguars move 1px (1km) at a time
@@ -72,59 +72,6 @@ if (refit_turns) {
   # saveRDS(turn_models, "data/output/turn_models.RDS")  
 }
 
-### Fitting traditional SSF ----------------------------------------------------
-if (refit_model0) {
-
-  message("Fitting traditional SSF model")
-  for (id in jag_id$jag_id) {
-    
-    nbhd <- make_nbhd()
-
-  }
-
-
-  # message("Fitting movement kernels for all individuals")
-  # for (id in jag_id$jag_id) {
-  #   message(paste0("Fitting movement kernel for individual ", id))
-  #   # Individual trajectory
-  #   jag_traject <- make_track(id)
-    
-  #   sl_emp <- as.integer(na.exclude(jag_traject$sl) / 1000)
-  #   ta_emp <- na.exclude(jag_traject$ta)
-
-  #   build_movement_kernel <- function() {
-  #     # Generate 1000 random step lengths and turn angles
-  #     # Calculate where they fall on grid 
-  #     # Save as vector
-  #     sl_samp <- sample(sl_emp, 10000, replace = TRUE)
-  #     ta_samp <- sample(ta_emp, 10000, replace = TRUE)
-  #     avail <- data.frame(sl = sl_samp, ta = ta_samp, x = sl_samp * cos(ta_samp),
-  #                         y = sl_samp * sin(ta_samp))
-  #     avail$xi <- sapply(avail$x, function(x) ifelse(x > 0, floor(x), ceiling(x)))
-  #     avail$yi <- sapply(avail$y, function(y) ifelse(y > 0, floor(y), ceiling(y)))
-
-
-  #     if (any(is.na(avail$x))) avail <- avail[-which(is.na(avail$x)), ]
-      
-  #   }
-    
-  #   counts <- tapply(avail$x, list(avail$xi, avail$yi), length, simplify = F)
-  #   neighb <- matrix(nrow = nrow(counts) + 2, ncol = ncol(counts) + 2)
-  #   neighb[2:(nrow(counts) + 1), 2:(ncol(counts) + 1)] <- counts
-  #   neighb[which(is.na(neighb))] <- min(neighb, na.rm = TRUE)
-  #   neighb <- neighb / sum(neighb)
-
-  #   par(mfrow = c(1, 2))
-  #   plot(avail$x, avail$y)
-  #   # plot(avail$xi, avail$yi)
-  #   terra::plot(rast(neighb))
-
-  #   # Generate 1000 random step lengths and turn angles
-  #   # Calculate where they fall on grid 
-  #   # Save as vector
-  # }
-}
-
 ### Fitting environmental parameters -------------------------------------------
 if (refit_model) {
 
@@ -155,9 +102,9 @@ if (refit_model) {
       # Traditional SSF for comparison
       max_dist <- floor(max(dist)) 
       nbhd <- make_nbhd(i = jag_traject_cells, sz = max_dist)
-      obs <- sapply(seq_len(nrow(nbhd) - 1), function(step) {
+      obs <- unlist(lapply(seq_len(nrow(nbhd) - 1), function(step) {
         which(nbhd[step, ] == jag_traject_cells[step + 1])
-      })
+      }))
       nbhd_index <- as.vector(t(nbhd))
       track <- make_track(id)
       sl_emp <- as.vector(na.exclude(track$sl))

@@ -1,4 +1,5 @@
 ## Main script to run others
+rm(list = ls())
 
 source("R/00_functions.R")
 

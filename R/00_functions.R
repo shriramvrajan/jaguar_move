@@ -61,6 +61,7 @@ save_raster <- function(x, fn) {
 raster_to_df <- function(r) {
     outdf <- as.data.frame(r)
     outdf <- cbind(outdf, rowColFromCell(r, seq_len(nrow(outdf))))
+    names(outdf)[2:3] <- c("row", "col")
     return(outdf)
 }
 
@@ -325,8 +326,11 @@ make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, minimum = 0) {
 }
 
 # Return -(maximum log likelihood) given a set of parameters
+# log_likelihood0: For traditional SSF
+# log_likelihood:  For all others including simulations
 log_likelihood0 <- function(par) {
   # par        : Initial values of parameters for optimization
+  # par[7] <- exp(par[7]) / (1 + exp(par[7])) # Transform to [0, 1]
 
   # Attractiveness function 0: traditional SSF 
   attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
@@ -337,8 +341,9 @@ log_likelihood0 <- function(par) {
   p_obs <- sapply(seq_len(n_obs - 1), function(t) {
     env_local <- attract_e[(step_range * (t - 1)):(step_range * t)]
     env_local <- env_local / sum(env_local)
-    p <- par[7] * env_local + (1 - par[7]) * mk # mk = movement kernel
-    p[obs[t]]
+    env_local[obs[t]]
+    p <- par[7] * env_local * mk # mk = movement kernel
+    # p[obs[t]]
   })
   
   return(-sum(log(p_obs)))
@@ -359,12 +364,12 @@ log_likelihood <- function(par) {
 
 
   # Attractiveness function 1: environmental variables + home range ------------
-  attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-                   par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6] +
-                   par[7] * env$home)
+  # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+  #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6] +
+  #                  par[7] * env$home)
   # attract_h <- exp(par[7] * env$home)
   # attract <- normalize_nbhd(attract_e * attract_h) #* normalize_nbhd(attract_t)
-  attract <- normalize_nbhd(attract_e)
+  # attract <- normalize_nbhd(attract_e)
 
   # Attractiveness function 2: just home range ---------------------------------
   # attract_h <- exp(par[1] * env$home)
@@ -373,7 +378,18 @@ log_likelihood <- function(par) {
   # Attractiveness function 3: simulations -------------------------------------
   # attract1 <- normalize_nbhd(exp(par[1] * env1)) # + exp(par[2] * env2)
   # attract2 <- normalize_nbhd(exp(par[2] * env2))
-  # attract <- attract1
+  # attract <- attract1 # CHECK WHAT IS GOING ON HERE
+
+  # Attractiveness function 4: With 0-1 parameter ------------------------------
+  move_prob <- exp(par[7]) / (1 + exp(par[7]))
+  if (runif(1) > move_prob) {
+    attract <- rep(0, length(env[, 1]))
+    attract[ceiling(length(attract) / 2)] <- 1
+  } else {
+    attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+                     par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+    attract <- normalize_nbhd(attract_e)
+  }
 
   # Array for propagating probabilities forward ================================
   # 
@@ -393,7 +409,7 @@ log_likelihood <- function(par) {
   for (j in 1:(sim_steps - 1)) {
     # Probabilities across entire nbhd for step j
     step_prob <- as.vector(current[, , j]) * attract[]
-    step_prob2 <- as.vector(current2[, , j]) * attract2[] # DEBUG
+    # step_prob2 <- as.vector(current2[, , j]) * attract2[] # DEBUG
     # dest has same dimensions as nbhd
     # step_prob is a vector of length step_range
     # to_dest is a matrix with the same dimensions as nbhd
@@ -402,11 +418,11 @@ log_likelihood <- function(par) {
     #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
     #   nbhd is the 3rd cell of nbhd.
     dest[] <- step_prob[as.vector(to_dest)]
-    dest2[] <- step_prob2[as.vector(to_dest)] # DEBUG
+    # dest2[] <- step_prob2[as.vector(to_dest)] # DEBUG
 
     # Summing probabilities up to step j to generate step j+1
     current[, , j + 1] <- rowSums(dest, na.rm = TRUE)
-    current2[, , j + 1] <- rowSums(dest2, na.rm = TRUE) # DEBUG
+    # current2[, , j + 1] <- rowSums(dest2, na.rm = TRUE) # DEBUG
   }
   
   #### Run likelihood function from fitting with true parameters
@@ -422,9 +438,9 @@ log_likelihood <- function(par) {
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
   # log of product is sum of logs
 
-  saveRDS(predictions, paste0("data/output/simulations/p", current_jag, ".RDS"))
-  current <- list(current, current2) # DEBUG
-  saveRDS(current, paste0("data/output/simulations/current", current_jag, ".RDS")) # DEBUG
+  # saveRDS(predictions, paste0("data/output/simulations/p", current_jag, ".RDS"))
+  # current <- list(current, current2) # DEBUG
+  # saveRDS(current, paste0("data/output/simulations/current", current_jag, ".RDS")) # DEBUG
   return(-max(log_likelihood, na.rm = TRUE))
   # Return negative of the maximum log likelihood because we want to minimize
   # Lower negative log likelihood = higher likelihood 
@@ -608,4 +624,47 @@ par_to_df <- function(par) {
     df <- do.call(rbind, lapply(par, function(x) {
         print(x[[1]])
     }))
+}
+
+results_table <- function(s = c("K", "RW", "RWM", "trad2")) {
+  
+  # null <- load_output("LL_null")
+  
+  output <- lapply(s, function(x) {
+    load_output(paste0("LL_", x))
+  })
+
+  likelihood <- lapply(output, function(x) -x[[1]])
+  params <- lapply(output, function(x) par_to_df(x[[2]]))
+  names(params) <- s
+  npar <- sapply(params, function(x) ncol(x))
+  aic <- lapply(seq_len(length(likelihood)), function(i) {
+    2 * npar[i] - 2 * likelihood[[i]]
+  })  
+  
+
+  df <- as.data.frame(cbind(do.call(cbind, likelihood), do.call(cbind, aic)))
+  colnames(df) <- c(paste0("l_", s), paste0("aic_", s))
+
+  ## Extra variables
+  nmove <- sapply(1:njag, function(x) {
+    length(which(jag_move$ID == as.numeric(jag_id[x])))
+  })
+  ndays <- sapply(1:njag, function(x) {
+    moves <- jag_move[ID == as.numeric(jag_id[x])]
+    dates <- sort(as.Date(sapply(moves$timestamp, function(dt) {
+            strsplit(as.character(dt), " ")[[1]][1]
+        }), format = "%m/%d/%y"))
+    return(as.numeric(difftime(dates[length(dates)], dates[1])))
+  })
+  meandist <- tapply(jag_move$dist, jag_move$ID, function(x) mean(x, na.rm = TRUE))
+  totdist <- tapply(jag_move$dist, jag_move$ID, function(x) sum(x, na.rm = TRUE))
+
+  df <- cbind(jag_id, sex = as.factor(jagmeta_br$Sex),
+                  age = as.numeric(jagmeta_br$Estimated.Age),
+                  weight = as.numeric(jagmeta_br$Weight),
+                  bio = as.factor(jagmeta_br$biome),
+                  nmove, ndays, meandist, totdist, df)
+
+  return(list(df, params))
 }

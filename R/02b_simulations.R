@@ -94,7 +94,7 @@ for (i in 1:sim_n) {
     message(paste0("Testing path #: ", i, " / ", sim_n))
     current_jag <- i # for use in loglike_fun
     traject <- jag_traject_cells[[i]]
-    prep_model_objects(traject, max_dist, steps, nbhd0, r = env01[[1]], 
+    prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
                rdf = env01[[2]])
     
     env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))

@@ -1,24 +1,6 @@
 ### Might need to add supercomputer functionality back in.
 ## !IMPORTANT!: Run through master.R 
 
-## Switches ====================================================================
-
-refit_homes     <- FALSE            # Refit home ranges (AKDE) 
-refit_turns     <- FALSE            # Refit turn distributions (MM)
-refit_model     <- TRUE             # Refit movement model parameters
-model_calcnull  <- FALSE            # Calculate null likelihoods 
-                                    # refit_model must be TRUE for this one
-refit_model0    <- FALSE            # Refit traditional SSF model
-                                    
-npar            <- 7              # Number of parameters in current model
-sim_steps           <- 25             # How many steps to simulate forward
-
-i_initial       <- 1              # Individual to start at
-buffersize      <- 1              # Jaguars move 1px (1km) at a time
-n_iter          <- nrow(jag_id)   # Number of individuals
-
-### Body =======================================================================
-
 ### Fitting home ranges --------------------------------------------------------
 if (refit_homes) {
   ## Potentially: run the main fitting algorithm with and without home ranges

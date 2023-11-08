@@ -363,7 +363,7 @@ log_likelihood <- function(par) {
   # env        : Environmental variables
 
 
-  # Attractiveness function 1: environmental variables + home range ------------
+  # Attraction function 1: environmental variables + home range ----------------
   # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
   #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6] +
   #                  par[7] * env$home)
@@ -371,25 +371,32 @@ log_likelihood <- function(par) {
   # attract <- normalize_nbhd(attract_e * attract_h) #* normalize_nbhd(attract_t)
   # attract <- normalize_nbhd(attract_e)
 
-  # Attractiveness function 2: just home range ---------------------------------
+  # Attraction function 2: just home range -------------------------------------
   # attract_h <- exp(par[1] * env$home)
   # attract <- normalize_nbhd(attract_h) 
 
-  # Attractiveness function 3: simulations -------------------------------------
+  # Attraction function 3: simulations -----------------------------------------
   # attract1 <- normalize_nbhd(exp(par[1] * env1)) # + exp(par[2] * env2)
   # attract2 <- normalize_nbhd(exp(par[2] * env2))
   # attract <- attract1 # CHECK WHAT IS GOING ON HERE
 
-  # Attractiveness function 4: With 0-1 parameter ------------------------------
-  move_prob <- exp(par[7]) / (1 + exp(par[7]))
-  if (runif(1) > move_prob) {
-    attract <- rep(0, length(env[, 1]))
-    attract[ceiling(length(attract) / 2)] <- 1
-  } else {
-    attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-                     par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
-    attract <- normalize_nbhd(attract_e)
-  }
+  # Attraction function 4: With 0-1 parameter ----------------------------------
+  move_prob <- exp(par[7]) / (1 + exp(par[7])) 
+  attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+                   par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+  attract <- normalize_nbhd(attract_e)
+  attract <- t(apply(attract, 1, function(r) {
+    cent <- ceiling(length(r) / 2)
+    r[cent] <- r[cent] * (1 - move_prob)
+    r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
+    return(r / sum(r, na.rm = TRUE))
+  }))
+
+  # attract_m <- vector(length = length(attract_e))
+  # attract_m[] <- move_prob / (length(attract_m) - 1)
+  # attract_m[ceiling(length(attract_m) / 2)] <- 1 - move_prob # WRONG
+  # browser()
+  # attract <- normalize_nbhd(attract_e) * attract_m
 
   # Array for propagating probabilities forward ================================
   # 
@@ -403,12 +410,13 @@ log_likelihood <- function(par) {
   center <- step_range / 2 + 0.5
   current[center, , 1] <- 1
   
-  current2 <- current  # DEBUG
-  dest2 <- dest
+  # current2 <- current  # DEBUG
+  # dest2 <- dest
 
   for (j in 1:(sim_steps - 1)) {
     # Probabilities across entire nbhd for step j
     step_prob <- as.vector(current[, , j]) * attract[]
+
     # step_prob2 <- as.vector(current2[, , j]) * attract2[] # DEBUG
     # dest has same dimensions as nbhd
     # step_prob is a vector of length step_range
@@ -552,6 +560,8 @@ jag_path <- function(x0, y0, nstep, par, neighb, type = 2, tprob) {
         # readLines()
 
         attract <- switch(state, a1, a2)
+        print(length(attract))
+        # browser()
         step <- sample(seq_len(length(attract)), 1, prob = attract)
         path[i, ] <- c(rowColFromCell(env01[[1]], nbhd[step]), 
                        nbhd[step], state, a1[step], a2[step])

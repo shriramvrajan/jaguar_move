@@ -10,6 +10,7 @@ param <- results_table()[[2]]
 excl <- which(res$nmove < 300)
 res <- res[-excl, ]
 
+
 plot(res$aic_K, col = rgb(0, 0, 0, 0.4), pch = 19, ylim = c(0, 1.1e5))
 points(res$aic_RW, col = rgb(0, 1, 0, 0.4), pch = 19)
 points(res$aic_RWM, col = rgb(1, 0, 0, 0.4), pch = 19)

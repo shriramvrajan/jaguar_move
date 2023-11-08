@@ -1,0 +1,904 @@
+01.11.23  14:53 Fitting model parameters
+01.11.23  14:53 Making 9 cell neighborhood for each cell in Brazil
+01.11.23  14:53 Jaguar #: 1 / 82
+01.11.23  14:53 Building neighborhoods for each cell
+01.11.23  14:53 Getting indices of extended neighborhood of each cell
+01.11.23  14:53 Getting indices of immediate neighborhood of each cell
+01.11.23  14:54 Indexing observed data...
+01.11.23  14:54 Running optim...
+01.11.23  15:39 Running loglike_fun...
+01.11.23  15:39 jaguar 1 fitted Wed Nov  1 15:39:31 2023
+01.11.23  15:39 Jaguar #: 2 / 82
+01.11.23  15:39 Building neighborhoods for each cell
+01.11.23  15:39 Getting indices of extended neighborhood of each cell
+01.11.23  15:40 Getting indices of immediate neighborhood of each cell
+01.11.23  15:41 Indexing observed data...
+01.11.23  15:42 Running optim...
+01.11.23  17:41 Running loglike_fun...
+01.11.23  17:41 jaguar 2 fitted Wed Nov  1 17:41:19 2023
+01.11.23  17:41 Jaguar #: 3 / 82
+01.11.23  17:41 Building neighborhoods for each cell
+01.11.23  17:41 Getting indices of extended neighborhood of each cell
+01.11.23  17:41 Getting indices of immediate neighborhood of each cell
+01.11.23  17:41 Indexing observed data...
+01.11.23  17:41 Running optim...
+01.11.23  17:42 Running loglike_fun...
+01.11.23  17:42 jaguar 3 fitted Wed Nov  1 17:42:06 2023
+01.11.23  17:42 Jaguar #: 4 / 82
+01.11.23  17:42 Building neighborhoods for each cell
+01.11.23  17:42 Getting indices of extended neighborhood of each cell
+01.11.23  17:42 Getting indices of immediate neighborhood of each cell
+01.11.23  17:42 Indexing observed data...
+01.11.23  17:42 Running optim...
+01.11.23  17:58 Running loglike_fun...
+01.11.23  17:58 jaguar 4 fitted Wed Nov  1 17:58:38 2023
+01.11.23  17:58 Jaguar #: 5 / 82
+01.11.23  17:58 Building neighborhoods for each cell
+01.11.23  17:58 Getting indices of extended neighborhood of each cell
+01.11.23  17:58 Getting indices of immediate neighborhood of each cell
+01.11.23  17:59 Indexing observed data...
+01.11.23  17:59 Running optim...
+01.11.23  18:24 Running loglike_fun...
+01.11.23  18:24 jaguar 5 fitted Wed Nov  1 18:24:34 2023
+01.11.23  18:24 Jaguar #: 6 / 82
+01.11.23  18:24 Building neighborhoods for each cell
+01.11.23  18:24 Getting indices of extended neighborhood of each cell
+01.11.23  18:25 Getting indices of immediate neighborhood of each cell
+01.11.23  18:27 Indexing observed data...
+01.11.23  18:28 Running optim...
+01.11.23  21:06 Running loglike_fun...
+01.11.23  21:06 jaguar 6 fitted Wed Nov  1 21:06:19 2023
+01.11.23  21:06 Jaguar #: 7 / 82
+01.11.23  21:06 Building neighborhoods for each cell
+01.11.23  21:06 Getting indices of extended neighborhood of each cell
+01.11.23  21:06 Getting indices of immediate neighborhood of each cell
+01.11.23  21:06 Indexing observed data...
+01.11.23  21:06 Running optim...
+01.11.23  21:13 Running loglike_fun...
+01.11.23  21:13 jaguar 7 fitted Wed Nov  1 21:13:25 2023
+01.11.23  21:13 Jaguar #: 8 / 82
+01.11.23  21:13 Building neighborhoods for each cell
+01.11.23  21:13 Getting indices of extended neighborhood of each cell
+01.11.23  21:13 Getting indices of immediate neighborhood of each cell
+01.11.23  21:14 Indexing observed data...
+01.11.23  21:15 Running optim...
+01.11.23  22:12 Running loglike_fun...
+01.11.23  22:12 jaguar 8 fitted Wed Nov  1 22:12:59 2023
+01.11.23  22:12 Jaguar #: 9 / 82
+01.11.23  22:12 Building neighborhoods for each cell
+01.11.23  22:12 Getting indices of extended neighborhood of each cell
+01.11.23  22:13 Getting indices of immediate neighborhood of each cell
+01.11.23  22:17 Indexing observed data...
+01.11.23  22:19 Running optim...
+02.11.23  01:42 Running loglike_fun...
+02.11.23  01:42 jaguar 9 fitted Thu Nov  2 01:42:51 2023
+02.11.23  01:42 Jaguar #: 10 / 82
+02.11.23  01:42 Building neighborhoods for each cell
+02.11.23  01:42 Getting indices of extended neighborhood of each cell
+02.11.23  01:42 Getting indices of immediate neighborhood of each cell
+02.11.23  01:42 Indexing observed data...
+02.11.23  01:42 Running optim...
+02.11.23  01:43 Running loglike_fun...
+02.11.23  01:43 jaguar 10 fitted Thu Nov  2 01:43:31 2023
+02.11.23  01:43 Jaguar #: 11 / 82
+02.11.23  01:43 Building neighborhoods for each cell
+02.11.23  01:43 Getting indices of extended neighborhood of each cell
+02.11.23  01:43 Getting indices of immediate neighborhood of each cell
+02.11.23  01:43 Indexing observed data...
+02.11.23  01:43 Running optim...
+02.11.23  01:51 Running loglike_fun...
+02.11.23  01:51 jaguar 11 fitted Thu Nov  2 01:51:33 2023
+02.11.23  01:51 Jaguar #: 12 / 82
+02.11.23  01:51 Building neighborhoods for each cell
+02.11.23  01:51 Getting indices of extended neighborhood of each cell
+02.11.23  01:51 Getting indices of immediate neighborhood of each cell
+02.11.23  01:52 Indexing observed data...
+02.11.23  01:53 Running optim...
+02.11.23  02:50 Running loglike_fun...
+02.11.23  02:50 jaguar 12 fitted Thu Nov  2 02:50:58 2023
+02.11.23  02:50 Jaguar #: 13 / 82
+02.11.23  02:50 Building neighborhoods for each cell
+02.11.23  02:50 Getting indices of extended neighborhood of each cell
+02.11.23  02:51 Getting indices of immediate neighborhood of each cell
+02.11.23  02:51 Indexing observed data...
+02.11.23  02:51 Running optim...
+02.11.23  03:13 Running loglike_fun...
+02.11.23  03:13 jaguar 13 fitted Thu Nov  2 03:13:04 2023
+02.11.23  03:13 Jaguar #: 14 / 82
+02.11.23  03:13 Building neighborhoods for each cell
+02.11.23  03:13 Getting indices of extended neighborhood of each cell
+02.11.23  03:13 Getting indices of immediate neighborhood of each cell
+02.11.23  03:13 Indexing observed data...
+02.11.23  03:13 Running optim...
+02.11.23  03:14 Running loglike_fun...
+02.11.23  03:14 jaguar 14 fitted Thu Nov  2 03:14:54 2023
+02.11.23  03:14 Jaguar #: 15 / 82
+02.11.23  03:14 Building neighborhoods for each cell
+02.11.23  03:14 Getting indices of extended neighborhood of each cell
+02.11.23  03:14 Getting indices of immediate neighborhood of each cell
+02.11.23  03:14 Indexing observed data...
+02.11.23  03:14 Running optim...
+02.11.23  03:15 Running loglike_fun...
+02.11.23  03:15 jaguar 15 fitted Thu Nov  2 03:15:55 2023
+02.11.23  03:15 Jaguar #: 16 / 82
+02.11.23  03:15 Building neighborhoods for each cell
+02.11.23  03:15 Getting indices of extended neighborhood of each cell
+02.11.23  03:16 Getting indices of immediate neighborhood of each cell
+02.11.23  03:16 Indexing observed data...
+02.11.23  03:16 Running optim...
+02.11.23  03:33 Running loglike_fun...
+02.11.23  03:33 jaguar 16 fitted Thu Nov  2 03:33:51 2023
+02.11.23  03:33 Jaguar #: 17 / 82
+02.11.23  03:33 Building neighborhoods for each cell
+02.11.23  03:33 Getting indices of extended neighborhood of each cell
+02.11.23  03:33 Getting indices of immediate neighborhood of each cell
+02.11.23  03:33 Indexing observed data...
+02.11.23  03:33 Running optim...
+02.11.23  03:37 Running loglike_fun...
+02.11.23  03:37 jaguar 17 fitted Thu Nov  2 03:37:09 2023
+02.11.23  03:37 Jaguar #: 18 / 82
+02.11.23  03:37 Building neighborhoods for each cell
+02.11.23  03:37 Getting indices of extended neighborhood of each cell
+02.11.23  03:37 Getting indices of immediate neighborhood of each cell
+02.11.23  03:37 Indexing observed data...
+02.11.23  03:37 Running optim...
+02.11.23  03:48 Running loglike_fun...
+02.11.23  03:48 jaguar 18 fitted Thu Nov  2 03:48:02 2023
+02.11.23  03:48 Jaguar #: 19 / 82
+02.11.23  03:48 Building neighborhoods for each cell
+02.11.23  03:48 Getting indices of extended neighborhood of each cell
+02.11.23  03:48 Getting indices of immediate neighborhood of each cell
+02.11.23  03:48 Indexing observed data...
+02.11.23  03:48 Running optim...
+02.11.23  03:50 Running loglike_fun...
+02.11.23  03:50 jaguar 19 fitted Thu Nov  2 03:50:56 2023
+02.11.23  03:50 Jaguar #: 20 / 82
+02.11.23  03:50 Building neighborhoods for each cell
+02.11.23  03:50 Getting indices of extended neighborhood of each cell
+02.11.23  03:50 Getting indices of immediate neighborhood of each cell
+02.11.23  03:50 Indexing observed data...
+02.11.23  03:50 Running optim...
+02.11.23  03:52 Running loglike_fun...
+02.11.23  03:52 jaguar 20 fitted Thu Nov  2 03:52:22 2023
+02.11.23  03:52 Jaguar #: 21 / 82
+02.11.23  03:52 Building neighborhoods for each cell
+02.11.23  03:52 Getting indices of extended neighborhood of each cell
+02.11.23  03:52 Getting indices of immediate neighborhood of each cell
+02.11.23  03:52 Indexing observed data...
+02.11.23  03:52 Running optim...
+02.11.23  03:53 Running loglike_fun...
+02.11.23  03:53 jaguar 21 fitted Thu Nov  2 03:53:55 2023
+02.11.23  03:53 Jaguar #: 22 / 82
+02.11.23  03:53 Building neighborhoods for each cell
+02.11.23  03:53 Getting indices of extended neighborhood of each cell
+02.11.23  03:53 Getting indices of immediate neighborhood of each cell
+02.11.23  03:54 Indexing observed data...
+02.11.23  03:54 Running optim...
+02.11.23  03:58 Running loglike_fun...
+02.11.23  03:58 jaguar 22 fitted Thu Nov  2 03:58:30 2023
+02.11.23  03:58 Jaguar #: 23 / 82
+02.11.23  03:58 Building neighborhoods for each cell
+02.11.23  03:58 Getting indices of extended neighborhood of each cell
+02.11.23  03:58 Getting indices of immediate neighborhood of each cell
+02.11.23  03:58 Indexing observed data...
+02.11.23  03:58 Running optim...
+02.11.23  04:01 Running loglike_fun...
+02.11.23  04:01 jaguar 23 fitted Thu Nov  2 04:01:24 2023
+02.11.23  04:01 Jaguar #: 24 / 82
+02.11.23  04:01 Building neighborhoods for each cell
+02.11.23  04:01 Getting indices of extended neighborhood of each cell
+02.11.23  04:01 Getting indices of immediate neighborhood of each cell
+02.11.23  04:01 Indexing observed data...
+02.11.23  04:01 Running optim...
+02.11.23  04:02 Running loglike_fun...
+02.11.23  04:02 jaguar 24 fitted Thu Nov  2 04:02:51 2023
+02.11.23  04:02 Jaguar #: 25 / 82
+02.11.23  04:02 Building neighborhoods for each cell
+02.11.23  04:02 Getting indices of extended neighborhood of each cell
+02.11.23  04:03 Getting indices of immediate neighborhood of each cell
+02.11.23  04:03 Indexing observed data...
+02.11.23  04:03 Running optim...
+02.11.23  04:49 Running loglike_fun...
+02.11.23  04:49 jaguar 25 fitted Thu Nov  2 04:49:14 2023
+02.11.23  04:49 Jaguar #: 26 / 82
+02.11.23  04:49 Building neighborhoods for each cell
+02.11.23  04:49 Getting indices of extended neighborhood of each cell
+02.11.23  04:49 Getting indices of immediate neighborhood of each cell
+02.11.23  04:49 Indexing observed data...
+02.11.23  04:49 Running optim...
+02.11.23  05:06 Running loglike_fun...
+02.11.23  05:06 jaguar 26 fitted Thu Nov  2 05:06:39 2023
+02.11.23  05:06 Jaguar #: 27 / 82
+02.11.23  05:06 Building neighborhoods for each cell
+02.11.23  05:06 Getting indices of extended neighborhood of each cell
+02.11.23  05:06 Getting indices of immediate neighborhood of each cell
+02.11.23  05:07 Indexing observed data...
+02.11.23  05:07 Running optim...
+02.11.23  05:22 Running loglike_fun...
+02.11.23  05:22 jaguar 27 fitted Thu Nov  2 05:22:59 2023
+02.11.23  05:22 Jaguar #: 28 / 82
+02.11.23  05:22 Building neighborhoods for each cell
+02.11.23  05:22 Getting indices of extended neighborhood of each cell
+02.11.23  05:23 Getting indices of immediate neighborhood of each cell
+02.11.23  05:23 Indexing observed data...
+02.11.23  05:23 Running optim...
+02.11.23  05:40 Running loglike_fun...
+02.11.23  05:40 jaguar 28 fitted Thu Nov  2 05:40:09 2023
+02.11.23  05:40 Jaguar #: 29 / 82
+02.11.23  05:40 Building neighborhoods for each cell
+02.11.23  05:40 Getting indices of extended neighborhood of each cell
+02.11.23  05:40 Getting indices of immediate neighborhood of each cell
+02.11.23  05:40 Indexing observed data...
+02.11.23  05:40 Running optim...
+02.11.23  05:41 Running loglike_fun...
+02.11.23  05:41 jaguar 29 fitted Thu Nov  2 05:41:22 2023
+02.11.23  05:41 Jaguar #: 30 / 82
+02.11.23  05:41 Building neighborhoods for each cell
+02.11.23  05:41 Getting indices of extended neighborhood of each cell
+02.11.23  05:41 Getting indices of immediate neighborhood of each cell
+02.11.23  05:42 Indexing observed data...
+02.11.23  05:42 Running optim...
+02.11.23  06:14 Running loglike_fun...
+02.11.23  06:14 jaguar 30 fitted Thu Nov  2 06:14:59 2023
+02.11.23  06:14 Jaguar #: 31 / 82
+02.11.23  06:14 Building neighborhoods for each cell
+02.11.23  06:14 Getting indices of extended neighborhood of each cell
+02.11.23  06:15 Getting indices of immediate neighborhood of each cell
+02.11.23  06:15 Indexing observed data...
+02.11.23  06:15 Running optim...
+02.11.23  06:16 Running loglike_fun...
+02.11.23  06:16 jaguar 31 fitted Thu Nov  2 06:16:06 2023
+02.11.23  06:16 Jaguar #: 32 / 82
+02.11.23  06:16 Building neighborhoods for each cell
+02.11.23  06:16 Getting indices of extended neighborhood of each cell
+02.11.23  06:16 Getting indices of immediate neighborhood of each cell
+02.11.23  06:16 Indexing observed data...
+02.11.23  06:16 Running optim...
+02.11.23  06:24 Running loglike_fun...
+02.11.23  06:24 jaguar 32 fitted Thu Nov  2 06:24:17 2023
+02.11.23  06:24 Jaguar #: 33 / 82
+02.11.23  06:24 Building neighborhoods for each cell
+02.11.23  06:24 Getting indices of extended neighborhood of each cell
+02.11.23  06:24 Getting indices of immediate neighborhood of each cell
+02.11.23  06:24 Indexing observed data...
+02.11.23  06:24 Running optim...
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 0
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 1
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 2
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 3
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 4
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 5
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 6
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 7
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 8
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 9
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 10
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 11
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 12
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 13
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 14
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 15
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 16
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 17
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 18
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 19
+02.11.23  06:24 Retrying
+02.11.23  06:24 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  06:24 Try #: 20
+02.11.23  06:24 Skipping, couldn't fit in 20 tries
+02.11.23  06:24 Jaguar #: 34 / 82
+02.11.23  06:24 Building neighborhoods for each cell
+02.11.23  06:24 Getting indices of extended neighborhood of each cell
+02.11.23  06:24 Getting indices of immediate neighborhood of each cell
+02.11.23  06:24 Indexing observed data...
+02.11.23  06:24 Running optim...
+02.11.23  06:24 Running loglike_fun...
+02.11.23  06:24 jaguar 34 fitted Thu Nov  2 06:24:42 2023
+02.11.23  06:24 Jaguar #: 35 / 82
+02.11.23  06:24 Building neighborhoods for each cell
+02.11.23  06:24 Getting indices of extended neighborhood of each cell
+02.11.23  06:24 Getting indices of immediate neighborhood of each cell
+02.11.23  06:25 Indexing observed data...
+02.11.23  06:25 Running optim...
+02.11.23  06:43 Running loglike_fun...
+02.11.23  06:43 jaguar 35 fitted Thu Nov  2 06:43:10 2023
+02.11.23  06:43 Jaguar #: 36 / 82
+02.11.23  06:43 Building neighborhoods for each cell
+02.11.23  06:43 Getting indices of extended neighborhood of each cell
+02.11.23  06:43 Getting indices of immediate neighborhood of each cell
+02.11.23  06:44 Indexing observed data...
+02.11.23  06:44 Running optim...
+02.11.23  07:41 Running loglike_fun...
+02.11.23  07:42 jaguar 36 fitted Thu Nov  2 07:42:04 2023
+02.11.23  07:42 Jaguar #: 37 / 82
+02.11.23  07:42 Building neighborhoods for each cell
+02.11.23  07:42 Getting indices of extended neighborhood of each cell
+02.11.23  07:42 Getting indices of immediate neighborhood of each cell
+02.11.23  07:43 Indexing observed data...
+02.11.23  07:43 Running optim...
+02.11.23  08:25 Running loglike_fun...
+02.11.23  08:25 jaguar 37 fitted Thu Nov  2 08:25:47 2023
+02.11.23  08:25 Jaguar #: 38 / 82
+02.11.23  08:25 Building neighborhoods for each cell
+02.11.23  08:25 Getting indices of extended neighborhood of each cell
+02.11.23  08:25 Getting indices of immediate neighborhood of each cell
+02.11.23  08:25 Indexing observed data...
+02.11.23  08:25 Running optim...
+02.11.23  08:32 Running loglike_fun...
+02.11.23  08:32 jaguar 38 fitted Thu Nov  2 08:32:31 2023
+02.11.23  08:32 Jaguar #: 39 / 82
+02.11.23  08:32 Building neighborhoods for each cell
+02.11.23  08:32 Getting indices of extended neighborhood of each cell
+02.11.23  08:32 Getting indices of immediate neighborhood of each cell
+02.11.23  08:33 Indexing observed data...
+02.11.23  08:33 Running optim...
+02.11.23  09:08 Running loglike_fun...
+02.11.23  09:08 jaguar 39 fitted Thu Nov  2 09:08:28 2023
+02.11.23  09:08 Jaguar #: 40 / 82
+02.11.23  09:08 Building neighborhoods for each cell
+02.11.23  09:08 Getting indices of extended neighborhood of each cell
+02.11.23  09:09 Getting indices of immediate neighborhood of each cell
+02.11.23  09:11 Indexing observed data...
+02.11.23  09:12 Running optim...
+02.11.23  11:42 Running loglike_fun...
+02.11.23  11:43 jaguar 40 fitted Thu Nov  2 11:43:15 2023
+02.11.23  11:43 Jaguar #: 41 / 82
+02.11.23  11:43 Building neighborhoods for each cell
+02.11.23  11:43 Getting indices of extended neighborhood of each cell
+02.11.23  11:44 Getting indices of immediate neighborhood of each cell
+02.11.23  11:48 Indexing observed data...
+02.11.23  11:48 Running optim...
+02.11.23  15:11 Running loglike_fun...
+02.11.23  15:12 jaguar 41 fitted Thu Nov  2 15:12:02 2023
+02.11.23  15:12 Jaguar #: 42 / 82
+02.11.23  15:12 Building neighborhoods for each cell
+02.11.23  15:12 Getting indices of extended neighborhood of each cell
+02.11.23  15:12 Getting indices of immediate neighborhood of each cell
+02.11.23  15:12 Indexing observed data...
+02.11.23  15:12 Running optim...
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 0
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 1
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 2
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 3
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 4
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 5
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 6
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 7
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 8
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 9
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 10
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 11
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 12
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 13
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 14
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 15
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 16
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 17
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 18
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 19
+02.11.23  15:12 Retrying
+02.11.23  15:12 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+02.11.23  15:12 Try #: 20
+02.11.23  15:12 Skipping, couldn't fit in 20 tries
+02.11.23  15:12 Jaguar #: 43 / 82
+02.11.23  15:12 Building neighborhoods for each cell
+02.11.23  15:12 Getting indices of extended neighborhood of each cell
+02.11.23  15:12 Getting indices of immediate neighborhood of each cell
+02.11.23  15:12 Indexing observed data...
+02.11.23  15:12 Running optim...
+02.11.23  15:33 Running loglike_fun...
+02.11.23  15:33 jaguar 43 fitted Thu Nov  2 15:33:21 2023
+02.11.23  15:33 Jaguar #: 44 / 82
+02.11.23  15:33 Building neighborhoods for each cell
+02.11.23  15:33 Getting indices of extended neighborhood of each cell
+02.11.23  15:33 Getting indices of immediate neighborhood of each cell
+02.11.23  15:35 Indexing observed data...
+02.11.23  15:35 Running optim...
+02.11.23  17:09 Running loglike_fun...
+02.11.23  17:09 jaguar 44 fitted Thu Nov  2 17:09:18 2023
+02.11.23  17:09 Jaguar #: 45 / 82
+02.11.23  17:09 Building neighborhoods for each cell
+02.11.23  17:09 Getting indices of extended neighborhood of each cell
+02.11.23  17:09 Getting indices of immediate neighborhood of each cell
+02.11.23  17:10 Indexing observed data...
+02.11.23  17:11 Running optim...
+02.11.23  18:15 Running loglike_fun...
+02.11.23  18:15 jaguar 45 fitted Thu Nov  2 18:15:26 2023
+02.11.23  18:15 Jaguar #: 46 / 82
+02.11.23  18:15 Building neighborhoods for each cell
+02.11.23  18:15 Getting indices of extended neighborhood of each cell
+02.11.23  18:15 Getting indices of immediate neighborhood of each cell
+02.11.23  18:15 Indexing observed data...
+02.11.23  18:15 Running optim...
+02.11.23  18:29 Running loglike_fun...
+02.11.23  18:29 jaguar 46 fitted Thu Nov  2 18:29:39 2023
+02.11.23  18:29 Jaguar #: 47 / 82
+02.11.23  18:29 Building neighborhoods for each cell
+02.11.23  18:29 Getting indices of extended neighborhood of each cell
+02.11.23  18:30 Getting indices of immediate neighborhood of each cell
+02.11.23  18:34 Indexing observed data...
+02.11.23  18:37 Running optim...
+02.11.23  22:07 Running loglike_fun...
+02.11.23  22:07 jaguar 47 fitted Thu Nov  2 22:07:34 2023
+02.11.23  22:07 Jaguar #: 48 / 82
+02.11.23  22:07 Building neighborhoods for each cell
+02.11.23  22:07 Getting indices of extended neighborhood of each cell
+02.11.23  22:09 Getting indices of immediate neighborhood of each cell
+02.11.23  22:16 Indexing observed data...
+02.11.23  22:17 Running optim...
+03.11.23  05:31 Running loglike_fun...
+03.11.23  05:32 jaguar 48 fitted Fri Nov  3 05:32:32 2023
+03.11.23  05:32 Jaguar #: 49 / 82
+03.11.23  05:32 Building neighborhoods for each cell
+03.11.23  05:32 Getting indices of extended neighborhood of each cell
+03.11.23  05:32 Getting indices of immediate neighborhood of each cell
+03.11.23  05:34 Indexing observed data...
+03.11.23  05:34 Running optim...
+03.11.23  05:35 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:35 Try #: 0
+03.11.23  05:35 Retrying
+03.11.23  05:35 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:35 Try #: 1
+03.11.23  05:35 Retrying
+03.11.23  05:35 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:35 Try #: 2
+03.11.23  05:35 Retrying
+03.11.23  05:35 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:35 Try #: 3
+03.11.23  05:35 Retrying
+03.11.23  05:35 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:35 Try #: 4
+03.11.23  05:35 Retrying
+03.11.23  05:35 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:35 Try #: 5
+03.11.23  05:35 Retrying
+03.11.23  05:36 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:36 Try #: 6
+03.11.23  05:36 Retrying
+03.11.23  05:36 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:36 Try #: 7
+03.11.23  05:36 Retrying
+03.11.23  05:36 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:36 Try #: 8
+03.11.23  05:36 Retrying
+03.11.23  05:36 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:36 Try #: 9
+03.11.23  05:36 Retrying
+03.11.23  05:36 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:36 Try #: 10
+03.11.23  05:36 Retrying
+03.11.23  05:36 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:36 Try #: 11
+03.11.23  05:36 Retrying
+03.11.23  05:37 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:37 Try #: 12
+03.11.23  05:37 Retrying
+03.11.23  05:37 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:37 Try #: 13
+03.11.23  05:37 Retrying
+03.11.23  05:37 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:37 Try #: 14
+03.11.23  05:37 Retrying
+03.11.23  05:37 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:37 Try #: 15
+03.11.23  05:37 Retrying
+03.11.23  05:37 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:37 Try #: 16
+03.11.23  05:37 Retrying
+03.11.23  05:37 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:37 Try #: 17
+03.11.23  05:37 Retrying
+03.11.23  05:38 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:38 Try #: 18
+03.11.23  05:38 Retrying
+03.11.23  05:38 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:38 Try #: 19
+03.11.23  05:38 Retrying
+03.11.23  05:38 Error in optim(param, loglike): function cannot be evaluated at initial parameters
+
+03.11.23  05:38 Try #: 20
+03.11.23  05:38 Skipping, couldn't fit in 20 tries
+03.11.23  05:38 Jaguar #: 50 / 82
+03.11.23  05:38 Building neighborhoods for each cell
+03.11.23  05:38 Getting indices of extended neighborhood of each cell
+03.11.23  05:38 Getting indices of immediate neighborhood of each cell
+03.11.23  05:40 Indexing observed data...
+03.11.23  05:41 Running optim...
+03.11.23  07:09 Running loglike_fun...
+03.11.23  07:09 jaguar 50 fitted Fri Nov  3 07:09:47 2023
+03.11.23  07:09 Jaguar #: 51 / 82
+03.11.23  07:09 Building neighborhoods for each cell
+03.11.23  07:09 Getting indices of extended neighborhood of each cell
+03.11.23  07:10 Getting indices of immediate neighborhood of each cell
+03.11.23  07:11 Indexing observed data...
+03.11.23  07:12 Running optim...
+03.11.23  08:34 Running loglike_fun...
+03.11.23  08:34 jaguar 51 fitted Fri Nov  3 08:34:52 2023
+03.11.23  08:34 Jaguar #: 52 / 82
+03.11.23  08:34 Building neighborhoods for each cell
+03.11.23  08:34 Getting indices of extended neighborhood of each cell
+03.11.23  08:34 Getting indices of immediate neighborhood of each cell
+03.11.23  08:35 Indexing observed data...
+03.11.23  08:35 Running optim...
+03.11.23  08:52 Running loglike_fun...
+03.11.23  08:52 jaguar 52 fitted Fri Nov  3 08:52:50 2023
+03.11.23  08:52 Jaguar #: 53 / 82
+03.11.23  08:52 Building neighborhoods for each cell
+03.11.23  08:52 Getting indices of extended neighborhood of each cell
+03.11.23  08:52 Getting indices of immediate neighborhood of each cell
+03.11.23  08:53 Indexing observed data...
+03.11.23  08:53 Running optim...
+03.11.23  09:05 Running loglike_fun...
+03.11.23  09:05 jaguar 53 fitted Fri Nov  3 09:05:32 2023
+03.11.23  09:05 Jaguar #: 54 / 82
+03.11.23  09:05 Building neighborhoods for each cell
+03.11.23  09:05 Getting indices of extended neighborhood of each cell
+03.11.23  09:05 Getting indices of immediate neighborhood of each cell
+03.11.23  09:05 Indexing observed data...
+03.11.23  09:05 Running optim...
+03.11.23  09:21 Running loglike_fun...
+03.11.23  09:21 jaguar 54 fitted Fri Nov  3 09:21:57 2023
+03.11.23  09:21 Jaguar #: 55 / 82
+03.11.23  09:21 Building neighborhoods for each cell
+03.11.23  09:21 Getting indices of extended neighborhood of each cell
+03.11.23  09:24 Getting indices of immediate neighborhood of each cell
+03.11.23  09:32 Indexing observed data...
+03.11.23  09:35 Running optim...
+03.11.23  17:57 Running loglike_fun...
+03.11.23  17:58 jaguar 55 fitted Fri Nov  3 17:58:26 2023
+03.11.23  17:58 Jaguar #: 56 / 82
+03.11.23  17:58 Building neighborhoods for each cell
+03.11.23  17:58 Getting indices of extended neighborhood of each cell
+03.11.23  17:58 Getting indices of immediate neighborhood of each cell
+03.11.23  17:58 Indexing observed data...
+03.11.23  17:58 Running optim...
+03.11.23  18:07 Running loglike_fun...
+03.11.23  18:07 jaguar 56 fitted Fri Nov  3 18:07:45 2023
+03.11.23  18:07 Jaguar #: 57 / 82
+03.11.23  18:07 Building neighborhoods for each cell
+03.11.23  18:07 Getting indices of extended neighborhood of each cell
+03.11.23  18:07 Getting indices of immediate neighborhood of each cell
+03.11.23  18:07 Indexing observed data...
+03.11.23  18:08 Running optim...
+03.11.23  18:18 Running loglike_fun...
+03.11.23  18:18 jaguar 57 fitted Fri Nov  3 18:18:37 2023
+03.11.23  18:18 Jaguar #: 58 / 82
+03.11.23  18:18 Building neighborhoods for each cell
+03.11.23  18:18 Getting indices of extended neighborhood of each cell
+03.11.23  18:18 Getting indices of immediate neighborhood of each cell
+03.11.23  18:20 Indexing observed data...
+03.11.23  18:20 Running optim...
+03.11.23  19:18 Running loglike_fun...
+03.11.23  19:18 jaguar 58 fitted Fri Nov  3 19:18:13 2023
+03.11.23  19:18 Jaguar #: 59 / 82
+03.11.23  19:18 Building neighborhoods for each cell
+03.11.23  19:18 Getting indices of extended neighborhood of each cell
+03.11.23  19:18 Getting indices of immediate neighborhood of each cell
+03.11.23  19:19 Indexing observed data...
+03.11.23  19:19 Running optim...
+03.11.23  19:53 Running loglike_fun...
+03.11.23  19:53 jaguar 59 fitted Fri Nov  3 19:53:11 2023
+03.11.23  19:53 Jaguar #: 60 / 82
+03.11.23  19:53 Building neighborhoods for each cell
+03.11.23  19:53 Getting indices of extended neighborhood of each cell
+03.11.23  19:53 Getting indices of immediate neighborhood of each cell
+03.11.23  19:53 Indexing observed data...
+03.11.23  19:53 Running optim...
+03.11.23  19:54 Running loglike_fun...
+03.11.23  19:54 jaguar 60 fitted Fri Nov  3 19:54:45 2023
+03.11.23  19:54 Jaguar #: 61 / 82
+03.11.23  19:54 Building neighborhoods for each cell
+03.11.23  19:54 Getting indices of extended neighborhood of each cell
+03.11.23  19:54 Getting indices of immediate neighborhood of each cell
+03.11.23  19:54 Indexing observed data...
+03.11.23  19:55 Running optim...
+03.11.23  20:06 Running loglike_fun...
+03.11.23  20:06 jaguar 61 fitted Fri Nov  3 20:06:46 2023
+03.11.23  20:06 Jaguar #: 62 / 82
+03.11.23  20:06 Building neighborhoods for each cell
+03.11.23  20:06 Getting indices of extended neighborhood of each cell
+03.11.23  20:06 Getting indices of immediate neighborhood of each cell
+03.11.23  20:07 Indexing observed data...
+03.11.23  20:07 Running optim...
+03.11.23  20:19 Running loglike_fun...
+03.11.23  20:19 jaguar 62 fitted Fri Nov  3 20:19:24 2023
+03.11.23  20:19 Jaguar #: 63 / 82
+03.11.23  20:19 Building neighborhoods for each cell
+03.11.23  20:19 Getting indices of extended neighborhood of each cell
+03.11.23  20:19 Getting indices of immediate neighborhood of each cell
+03.11.23  20:19 Indexing observed data...
+03.11.23  20:19 Running optim...
+03.11.23  20:35 Running loglike_fun...
+03.11.23  20:35 jaguar 63 fitted Fri Nov  3 20:35:52 2023
+03.11.23  20:35 Jaguar #: 64 / 82
+03.11.23  20:35 Building neighborhoods for each cell
+03.11.23  20:35 Getting indices of extended neighborhood of each cell
+03.11.23  20:36 Getting indices of immediate neighborhood of each cell
+03.11.23  20:39 Indexing observed data...
+03.11.23  20:40 Running optim...
+03.11.23  23:08 Running loglike_fun...
+03.11.23  23:08 jaguar 64 fitted Fri Nov  3 23:08:44 2023
+03.11.23  23:08 Jaguar #: 65 / 82
+03.11.23  23:08 Building neighborhoods for each cell
+03.11.23  23:08 Getting indices of extended neighborhood of each cell
+03.11.23  23:08 Getting indices of immediate neighborhood of each cell
+03.11.23  23:08 Indexing observed data...
+03.11.23  23:08 Running optim...
+03.11.23  23:10 Running loglike_fun...
+03.11.23  23:10 jaguar 65 fitted Fri Nov  3 23:10:47 2023
+03.11.23  23:10 Jaguar #: 66 / 82
+03.11.23  23:10 Building neighborhoods for each cell
+03.11.23  23:10 Getting indices of extended neighborhood of each cell
+03.11.23  23:11 Getting indices of immediate neighborhood of each cell
+03.11.23  23:11 Indexing observed data...
+03.11.23  23:12 Running optim...
+03.11.23  23:58 Running loglike_fun...
+03.11.23  23:58 jaguar 66 fitted Fri Nov  3 23:58:59 2023
+03.11.23  23:58 Jaguar #: 67 / 82
+03.11.23  23:59 Building neighborhoods for each cell
+03.11.23  23:59 Getting indices of extended neighborhood of each cell
+03.11.23  23:59 Getting indices of immediate neighborhood of each cell
+03.11.23  23:59 Indexing observed data...
+03.11.23  23:59 Running optim...
+04.11.23  00:11 Running loglike_fun...
+04.11.23  00:11 jaguar 67 fitted Sat Nov  4 00:11:43 2023
+04.11.23  00:11 Jaguar #: 68 / 82
+04.11.23  00:11 Building neighborhoods for each cell
+04.11.23  00:11 Getting indices of extended neighborhood of each cell
+04.11.23  00:11 Getting indices of immediate neighborhood of each cell
+04.11.23  00:11 Indexing observed data...
+04.11.23  00:11 Running optim...
+04.11.23  00:12 Running loglike_fun...
+04.11.23  00:12 jaguar 68 fitted Sat Nov  4 00:12:08 2023
+04.11.23  00:12 Jaguar #: 69 / 82
+04.11.23  00:12 Building neighborhoods for each cell
+04.11.23  00:12 Getting indices of extended neighborhood of each cell
+04.11.23  00:12 Getting indices of immediate neighborhood of each cell
+04.11.23  00:12 Indexing observed data...
+04.11.23  00:12 Running optim...
+04.11.23  00:37 Running loglike_fun...
+04.11.23  00:37 jaguar 69 fitted Sat Nov  4 00:37:46 2023
+04.11.23  00:37 Jaguar #: 70 / 82
+04.11.23  00:37 Building neighborhoods for each cell
+04.11.23  00:37 Getting indices of extended neighborhood of each cell
+04.11.23  00:38 Getting indices of immediate neighborhood of each cell
+04.11.23  00:39 Indexing observed data...
+04.11.23  00:40 Running optim...
+04.11.23  02:05 Running loglike_fun...
+04.11.23  02:05 jaguar 70 fitted Sat Nov  4 02:05:12 2023
+04.11.23  02:05 Jaguar #: 71 / 82
+04.11.23  02:05 Building neighborhoods for each cell
+04.11.23  02:05 Getting indices of extended neighborhood of each cell
+04.11.23  02:05 Getting indices of immediate neighborhood of each cell
+04.11.23  02:05 Indexing observed data...
+04.11.23  02:05 Running optim...
+04.11.23  02:12 Running loglike_fun...
+04.11.23  02:12 jaguar 71 fitted Sat Nov  4 02:12:44 2023
+04.11.23  02:12 Jaguar #: 72 / 82
+04.11.23  02:12 Building neighborhoods for each cell
+04.11.23  02:12 Getting indices of extended neighborhood of each cell
+04.11.23  02:12 Getting indices of immediate neighborhood of each cell
+04.11.23  02:12 Indexing observed data...
+04.11.23  02:12 Running optim...
+04.11.23  02:18 Running loglike_fun...
+04.11.23  02:18 jaguar 72 fitted Sat Nov  4 02:18:25 2023
+04.11.23  02:18 Jaguar #: 73 / 82
+04.11.23  02:18 Building neighborhoods for each cell
+04.11.23  02:18 Getting indices of extended neighborhood of each cell
+04.11.23  02:18 Getting indices of immediate neighborhood of each cell
+04.11.23  02:18 Indexing observed data...
+04.11.23  02:18 Running optim...
+04.11.23  02:41 Running loglike_fun...
+04.11.23  02:41 jaguar 73 fitted Sat Nov  4 02:41:41 2023
+04.11.23  02:41 Jaguar #: 74 / 82
+04.11.23  02:41 Building neighborhoods for each cell
+04.11.23  02:41 Getting indices of extended neighborhood of each cell
+04.11.23  02:41 Getting indices of immediate neighborhood of each cell
+04.11.23  02:41 Indexing observed data...
+04.11.23  02:41 Running optim...
+04.11.23  02:44 Running loglike_fun...
+04.11.23  02:44 jaguar 74 fitted Sat Nov  4 02:44:52 2023
+04.11.23  02:44 Jaguar #: 75 / 82
+04.11.23  02:44 Building neighborhoods for each cell
+04.11.23  02:44 Getting indices of extended neighborhood of each cell
+04.11.23  02:44 Getting indices of immediate neighborhood of each cell
+04.11.23  02:45 Indexing observed data...
+04.11.23  02:45 Running optim...
+04.11.23  03:01 Running loglike_fun...
+04.11.23  03:01 jaguar 75 fitted Sat Nov  4 03:01:04 2023
+04.11.23  03:01 Jaguar #: 76 / 82
+04.11.23  03:01 Building neighborhoods for each cell
+04.11.23  03:01 Getting indices of extended neighborhood of each cell
+04.11.23  03:01 Getting indices of immediate neighborhood of each cell
+04.11.23  03:01 Indexing observed data...
+04.11.23  03:01 Running optim...
+04.11.23  03:28 Running loglike_fun...
+04.11.23  03:28 jaguar 76 fitted Sat Nov  4 03:28:28 2023
+04.11.23  03:28 Jaguar #: 77 / 82
+04.11.23  03:28 Building neighborhoods for each cell
+04.11.23  03:28 Getting indices of extended neighborhood of each cell
+04.11.23  03:28 Getting indices of immediate neighborhood of each cell
+04.11.23  03:28 Indexing observed data...
+04.11.23  03:28 Running optim...
+04.11.23  03:31 Running loglike_fun...
+04.11.23  03:31 jaguar 77 fitted Sat Nov  4 03:31:55 2023
+04.11.23  03:31 Jaguar #: 78 / 82
+04.11.23  03:31 Building neighborhoods for each cell
+04.11.23  03:31 Getting indices of extended neighborhood of each cell
+04.11.23  03:32 Getting indices of immediate neighborhood of each cell
+04.11.23  03:32 Indexing observed data...
+04.11.23  03:32 Running optim...
+04.11.23  03:46 Running loglike_fun...
+04.11.23  03:46 jaguar 78 fitted Sat Nov  4 03:46:44 2023
+04.11.23  03:46 Jaguar #: 79 / 82
+04.11.23  03:46 Building neighborhoods for each cell
+04.11.23  03:46 Getting indices of extended neighborhood of each cell
+04.11.23  03:48 Getting indices of immediate neighborhood of each cell
+04.11.23  03:56 Indexing observed data...
+04.11.23  03:58 Running optim...
+04.11.23  09:48 Running loglike_fun...
+04.11.23  09:49 jaguar 79 fitted Sat Nov  4 09:49:56 2023
+04.11.23  09:49 Jaguar #: 80 / 82
+04.11.23  09:49 Building neighborhoods for each cell
+04.11.23  09:49 Getting indices of extended neighborhood of each cell
+04.11.23  09:50 Getting indices of immediate neighborhood of each cell
+04.11.23  09:50 Indexing observed data...
+04.11.23  09:51 Running optim...
+04.11.23  10:35 Running loglike_fun...
+04.11.23  10:35 jaguar 80 fitted Sat Nov  4 10:35:47 2023
+04.11.23  10:35 Jaguar #: 81 / 82
+04.11.23  10:35 Building neighborhoods for each cell
+04.11.23  10:35 Getting indices of extended neighborhood of each cell
+04.11.23  10:36 Getting indices of immediate neighborhood of each cell
+04.11.23  10:37 Indexing observed data...
+04.11.23  10:37 Running optim...
+04.11.23  11:40 Running loglike_fun...
+04.11.23  11:40 jaguar 81 fitted Sat Nov  4 11:40:13 2023
+04.11.23  11:40 Jaguar #: 82 / 82
+04.11.23  11:40 Building neighborhoods for each cell
+04.11.23  11:40 Getting indices of extended neighborhood of each cell
+04.11.23  11:40 Getting indices of immediate neighborhood of each cell
+04.11.23  11:40 Indexing observed data...
+04.11.23  11:40 Running optim...
+04.11.23  11:49 Running loglike_fun...
+04.11.23  11:49 jaguar 82 fitted Sat Nov  4 11:49:28 2023

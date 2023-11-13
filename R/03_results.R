@@ -11,14 +11,15 @@ excl <- which(res$nmove < 300)
 res <- res[-excl, ]
 
 
-plot(res$aic_K, col = rgb(0, 0, 0, 0.4), pch = 19, ylim = c(0, 1.1e5))
+plot(res$aic_K, col = rgb(1, 1, 1, 0.4), pch = 19, ylim = c(0, 1.1e5))
 points(res$aic_RW, col = rgb(0, 1, 0, 0.4), pch = 19)
 points(res$aic_RWM, col = rgb(1, 0, 0, 0.4), pch = 19)
 points(res$aic_trad2, col = rgb(0, 0, 1, 0.4), pch = 19)
-
+points(res$aic_RWH, col = rgb(0.5, 0.5, 0, 0.4), pch = 19)
 
 hist(res$aic_K, 10, col = rgb(0, 0, 0, 0.4), border = NA, xlim = c(0, 1.1e5))
-hist(res$aic_RWH, 10, col = rgb(0, 1, 0, 0.4), add = TRUE, border = NA)
+hist(res$aic_RWM, 10, col = rgb(0, 1, 0, 0.4), add = TRUE, border = NA)
+
 
 
 # only for trad

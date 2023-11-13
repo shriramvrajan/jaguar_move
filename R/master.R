@@ -1,20 +1,38 @@
-## Main script to run others
+## Main script for running others
+
 rm(list = ls())
 
 source("R/00_functions.R")
+
+## Global switches =============================================================
 
 generate_data   <- FALSE
 run_model       <- TRUE
 analyse_output  <- FALSE
 
+
+## Set up parallel processing ==================================================
+
+parallel        <- TRUE
+ncore           <- 3
+if (parallel) {
+    library(doParallel)
+    library(foreach)
+    registerDoParallel(ncore)
+    message(paste0("number of workers: ", getDoParWorkers()))
+}
+
+## Data generation =============================================================
+
 if (generate_data) {
     source("R/01_generate_data.R")
 }
 
+## Movement model ==============================================================
+
 if (run_model) {
     
     ## Switches 
-
     refit_homes     <- FALSE            # Refit home ranges (AKDE) 
     refit_turns     <- FALSE            # Refit turn distributions (MM)
     refit_model     <- TRUE             # Refit movement model parameters
@@ -31,6 +49,8 @@ if (run_model) {
 
     source("R/02_movement_model.R")
 }
+
+## Output analysis =============================================================
 
 if (analyse_output) {
     source("R/03_output_analysis.R")

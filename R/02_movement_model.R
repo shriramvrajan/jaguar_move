@@ -62,7 +62,7 @@ if (refit_model) {
   message(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
   nbhd0 <- make_nbhd(i = seq_len(nrow(brdf)), sz = buffersize)                   # 6.4s
 
-  for (i in i_initial:n_iter) {
+  foreach(i = i_initial:n_iter) %dopar% {
     message(paste0("Jaguar #: ", i, " / ", n_iter))
     id <- as.numeric(jag_id[i])
 

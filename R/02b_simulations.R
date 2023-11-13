@@ -5,22 +5,23 @@ source("R/00_functions.R")
 ### Landscape generation
 envsize <- 100  # size of landscape in cells
 s1 <- 6         # strength of autocorrelation 
-s2 <- 1
+# s2 <- 1
 r1 <- 5        # range of autocorrelation in cells
-r2 <- 20
+# r2 <- 20
 
 ### Path generation
-# x0 <- 50
-# y0 <- 50
+x0 <- 50
+y0 <- 50
 
-par0 <- c(2.5, -2)           # env scaling parameter for states 1 & 2
-tprob0 <- c(0.1, 0.7)      # transition probabilities 1→2, 2→1
+# par0 <- c(2.5, -2)         # env scaling parameter for states 1 & 2
+# tprob0 <- c(0.1, 0.7)      # transition probabilities 1→2, 2→1
+par0   <- c(2, -2)            #
 
-sim_interval <- 10   # GPS observations taken every n steps, for simulation
-step0        <- 2000 # Number of steps to simulate
-n_obs        <- step0 / sim_interval  
-sim_steps    <- 10  # Number of steps to simulate
-sim_n        <- 5   # Number of simulations to run
+sim_interval <- 5   # GPS observations taken every n steps, for simulation
+n_step       <- 1500 # Number of steps to simulate
+n_obs        <- n_step / sim_interval  
+sim_steps    <- 25  # Number of steps to simulate
+sim_n        <- 1   # Number of simulations to run
 
 message(paste0("Simulation interval: ", sim_interval))
 message(paste0("Observations per simulation: ", n_obs))
@@ -30,14 +31,14 @@ message(paste0("Number of simulations: ", sim_n))
 ## Landscape generation ========================================================
 
 env01 <- gen_landscape(size = envsize, s = s1, r = r1)
-env02 <- gen_landscape(size = envsize, s = s2, r = r2)
+# env02 <- gen_landscape(size = envsize, s = s2, r = r2)
 
 writeRaster(env01[[1]], "data/output/simulations/env01.tif", overwrite = TRUE)
-writeRaster(env02[[1]], "data/output/simulations/env02.tif", overwrite = TRUE)
+# writeRaster(env02[[1]], "data/output/simulations/env02.tif", overwrite = TRUE)
 
-par(mfrow = c(1, 2))
+# par(mfrow = c(1, 2))
 terra::plot(env01[[1]])
-terra::plot(env02[[1]])
+# terra::plot(env02[[1]])
 
 ## Simulation ==================================================================
 
@@ -47,12 +48,11 @@ paths <- lapply(1:sim_n, function(i) {
           # y0 <- sample(100, 1)
           x0 <- ceiling(envsize / 2)
           y0 <- ceiling(envsize / 2)
-          jag_path(x0, y0, step0, par = par0, neighb = buffersize, 
-                   tprob = tprob0)
+          jag_path(x0, y0, n_step, par = par0, neighb = 3)
           })
 saveRDS(paths, "data/output/simulations/paths.RDS")
 
-plot_path(paths[[3]]) # red is state 1, blue is state 2
+plot_path(paths[[1]]) # red is state 1, blue is state 2
 
 ## Fitting =====================================================================
 

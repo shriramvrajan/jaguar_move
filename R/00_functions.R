@@ -519,26 +519,29 @@ gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {
 
 # Generate a jaguar path of n steps starting from (x0, y0) with environmental
 # preference parameters par[] and search neighborhood size neighb
-jag_path <- function(x0, y0, nstep, par, neighb, type = 2, tprob) {
+jag_path <- function(x0, y0, n_step, par, neighb, type = 1, tprob = 0) {
     # type: 1 = env1 only, 2 = multi-state model
     # if (!(x0 %in% 1:100) || !(y0 %in% 1:100)) {
     #     print("Jaguar out of bounds")
     #     return(NULL)
     # }
-    path <- matrix(NA, nrow = nstep, ncol = 6)
-    state0 <- 1 # Beginning state, irrelevant if type = 1
+    move_prob <- exp(par[2]) / (1 + exp(par[2]))
 
-    path[1, ] <- c(x0, y0, NA, state0, NA, NA)
+    path <- matrix(NA, nrow = n_step, ncol = switch(type, 4, 6))
+
+    path[1, ] <- switch(type, 
+                        c(x0, y0, NA, NA), c(x0, y0, NA, state0, NA, NA))
     
     if (type == 2) {
         # Transition probabilities: p12, p21, p11, p22
         tprob <- c(tprob, 1 - tprob)
     }
 
-    for (i in 2:nstep) {
+    for (i in 2:n_step) {
+        if (i %% 10 == 0) print(i)
         pos <- path[i - 1, 1:2]
-        state <- path[i - 1, 4]
         if (type == 2 && i %% sim_interval == 0) {
+            state <- path[i - 1, 4]
             # Transition to new state
             if (state == 1) {
                 if (runif(1) < tprob[1]) state <- 2
@@ -548,26 +551,34 @@ jag_path <- function(x0, y0, nstep, par, neighb, type = 2, tprob) {
         }
         nbhd <- as.vector(make_nbhd(r = env01[[1]], rdf = env01[[2]], sz = neighb,
                           i = cellFromRowCol(env01[[1]], pos[1], pos[2])))
-        a1 <- exp(env01[[1]][nbhd] * par[1])$sim1
+        a1 <- sapply(nbhd, function(x) {
+          if (is.na(x)) return(NA) else return(exp(env01[[1]][x] * par[1])$sim1)
+        })
         if (any(is.na(a1))) a1[is.na(a1)] <- 0
         a1 <- a1 / sum(a1)
-        a2 <- exp(env02[[1]][nbhd] * par[2])$sim1
-        if (any(is.na(a2))) a2[is.na(a2)] <- 0
-        a2 <- a2 / sum(a2)
-        # par(mfrow = c(1, 2))
-        # plot(a1)
-        # plot(a2)
-        # readLines()
+        cent <- ceiling(length(a1) / 2)
+        a1[cent] <- a1[cent] * (1 - move_prob)
+        a1[-cent] <- a1[-cent] * (move_prob / (sum(!is.na(a1)) - 1))
+        attract <- a1 / sum(a1)
+        
+        if (type == 2) {
+          a2 <- exp(env02[[1]][nbhd] * par[2])$sim1
+          if (any(is.na(a2))) a2[is.na(a2)] <- 0
+          a2 <- a2 / sum(a2)
 
-        attract <- switch(state, a1, a2)
-        print(length(attract))
-        # browser()
+          attract <- switch(state, a1, a2)
+        }
+
         step <- sample(seq_len(length(attract)), 1, prob = attract)
-        path[i, ] <- c(rowColFromCell(env01[[1]], nbhd[step]), 
-                       nbhd[step], state, a1[step], a2[step])
+        path[i, ] <- switch(type,
+                            c(rowColFromCell(env01[[1]], nbhd[step]), 
+                              nbhd[step], a1[step]),
+                            c(rowColFromCell(env01[[1]], nbhd[step]), 
+                              nbhd[step], state, a1[step], a2[step]))
     }
     path <- as.data.frame(path)
-    names(path) <- c("x", "y", "cell", "state", "a1", "a2")
+    names(path) <- switch(type, c("x", "y", "cell", "a1"), 
+                          c("x", "y", "cell", "state", "a1", "a2"))
     return(path)
 }
 
@@ -588,7 +599,7 @@ vgram <- function(path, cut = 10, window = 14, start = 1) {
 }
 
 # Plot landscape r with jaguar path and vgram
-plot_path <- function(path, vgram = FALSE, new = TRUE, ...) {
+plot_path <- function(path, vgram = FALSE, type = 1, new = TRUE, ...) {
     # par(mfrow = c(1, ifelse(vgram, 2, 1)))
     # par(mfrow = c(1, 2))
     path <- path[seq(1, nrow(path), sim_interval), ]
@@ -597,20 +608,23 @@ plot_path <- function(path, vgram = FALSE, new = TRUE, ...) {
     col2 <- rgb(0, 0, 1, .8)
     # Plotting environmental variables + path
     if (new) terra::plot(env01[[1]])
-    points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)
-    for (i in 1:(length(path$state) - 1)) {
-        segments(path$x[i], path$y[i], path$x[i + 1], path$y[i + 1], 
-                 col = c(col1, col2)[path$state[i]])
-    }
-    terra::plot(env02[[1]])
-    points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)
-    for (i in 1:(length(path$state) - 1)) {
-        segments(path$x[i], path$y[i], path$x[i + 1], path$y[i + 1], 
-                 col = c(col1, col2)[path$state[i]])
-    }
-    # points(path, col = "red", pch = 19, cex = 0.5)
-    # lines(path, col = "red")
 
+    if (type == 2) {
+      points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)
+      for (i in 1:(length(path$state) - 1)) {
+          segments(path$x[i], path$y[i], path$x[i + 1], path$y[i + 1], 
+                  col = c(col1, col2)[path$state[i]])
+      }
+      terra::plot(env02[[1]])
+      points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)
+      for (i in 1:(length(path$state) - 1)) {
+          segments(path$x[i], path$y[i], path$x[i + 1], path$y[i + 1], 
+                  col = c(col1, col2)[path$state[i]])
+      }
+    } else if (type == 1) {
+      points(path, col = col1, pch = 19, cex = 0.5)
+      lines(path, col = col1)
+    }
     # Plotting variogram
     # if (!vgram) return(NULL)
     # plot(vgram(path, ...), type = "l", xlab = "Time lag", ylab = "Variance")
@@ -636,7 +650,7 @@ par_to_df <- function(par) {
     }))
 }
 
-results_table <- function(s = c("K", "RW", "RWM", "trad2")) {
+results_table <- function(s = c("K", "RW", "RWM", "RWH", "trad_obsolete", "trad2")) {
   
   # null <- load_output("LL_null")
   

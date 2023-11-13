@@ -36,10 +36,11 @@ if (run_model) {
     refit_homes     <- FALSE            # Refit home ranges (AKDE) 
     refit_turns     <- FALSE            # Refit turn distributions (MM)
     refit_model     <- TRUE             # Refit movement model parameters
+      refit_model0  <- TRUE             # Refit traditional SSF model
     model_calcnull  <- FALSE            # Calculate null likelihoods 
                                         # refit_model must be TRUE for this one
-    refit_model0    <- FALSE            # Refit traditional SSF model
-                                        
+                                    
+    ## Parameters                                    
     npar            <- 7              # Number of parameters in current model
     sim_steps       <- 25             # How many steps to simulate forward
 

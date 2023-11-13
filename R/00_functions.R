@@ -342,8 +342,9 @@ log_likelihood0 <- function(par) {
     env_local <- attract_e[(step_range * (t - 1)):(step_range * t)]
     env_local <- env_local / sum(env_local)
     env_local[obs[t]]
-    p <- par[7] * env_local * mk # mk = movement kernel
-    # p[obs[t]]
+    # p <- par[7] * env_local * mk # mk = movement kernel
+    p <- par[7] * env_local + (1 - par[7]) * mk # mk = movement kernel
+    p[obs[t]]
   })
   
   return(-sum(log(p_obs)))

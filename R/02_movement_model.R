@@ -62,7 +62,8 @@ if (refit_model) {
   message(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
   nbhd0 <- make_nbhd(i = seq_len(nrow(brdf)), sz = buffersize)                   # 6.4s
 
-  foreach(i = i_initial:n_iter) %dopar% {
+  # foreach(i = i_initial:n_iter) %do% {
+  for (i in i_initial:n_iter) {
     message(paste0("Jaguar #: ", i, " / ", n_iter))
     id <- as.numeric(jag_id[i])
 
@@ -91,7 +92,7 @@ if (refit_model) {
       track <- make_track(id)
       sl_emp <- as.vector(na.exclude(track$sl))
       ta_emp <- as.vector(na.exclude(track$ta))
-      mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000)
+      mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, max_dist = max_dist)
     } else {
       # New model
       max_dist <- ceiling(max(dist) * 2)   

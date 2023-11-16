@@ -12,5 +12,6 @@ figs/*
 gis/*
 vasco.sh
 R/old
+R/scratch.R
 jaguar_movement.md
 jaguar_paper.md

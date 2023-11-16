@@ -13,7 +13,7 @@ analyse_output  <- FALSE
 
 ## Set up parallel processing ==================================================
 
-parallel        <- TRUE
+parallel        <- FALSE
 ncore           <- 3
 if (parallel) {
     library(doParallel)
@@ -36,7 +36,7 @@ if (run_model) {
     refit_homes     <- FALSE            # Refit home ranges (AKDE) 
     refit_turns     <- FALSE            # Refit turn distributions (MM)
     refit_model     <- TRUE             # Refit movement model parameters
-      refit_model0  <- TRUE             # Refit traditional SSF model
+      refit_model0  <- FALSE             # Refit traditional SSF model
     model_calcnull  <- FALSE            # Calculate null likelihoods 
                                         # refit_model must be TRUE for this one
                                     
@@ -44,7 +44,7 @@ if (run_model) {
     npar            <- 7              # Number of parameters in current model
     sim_steps       <- 25             # How many steps to simulate forward
 
-    i_initial       <- 1              # Individual to start at
+    i_initial       <- 55              # Individual to start at
     buffersize      <- 1              # Jaguars move 1px (1km) at a time
     n_iter          <- nrow(jag_id)   # Number of individuals
 

@@ -301,7 +301,7 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
     obs <<- obs
 }
 
-make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, minimum = 0) {
+make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum = 0) {
   
   avail <- data.frame(sl = sample(sl_emp, n, replace = TRUE),
                       ta = sample(ta_emp, n, replace = TRUE))
@@ -312,7 +312,6 @@ make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, minimum = 0) {
   density <- tapply(avail$x, list(avail$yi, avail$xi), length)
   density <- reshape2::melt(density)
   names(density) <- c("x", "y", "n")
-  
   size <- max_dist * 2 + 1
   out <- data.frame(x = rep(-max_dist:max_dist, times = size),
                     y = rep(-max_dist:max_dist, each = size))
@@ -341,13 +340,20 @@ log_likelihood0 <- function(par) {
   p_obs <- sapply(seq_len(n_obs - 1), function(t) {
     env_local <- attract_e[(step_range * (t - 1)):(step_range * t)]
     env_local <- env_local / sum(env_local)
-    env_local[obs[t]]
-    # p <- par[7] * env_local * mk # mk = movement kernel
-    p <- par[7] * env_local + (1 - par[7]) * mk # mk = movement kernel
-    p[obs[t]]
+    # env_local[obs[t]]
+    p <- env_local * mk # mk = movement kernel
+    p <- p / sum(p)
+    # print(p)
+    # env_weight <- exp(par[7]) / (1 + exp(par[7]))
+    # p <- env_weight * env_local + (1 - env_weigbeta <- exp(par[7])beta <- exp(par[7])ht) * mk # mk = movement kernel
+    # print(p[obs[t]])
+    return(p[obs[t]])
   })
   
-  return(-sum(log(p_obs)))
+  ll <- -sum(log(p_obs))
+  if (is.infinite(ll)) ll <- 0
+  print(ll)
+  return(ll)
 }
 
 log_likelihood <- function(par) {

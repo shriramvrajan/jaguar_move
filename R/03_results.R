@@ -3,24 +3,33 @@ source("R/00_functions.R")
 jagmeta_br <- jag_meta[ID %in% jag_id[[1]], ]
 env <- brazil_ras
 
-res <- results_table()[[1]]  # [[2]] = parameter values
-param <- results_table()[[2]]
+s <- c("K", "RW", "RWM", "trad1", "trad2")
+
+res <- results_table(s)[[1]]  # [[2]] = parameter values
+param <- results_table(s)[[2]]
 # need to figure out what happened to the null likelihoods
 
-excl <- which(res$nmove < 300)
-res <- res[-excl, ]
+# excl <- which(res$nmove < 300)
+res <- res[1:54, ]
+# res <- res[-excl, ]
 
 
-plot(res$aic_K, col = rgb(1, 1, 1, 0.4), pch = 19, ylim = c(0, 1.1e5))
-points(res$aic_RW, col = rgb(0, 1, 0, 0.4), pch = 19)
-points(res$aic_RWM, col = rgb(1, 0, 0, 0.4), pch = 19)
-points(res$aic_trad2, col = rgb(0, 0, 1, 0.4), pch = 19)
-points(res$aic_RWH, col = rgb(0.5, 0.5, 0, 0.4), pch = 19)
-
-hist(res$aic_K, 10, col = rgb(0, 0, 0, 0.4), border = NA, xlim = c(0, 1.1e5))
-hist(res$aic_RWM, 10, col = rgb(0, 1, 0, 0.4), add = TRUE, border = NA)
+r2 <- res[, c("aic_RWM", "aic_trad1")]
+r2 <- r2[order(r2$aic_RWM), ]
+r2$ind <- seq_len(nrow(r2))
+r2 <- gather(r2, "model", "aic", -ind)
+bad <- r2$ind[which(is.na(r2$aic))]
+r2 <- r2[-bad, ]
 
 
+p <- ggplot(r2, aes(ind, aic, fill = model)) +
+     geom_bar(stat = "identity", position = "dodge")
+plot(p)
+
+res <- res[order(res$aic_RWM), ]
+plot(res$aic_RWM, pch = 19)
+points(res$aic_trad1, pch = 19, col = "red")
+abline(0, 1)
 
 # only for trad
 # res$p7 <- exp(res$p7) / (exp(res$p7) + 1)

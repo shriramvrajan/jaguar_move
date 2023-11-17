@@ -327,9 +327,14 @@ make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum = 
 # Return -(maximum log likelihood) given a set of parameters
 # log_likelihood0: For traditional SSF
 # log_likelihood:  For all others including simulations
-log_likelihood0 <- function(par) {
+log_likelihood0 <- function(par, objects) {
   # par        : Initial values of parameters for optimization
   # par[7] <- exp(par[7]) / (1 + exp(par[7])) # Transform to [0, 1]
+
+  env <- objects[[1]]
+  max_dist <- objects[[2]]
+  mk <- objects[[3]]
+  obs <- objects[[4]]
 
   # Attractiveness function 0: traditional SSF 
   attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
@@ -356,19 +361,26 @@ log_likelihood0 <- function(par) {
   return(ll)
 }
 
-log_likelihood <- function(par) {
+log_likelihood <- function(par, objects) {
   # par        : Initial values of parameters for optimization
+  
+  # env        : Environmental variables
+  env        <- objects[[1]]
   # nbhd       : Neighborhood
+  nbhd       <- objects[[2]]
   # max_dist   : Maximum distance in pixels for one step
+  max_dist   <- objects[[3]]
   # n_obs      : Number of GPS observations (length of track)
-  # steps:     : Number of steps simulated
+  n_obs      <- objects[[4]]
+  # sim_steps:     : Number of steps simulated
+  sim_steps  <- objects[[5]]
   # to_dest    : For each cell of the extended neighborhood of the path, what 
   #               are the immediate neighbors? Rows are path cells, columns are 
   #               neighbors.
+  to_dest    <- objects[[6]]
   # obs        : Index of the cell of the extended neighborhood that corresponds
-  #               to the next GPS observation
-  # env        : Environmental variables
-
+  #              to the next GPS observation
+  obs        <- objects[[7]]
 
   # Attraction function 1: environmental variables + home range ----------------
   # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
@@ -462,25 +474,25 @@ log_likelihood <- function(par) {
   # return(list(current, current2)) # DEBUG
 }
 
-loglike <- function(x) {
+loglike <- function(par, objects) {
     # Wrapper function for log_likelihood and log_likelihood0
     if (refit_model0 == TRUE) {
-        return(log_likelihood0(x))
+        return(log_likelihood0(par, objects))
     } else {
-        return(log_likelihood(x))
+        return(log_likelihood(par, objects))
     }
 }
 
-run_optim <- function(param) {
+run_optim <- function(param, objects) {
     ntries <- 0
       ## Main fitting loop, tries each individual 20x and moves on if no fit
     while (ntries <= 20) {
         tryCatch({
-            par_out <- optim(param, loglike)
+            par_out <- optim(param, loglike, objects = objects)
             saveRDS(par_out, paste0("data/output/par_out_", i, ".RDS"))
 
             message("Running loglike_fun...")
-            likelihood <- loglike(par_out[[1]])
+            likelihood <- loglike(par_out[[1]], objects = objects)
             saveRDS(likelihood, paste0("data/output/likelihood_", i, ".RDS"))
 
             message(paste0("jaguar ", i, " fitted ", date()))

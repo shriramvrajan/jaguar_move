@@ -62,8 +62,8 @@ if (refit_model) {
   message(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
   nbhd0 <- make_nbhd(i = seq_len(nrow(brdf)), sz = buffersize)                   # 6.4s
 
-  # foreach(i = i_initial:n_iter) %do% {
-  for (i in i_initial:n_iter) {
+  foreach(i = i_initial:n_iter) %dopar% {
+  # for (i in i_initial:n_iter) {
     message(paste0("Jaguar #: ", i, " / ", n_iter))
     id <- as.numeric(jag_id[i])
 
@@ -107,15 +107,18 @@ if (refit_model) {
     # Make indexing consistent with env
     row.names(env) <- seq_len(length(nbhd_index))
 
+    # Model objects as list
+    objects <- list(env, nbhd, max_dist, n_obs, sim_steps, to_dest, obs)
+
     # Calculate null likelihoods for each jaguar if not already done
     if (model_calcnull) {
       message(paste0("Calculating null likelihood for jaguar ", i))
-      null_likelihood <- loglike(c(rep(0, npar)))
+      null_likelihood <- loglike(c(rep(0, npar)), objects)
       saveRDS(null_likelihood, paste0("data/output/null_", i, ".RDS"))
     } else {
       param <- rnorm(npar)
       message("Running optim...")
-      run_optim(param)
+      run_optim(param, objects)
     } 
   }
 }

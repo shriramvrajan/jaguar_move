@@ -118,7 +118,7 @@ if (refit_model) {
     } else {
       param <- rnorm(npar)
       message("Running optim...")
-      run_optim(param, objects)
+      run_optim(param, objects, i)
     } 
   }
 }

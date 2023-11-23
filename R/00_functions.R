@@ -477,13 +477,16 @@ log_likelihood <- function(par, objects) {
 loglike <- function(par, objects) {
     # Wrapper function for log_likelihood and log_likelihood0
     if (refit_model0 == TRUE) {
+        # Traditional SSF: 
+        # Intermediate spaces between GPS observations unimportant
         return(log_likelihood0(par, objects))
     } else {
+        # New model: intermediate spaces important
         return(log_likelihood(par, objects))
     }
 }
 
-run_optim <- function(param, objects) {
+run_optim <- function(param, objects, i) {
     ntries <- 0
       ## Main fitting loop, tries each individual 20x and moves on if no fit
     while (ntries <= 20) {

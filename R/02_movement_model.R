@@ -62,9 +62,8 @@ if (refit_model) {
   message(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
   nbhd0 <- make_nbhd(i = seq_len(nrow(brdf)), sz = buffersize)                   # 6.4s
 
-  foreach(i = i_initial:n_iter) %dopar% {
-  # for (i in i_initial:n_iter) {
-    message(paste0("Jaguar #: ", i, " / ", n_iter))
+  foreach(i = i_todo) %dopar% {
+    message(paste0("Jaguar #: ", i))
     id <- as.numeric(jag_id[i])
 
     # Adding individual home range (AKDE) to brdf

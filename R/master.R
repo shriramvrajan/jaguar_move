@@ -41,12 +41,16 @@ if (run_model) {
                                         # refit_model must be TRUE for this one
                                     
     ## Parameters                                    
-    npar            <- 7              # Number of parameters in current model
+    npar            <- 8              # Number of parameters in current model
     sim_steps       <- 25             # How many steps to simulate forward
-
-    i_initial       <- 55              # Individual to start at
     buffersize      <- 1              # Jaguars move 1px (1km) at a time
     n_iter          <- nrow(jag_id)   # Number of individuals
+
+    outfiles <- list.files("data/output")
+    done <- as.numeric(gsub("par_out_", "", gsub(".RDS", "", outfiles)))
+    done <- done[!is.na(done)]
+    i_todo <- setdiff(seq_len(n_iter), done)
+    message(paste0("Number of jaguars to process: ", length(i_todo)))
 
     source("R/02_movement_model.R")
 }

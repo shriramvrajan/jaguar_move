@@ -73,8 +73,14 @@ if (refit_model) {
 
     # Observed trajectory of jaguar i
     jag_traject <- jag_move[ID == id, 3:4]
+    
+    if (holdout_set && nrow(jag_traject) > 100) {
+      hold <- seq_len(ceiling(nrow(jag_traject) * holdout_frac))
+      jag_traject <- jag_traject[hold, ]
+    }
+
     jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
-    n_obs <- length(jag_traject_cells)
+    obs <- length(jag_traject_cells)
     # Calculating step distances; divide by cell size then take hypotenuse
     dist <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
             xres(brazil_ras)

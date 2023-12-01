@@ -115,6 +115,10 @@ make_track <- function(id) {
                    "sl", "ta", "dir", "dt", "spd")])
 }
 
+exp01 <- function(x) {
+    return(exp(x) / (1 + exp(x)))
+}
+
 # 1. Data exploration ----------------------------------------------------------
 
 # Plot environmental layers for path 
@@ -507,6 +511,7 @@ run_optim <- function(param, objects, i) {
             message(paste("Try #:", ntries))
             if (ntries == 20) {
               message("Skipping, couldn't fit in 20 tries")
+              saveRDS(NA, paste0("data/output/NA_", i, ".RDS"))
             } else {
               message("Retrying")
             }

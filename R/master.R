@@ -32,11 +32,14 @@ if (generate_data) {
 
 if (run_model) {
     
-    ## Switches 
+    ## Not important right now 
     refit_homes     <- FALSE            # Refit home ranges (AKDE) 
     refit_turns     <- FALSE            # Refit turn distributions (MM)
+
+    ## Actual fitting options
     refit_model     <- TRUE             # Refit movement model parameters
-      refit_model0  <- FALSE             # Refit traditional SSF model
+      refit_model0  <- FALSE            # Refit traditional SSF model
+    holdout_set     <- TRUE             # Hold out a set of locations
     model_calcnull  <- FALSE            # Calculate null likelihoods 
                                         # refit_model must be TRUE for this one
                                     
@@ -45,9 +48,13 @@ if (run_model) {
     sim_steps       <- 25             # How many steps to simulate forward
     buffersize      <- 1              # Jaguars move 1px (1km) at a time
     n_iter          <- nrow(jag_id)   # Number of individuals
+    holdout_frac    <- 0.3            # Fraction of locations to hold out
 
     outfiles <- list.files("data/output")
-    done <- as.numeric(gsub("par_out_", "", gsub(".RDS", "", outfiles)))
+    done <- gsub(".RDS", "", outfiles) %>% 
+        gsub("par_out_", "", .) %>% 
+        gsub("NA_", "", .) %>%
+        as.numeric()
     done <- done[!is.na(done)]
     i_todo <- setdiff(seq_len(n_iter), done)
     message(paste0("Number of jaguars to process: ", length(i_todo)))

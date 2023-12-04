@@ -48,7 +48,7 @@ if (run_model) {
     sim_steps       <- 25             # How many steps to simulate forward
     buffersize      <- 1              # Jaguars move 1px (1km) at a time
     n_iter          <- nrow(jag_id)   # Number of individuals
-    holdout_frac    <- 0.3            # Fraction of locations to hold out
+    holdout_frac    <- 0.7            # Fraction of locations to hold out
 
     outfiles <- list.files("data/output")
     done <- gsub(".RDS", "", outfiles) %>% 

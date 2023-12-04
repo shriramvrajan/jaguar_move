@@ -407,8 +407,9 @@ log_likelihood <- function(par, objects) {
   move_prob <- exp(par[7]) / (1 + exp(par[7])) 
   attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
                    par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
-  attract_h <- exp(par[8] * env$home)
-  attract <- normalize_nbhd(attract_e * attract_h)
+  # attract_h <- exp(par[8] * env$home)
+  # attract <- normalize_nbhd(attract_e * attract_h)
+  attract <- normalize_nbhd(attract_e)
   attract <- t(apply(attract, 1, function(r) {
     cent <- ceiling(length(r) / 2)
     r[cent] <- r[cent] * (1 - move_prob)
@@ -416,14 +417,7 @@ log_likelihood <- function(par, objects) {
     return(r / sum(r, na.rm = TRUE))
   }))
 
-  # attract_m <- vector(length = length(attract_e))
-  # attract_m[] <- move_prob / (length(attract_m) - 1)
-  # attract_m[ceiling(length(attract_m) / 2)] <- 1 - move_prob # WRONG
-  # browser()
-  # attract <- normalize_nbhd(attract_e) * attract_m
-
   # Array for propagating probabilities forward ================================
-  # 
   # n_obs      : Number of GPS observations
   # steps      : Number of simulated steps
   step_range <- (2 * max_dist + 1)^2 

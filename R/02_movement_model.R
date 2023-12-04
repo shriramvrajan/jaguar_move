@@ -80,7 +80,7 @@ if (refit_model) {
     }
 
     jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
-    obs <- length(jag_traject_cells)
+    n_obs <- length(jag_traject_cells)
     # Calculating step distances; divide by cell size then take hypotenuse
     dist <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
             xres(brazil_ras)

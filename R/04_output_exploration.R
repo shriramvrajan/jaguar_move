@@ -4,7 +4,6 @@ if (load_source) {
     source("R/03_results.R")
 }
 
-plot_res <- FALSE
 plot_indiv <- TRUE
  
 ### Data =======================================================================
@@ -19,34 +18,15 @@ plot_indiv <- TRUE
 
 ### Analyses ===================================================================
 
-# Plotting from results --------------------------------------------------------
-if (plot_res) {
-    # vars: 1 footprint, 2 elev, 3 slope, 4 forestcover, 5 distwater, 
-    #       6 distroad, 7 homerange
-    evars <- c("footprint", "elev", "slope", "forest", "distance to water", "distance to road",
-            "unfamiliarity")
+# Testing holdout sets
+i = 2
+message(paste0("Jaguar #: ", i))
+id <- as.numeric(jag_id[i])
 
-    i <- 3
-    
-    barplot(tapply(res[, paste0("p", i)], res$bio, function(x) mean(x, na.rm = TRUE)),
-            col = "#a37373", border = NA, main = evars[i])
-
-
-
-    res <- as.data.frame(res) # still not used to plotting with tibbles
-
-    
-
-    par(mfrow = c(2, 4))
-
-    for (i in seq_len(length(evars))) {
-        hist(res[, paste0("p", i)], 20, col = "#a37373", border = NA,
-             xlab = "Parameter value", main = evars[i])
-        abline(v = 0, lwd = 2, col = "black")
-        print(evars[i])
-        print(summary(res[, paste0("p", i)]))
-    }
-}
+jag_traject <- jag_move[ID == id, 3:4]
+holdout_frac <- 0.3 
+hold <- seq_len(ceiling(nrow(jag_traject) * holdout_frac))
+jag_traject <- jag_traject[-hold, ]
 
 
 # Plotting for individual jaguar -----------------------------------------------

@@ -19,14 +19,34 @@ plot_indiv <- TRUE
 ### Analyses ===================================================================
 
 # Testing holdout sets
-i = 2
+# A lot of this code is also in 02_movement_model ; refactor later
+i <- 2
 message(paste0("Jaguar #: ", i))
 id <- as.numeric(jag_id[i])
 
+nbhd0 <- make_nbhd(i = seq_len(nrow(brdf)), sz = buffersize)
 jag_traject <- jag_move[ID == id, 3:4]
 holdout_frac <- 0.3 
 hold <- seq_len(ceiling(nrow(jag_traject) * holdout_frac))
 jag_traject <- jag_traject[-hold, ]
+
+jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
+n_obs <- length(jag_traject_cells)
+# Calculating step distances; divide by cell size then take hypotenuse
+dist <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
+        xres(brazil_ras)
+dist <- (rowSums(dist^2))^.5
+max_dist <- ceiling(max(dist) * 2)   
+prep_model_objects(jag_traject_cells, max_dist, r = brazil_ras, rdf = brdf, 
+                   nbhd0 = nbhd0)
+objects <- list(env, nbhd, max_dist, n_obs, sim_steps, to_dest, obs)
+
+sims <- paste0("data/output/", c("LL_holdRWH", "LL_holdtrad1"))
+par1 <- readRDS(paste0(sims[1], "/par_out_", i, ".RDS"))
+par2 <- readRDS(paste0(sims[2], "/par_out_", i, ".RDS"))
+
+ll_1 <- log_likelihood(par1, objects)
+ll_2 <- log_likelihood0(par2, objects)
 
 
 # Plotting for individual jaguar -----------------------------------------------

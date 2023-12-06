@@ -339,6 +339,7 @@ log_likelihood0 <- function(par, objects) {
   max_dist <- objects[[2]]
   mk <- objects[[3]]
   obs <- objects[[4]]
+  n_obs <- nrow(obs)
 
   # Attractiveness function 0: traditional SSF 
   attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +

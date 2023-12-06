@@ -38,7 +38,7 @@ if (run_model) {
 
     ## Actual fitting options
     refit_model     <- TRUE             # Refit movement model parameters
-      refit_model0  <- FALSE            # Refit traditional SSF model
+      refit_model0  <- TRUE            # Refit traditional SSF model
     holdout_set     <- TRUE             # Hold out a set of locations
     model_calcnull  <- FALSE            # Calculate null likelihoods 
                                         # refit_model must be TRUE for this one
@@ -49,6 +49,13 @@ if (run_model) {
     buffersize      <- 1              # Jaguars move 1px (1km) at a time
     n_iter          <- nrow(jag_id)   # Number of individuals
     holdout_frac    <- 0.7            # Fraction of locations to hold out
+    message("Parameters set")
+    message(paste0("Number of jaguars: ", n_iter))
+    message(paste0("Holdout fraction: ", holdout_frac))
+    message(paste0("Number of parameters: ", npar))
+    message(paste0("Number of simulation steps: ", sim_steps))
+    message(paste0("Buffer size: ", buffersize))
+    message("=========================================")
 
     outfiles <- list.files("data/output")
     done <- gsub(".RDS", "", outfiles) %>% 

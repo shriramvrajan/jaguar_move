@@ -10,6 +10,7 @@ library(gstat)
 library(ctmm)
 library(amt) 
 library(lubridate)
+library(fitdistrplus)
 # library(plotly)
 # library(apcluster)
 # library(suncalc)
@@ -307,25 +308,37 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
 
 make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum = 0) {
   
+  # Fit gamma parameters? 
   avail <- data.frame(sl = sample(sl_emp, n, replace = TRUE),
                       ta = sample(ta_emp, n, replace = TRUE))
   avail$x <- avail$sl * cos(avail$ta) / 1000
   avail$y <- avail$sl * sin(avail$ta) / 1000
-  avail$xi <- sapply(avail$x, function(x) ifelse(x > 0, floor(x), ceiling(x)))
-  avail$yi <- sapply(avail$y, function(y) ifelse(y > 0, floor(y), ceiling(y)))
-  density <- tapply(avail$x, list(avail$yi, avail$xi), length)
-  density <- reshape2::melt(density)
-  names(density) <- c("x", "y", "n")
-  size <- max_dist * 2 + 1
+  avail$d <- floor(sqrt(avail$x^2 + avail$y^2))
+
+  stay_prob <- length(which(avail$d == 0)) / length(avail$d)  
+
+  moves <- avail$d[-which(avail$d == 0)]
+  rate <- fitdist(moves, distr = "exp", method = "mle")$estimate
+  # Return out$n as a vector of probabilities
+  # But using 0-1 for the center cell + gamma dist for the rest
+
+  # OK YOU CAN DO THIS GANBATTE !!!!!!!!!!!!!
+
   out <- data.frame(x = rep(-max_dist:max_dist, times = size),
                     y = rep(-max_dist:max_dist, each = size))
-
-  out <- merge(out, density, by = c("x", "y"), all.x = TRUE)
-  out$n[is.na(out$n)] <- 0
-  out$n <- out$n + minimum
-  out$n <- out$n / sum(out$n)
-  
   return(out$n)
+
+  # avail$xi <- sapply(avail$x, function(x) ifelse(x > 0, floor(x), ceiling(x)))
+  # avail$yi <- sapply(avail$y, function(y) ifelse(y > 0, floor(y), ceiling(y)))
+  # density <- tapply(avail$x, list(avail$yi, avail$xi), length)
+  # density <- reshape2::melt(density)
+  # names(density) <- c("x", "y", "n")
+  # size <- max_dist * 2 + 1
+
+  # out <- merge(out, density, by = c("x", "y"), all.x = TRUE)
+  # out$n[is.na(out$n)] <- 0
+  # out$n <- out$n + minimum
+  # out$n <- out$n / sum(out$n)  
 }
 
 # Return -(maximum log likelihood) given a set of parameters
@@ -339,8 +352,9 @@ log_likelihood0 <- function(par, objects) {
   max_dist <- objects[[2]]
   mk <- objects[[3]]
   obs <- objects[[4]]
-  n_obs <- nrow(obs)
-
+  n_obs <- length(obs)
+  
+  # browser()
   # Attractiveness function 0: traditional SSF 
   attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
                    par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
@@ -351,18 +365,18 @@ log_likelihood0 <- function(par, objects) {
     env_local <- attract_e[(step_range * (t - 1)):(step_range * t)]
     env_local <- env_local / sum(env_local)
     # env_local[obs[t]]
-    p <- env_local * mk # mk = movement kernel
-    p <- p / sum(p)
+    # p <- env_local * mk # mk = movement kernel
+    # p <- p / sum(p)
     # print(p)
-    # env_weight <- exp(par[7]) / (1 + exp(par[7]))
-    # p <- env_weight * env_local + (1 - env_weigbeta <- exp(par[7])beta <- exp(par[7])ht) * mk # mk = movement kernel
+    env_weight <- exp(par[7]) / (1 + exp(par[7]))
+    p <- env_weight * env_local + (1 - env_weight) * mk # mk = movement kernel
     # print(p[obs[t]])
     return(p[obs[t]])
   })
   
   ll <- -sum(log(p_obs))
   if (is.infinite(ll)) ll <- 0
-  print(ll)
+  # print(ll)
   return(ll)
 }
 
@@ -405,7 +419,7 @@ log_likelihood <- function(par, objects) {
   # attract <- attract1 # CHECK WHAT IS GOING ON HERE
 
   # Attraction function 4: With 0-1 parameter ----------------------------------
-  move_prob <- exp(par[7]) / (1 + exp(par[7])) 
+  move_prob <- exp01(par[7])
   attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
                    par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
   # attract_h <- exp(par[8] * env$home)
@@ -436,20 +450,16 @@ log_likelihood <- function(par, objects) {
     # Probabilities across entire nbhd for step j
     step_prob <- as.vector(current[, , j]) * attract[]
 
-    # step_prob2 <- as.vector(current2[, , j]) * attract2[] # DEBUG
     # dest has same dimensions as nbhd
-    # step_prob is a vector of length step_range
     # to_dest is a matrix with the same dimensions as nbhd
     #   rows are neighborhood cells, columns are neighbors of those cells
     #   each entry is the index of the neighbor cell
     #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
     #   nbhd is the 3rd cell of nbhd.
     dest[] <- step_prob[as.vector(to_dest)]
-    # dest2[] <- step_prob2[as.vector(to_dest)] # DEBUG
 
     # Summing probabilities up to step j to generate step j+1
     current[, , j + 1] <- rowSums(dest, na.rm = TRUE)
-    # current2[, , j + 1] <- rowSums(dest2, na.rm = TRUE) # DEBUG
   }
   
   #### Run likelihood function from fitting with true parameters
@@ -457,14 +467,15 @@ log_likelihood <- function(par, objects) {
   # Calculate log likelihood 
   predictions <- matrix(0, nrow = sim_steps, ncol = n_obs)
   for (i in 1:n_obs) {
-    predictions[, i] <- current[obs[i], i, ]
+    prob <- current[obs[i], i, ]
+    predictions[, i] <- ifelse(prob == 0, 0.001, prob)
     # returns the probability for the row associated with the next 
     # observation location, for that observation i, across all time steps
   }
 
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
   # log of product is sum of logs
-
+  browser()
   # saveRDS(predictions, paste0("data/output/simulations/p", current_jag, ".RDS"))
   # current <- list(current, current2) # DEBUG
   # saveRDS(current, paste0("data/output/simulations/current", current_jag, ".RDS")) # DEBUG

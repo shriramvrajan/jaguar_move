@@ -14,7 +14,7 @@ analyse_output  <- FALSE
 ## Set up parallel processing ==================================================
 
 parallel        <- TRUE
-ncore           <- 6
+ncore           <- 8
 if (parallel) {
     library(doParallel)
     library(foreach)
@@ -44,7 +44,7 @@ if (run_model) {
                                         # refit_model must be TRUE for this one
                                     
     ## Parameters                                    
-    npar            <- 8              # Number of parameters in current model
+    npar            <- 7              # Number of parameters in current model
     sim_steps       <- 25             # How many steps to simulate forward
     buffersize      <- 1              # Jaguars move 1px (1km) at a time
     n_iter          <- nrow(jag_id)   # Number of individuals

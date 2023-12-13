@@ -1,25 +1,22 @@
 source("R/00_functions.R")
 
+plotstuff <- FALSE
+
 jagmeta_br <- jag_meta[ID %in% jag_id[[1]], ]
 env <- brazil_ras
 
-s <- c("null", "RWH", "RWM", "trad1")
+s <- c("holdRWM", "holdtrad1")
 
 res <- results_table(s)[[1]]  # [[2]] = parameter values
 param <- results_table(s)[[2]]
 # need to figure out what happened to the null likelihoods
 
-res <- cbind(res, param$RWM)
 
-excl <- which(res$nmove < 100)
-res <- res[-excl, ]
+if (plotstuff) {
+    res <- cbind(res, param$RWM)
 
-scatter <- ggplot(res, aes(x = seq_len(nrow(res)), y = exp01(V7)))
-scatter + geom_point(size = 3, aes(col = bio)) # + 
-          geom_abline(intercept = 0, slope = 1, linetype = "dashed")
+    excl <- which(res$nmove < 100)
+    res <- res[-excl, ]
 
-hist <- ggplot(res, aes(x = exp01(V7))) + geom_histogram(binwidth = 0.05)
-
-
-ggplot(res, aes(x = weight, y = age, col = bio)) + geom_point(size = 3)
-
+    ggplot(res, aes(x = aic_holdRWM - aic_holdtrad1, y = nmove, col = sex)) + geom_point(size = 3)
+}

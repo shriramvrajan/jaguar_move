@@ -277,7 +277,6 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
     nbhd_index <- as.vector(t(nbhd_index))
     nbhd_index <<- nbhd_index
 
-    # browser()
     message("Getting indices of immediate neighborhood of each cell")
     # For each cell of the extended neighborhood of the path, what are
     # the immediate neighbors? Rows are path cells, columns are neighbors.
@@ -307,6 +306,29 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
 }
 
 make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum = 0) {
+  
+  avail <- data.frame(sl = sample(sl_emp, n, replace = TRUE),
+                      ta = sample(ta_emp, n, replace = TRUE))
+  avail$x <- avail$sl * cos(avail$ta) / 1000
+  avail$y <- avail$sl * sin(avail$ta) / 1000
+  avail$xi <- sapply(avail$x, function(x) ifelse(x > 0, floor(x), ceiling(x)))
+  avail$yi <- sapply(avail$y, function(y) ifelse(y > 0, floor(y), ceiling(y)))
+  density <- tapply(avail$x, list(avail$yi, avail$xi), length)
+  density <- reshape2::melt(density)
+  names(density) <- c("x", "y", "n")
+  size <- max_dist * 2 + 1
+  out <- data.frame(x = rep(-max_dist:max_dist, times = size),
+                    y = rep(-max_dist:max_dist, each = size))
+
+  out <- merge(out, density, by = c("x", "y"), all.x = TRUE)
+  out$n[is.na(out$n)] <- 0
+  out$n <- out$n + minimum
+  out$n <- out$n / sum(out$n)
+  
+  return(out$n)
+}
+
+make_movement_kernel1 <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum = 0) {
   
   # Fit gamma parameters? 
   avail <- data.frame(sl = sample(sl_emp, n, replace = TRUE),
@@ -354,7 +376,6 @@ log_likelihood0 <- function(par, objects) {
   obs <- objects[[4]]
   n_obs <- length(obs)
   
-  # browser()
   # Attractiveness function 0: traditional SSF 
   attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
                    par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
@@ -371,9 +392,8 @@ log_likelihood0 <- function(par, objects) {
     env_weight <- exp(par[7]) / (1 + exp(par[7]))
     p <- env_weight * env_local + (1 - env_weight) * mk # mk = movement kernel
     # print(p[obs[t]])
-    return(p[obs[t]])
+    return(ifelse((p[obs[t]] == 0), 0.001, p[obs[t]]))
   })
-  
   ll <- -sum(log(p_obs))
   if (is.infinite(ll)) ll <- 0
   # print(ll)
@@ -475,7 +495,6 @@ log_likelihood <- function(par, objects) {
 
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
   # log of product is sum of logs
-  browser()
   # saveRDS(predictions, paste0("data/output/simulations/p", current_jag, ".RDS"))
   # current <- list(current, current2) # DEBUG
   # saveRDS(current, paste0("data/output/simulations/current", current_jag, ".RDS")) # DEBUG

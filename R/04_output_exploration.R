@@ -4,28 +4,15 @@ if (load_source) {
     source("R/03_results.R")
 }
 
-plot_indiv <- TRUE
-
-### Data =======================================================================
-
-# Camtrap stuff
-# cam_unit <- read.csv("data/camtrap/dataset/AMZ_CAMTRAP_UNIT.csv")
-# cam_area <- read.csv("data/camtrap/dataset/AMZ_CAMTRAP_AREA.csv")
-
-# GBIF records
-# gbif <- read.csv("data/gbif_jaguars_brazil.csv")
-# gbif <- dwca_read("data/gbif")
-
 ## Set up parallel processing ==================================================
 
-parallel        <- TRUE
-ncore           <- 8
-if (parallel) {
-    library(doParallel)
-    library(foreach)
-    registerDoParallel(ncore)
-    message(paste0("number of workers: ", getDoParWorkers()))
-}
+ncore <- 2
+
+library(doParallel)
+library(foreach)
+registerDoParallel(ncore)
+message(paste0("number of workers: ", getDoParWorkers()))
+
 
 ### Analyses ===================================================================
 
@@ -37,9 +24,11 @@ jag <- seq_len(nrow(jag_id))
 
 bad <- c(1, 2, 33, 42, 49)
 
-jag <- jag[1:8]
+# jag <- jag[1:8]
 
-fitholdout <- foreach(i = jag, .combine = "rbind") %dopar% {
+# fitholdout <- foreach(i = jag, .combine = "rbind") %dopar% {
+fitholdout <- lapply(jag, function(i) {
+    # browser()
     message(paste0("Jaguar #: ", i))
     
     if (i %in% bad) {
@@ -66,7 +55,17 @@ fitholdout <- foreach(i = jag, .combine = "rbind") %dopar% {
         nbhd0 = nbhd0
     )
     sim_steps <- 25
-    objects <- list(env, nbhd, max_dist, n_obs, sim_steps, to_dest, obs)
+
+    # Normalizing desired environmental variables for extended neighborhood
+    home <- rast(paste0("data/homeranges/homerange_", id, ".grd"))
+    brdf$home <- as.vector(home)
+    envdf <- brdf[, c(1:6, 10)]
+    env <- envdf[nbhd_index, ]
+    env <- sweep(env, 2, colMeans(env), "-") 
+    env <- sweep(env, 2, apply(env, 2, sd), "/") 
+    # Make indexing consistent with env
+    row.names(env) <- seq_len(length(nbhd_index))
+    
     print("done prep")
 
     par1 <- param$holdRWM[i, ]
@@ -74,16 +73,39 @@ fitholdout <- foreach(i = jag, .combine = "rbind") %dopar% {
     # sims <- paste0("data/output/", c("LL_holdRWH", "LL_holdtrad1"))
     # par1 <- readRDS(paste0(sims[1], "/par_out_", i, ".RDS"))
     # par2 <- readRDS(paste0(sims[2], "/par_out_", i, ".RDS"))
-
+    objects <- list(env, nbhd, max_dist, n_obs, sim_steps, to_dest, obs)
     ll_1 <- log_likelihood(par1, objects)
     print("done ll1")
+
+    track <- make_track(id)
+    sl_emp <- as.vector(na.exclude(track$sl))
+    ta_emp <- as.vector(na.exclude(track$ta))
+    mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, max_dist = max_dist)
+    objects <- list(env, max_dist, mk, obs)
     ll_2 <- log_likelihood0(par2, objects)
     print("done ll2")
-
     return(cbind(ll_1, ll_2))
-}
+})
+fitholdout <- do.call(rbind, fitholdout)
 
 saveRDS(fitholdout, "data/output/fitholdout.RDS")
+
+hold <- as.data.frame(readRDS("data/output/fitholdout.RDS"))
+plot(hold$ll_1, hold$ll_2)
+abline(0, 1)
+
+aic1 <- 2 * 7 - 2 * (-hold$ll_1)
+aic2 <- 2 * 7 - 2 * (-hold$ll_2)
+
+### Data =======================================================================
+
+# Camtrap stuff
+# cam_unit <- read.csv("data/camtrap/dataset/AMZ_CAMTRAP_UNIT.csv")
+# cam_area <- read.csv("data/camtrap/dataset/AMZ_CAMTRAP_AREA.csv")
+
+# GBIF records
+# gbif <- read.csv("data/gbif_jaguars_brazil.csv")
+# gbif <- dwca_read("data/gbif")
 
 # Plotting for individual jaguar -----------------------------------------------
 # if (plot_indiv) {

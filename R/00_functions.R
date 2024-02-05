@@ -572,68 +572,43 @@ gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {
 
 # Generate a jaguar path of n steps starting from (x0, y0) with environmental
 # preference parameters par[] and search neighborhood size neighb
-jag_path <- function(x0, y0, n_step, par, neighb, type = 1, tprob = 0) {
-    # type: 1 = env1 only, 2 = multi-state model
-    # if (!(x0 %in% 1:100) || !(y0 %in% 1:100)) {
-    #     print("Jaguar out of bounds")
-    #     return(NULL)
-    # }
-    move_prob <- exp(par[2]) / (1 + exp(par[2]))
+jag_path <- function(x0, y0, n_step, par, neighb) {
+    # Set initial state
+    path <- matrix(NA, nrow = n_step, ncol = 4)
+    path[1, ] <- c(x0, y0, NA, NA)
 
-    path <- matrix(NA, nrow = n_step, ncol = switch(type, 4, 6))
-
-    path[1, ] <- switch(type, 
-                        c(x0, y0, NA, NA), c(x0, y0, NA, state0, NA, NA))
-    
-    if (type == 2) {
-        # Transition probabilities: p12, p21, p11, p22
-        tprob <- c(tprob, 1 - tprob)
-    }
+    # Probability of moving from current grid cell
+    move_prob <- exp01(par[2])
 
     for (i in 2:n_step) {
         if (i %% 10 == 0) print(i)
         pos <- path[i - 1, 1:2]
-        if (type == 2 && i %% sim_interval == 0) {
-            state <- path[i - 1, 4]
-            # Transition to new state
-            if (state == 1) {
-                if (runif(1) < tprob[1]) state <- 2
-            } else {
-                if (runif(1) < tprob[2]) state <- 1
-            }
-        }
+
+        # Attractiveness of each cell in neighborhood
         nbhd <- as.vector(make_nbhd(r = env01[[1]], rdf = env01[[2]], sz = neighb,
                           i = cellFromRowCol(env01[[1]], pos[1], pos[2])))
-        a1 <- sapply(nbhd, function(x) {
+        att <- sapply(nbhd, function(x) {
           if (is.na(x)) return(NA) else return(exp(env01[[1]][x] * par[1])$sim1)
         })
-        if (any(is.na(a1))) a1[is.na(a1)] <- 0
-        a1 <- a1 / sum(a1)
-        cent <- ceiling(length(a1) / 2)
-        a1[cent] <- a1[cent] * (1 - move_prob)
-        a1[-cent] <- a1[-cent] * (move_prob / (sum(!is.na(a1)) - 1))
-        attract <- a1 / sum(a1)
-        
-        if (type == 2) {
-          a2 <- exp(env02[[1]][nbhd] * par[2])$sim1
-          if (any(is.na(a2))) a2[is.na(a2)] <- 0
-          a2 <- a2 / sum(a2)
+        if (any(is.na(att))) att[is.na(att)] <- 0
+        att <- att / sum(att)
 
-          attract <- switch(state, a1, a2)
-        }
+        # Find center cell and scale by move_prob
+        cent <- ceiling(length(att) / 2)
+        att[cent] <- att[cent] * (1 - move_prob)
+        att[-cent] <- att[-cent] * (move_prob / (sum(!is.na(att)) - 1))
+        attract <- att / sum(att)
 
+        # Sample next step
         step <- sample(seq_len(length(attract)), 1, prob = attract)
-        path[i, ] <- switch(type,
-                            c(rowColFromCell(env01[[1]], nbhd[step]), 
-                              nbhd[step], a1[step]),
-                            c(rowColFromCell(env01[[1]], nbhd[step]), 
-                              nbhd[step], state, a1[step], a2[step]))
+        path[i, ] <- c(rowColFromCell(env01[[1]], nbhd[step]), 
+                       nbhd[step], attract[step])
     }
     path <- as.data.frame(path)
-    names(path) <- switch(type, c("x", "y", "cell", "a1"), 
-                          c("x", "y", "cell", "state", "a1", "a2"))
+    names(path) <- c("x", "y", "cell", "att")
     return(path)
 }
+# (Markov version of jag_path is in scratch file, not used for now)
 
 # Calculate variogram of jaguar path
 vgram <- function(path, cut = 10, window = 14, start = 1) {
@@ -652,10 +627,10 @@ vgram <- function(path, cut = 10, window = 14, start = 1) {
 }
 
 # Plot landscape r with jaguar path and vgram
-plot_path <- function(path, vgram = FALSE, type = 1, new = TRUE, ...) {
+plot_path <- function(path, int = sim_interval, vgram = FALSE, type = 1, new = TRUE, ...) {
     # par(mfrow = c(1, ifelse(vgram, 2, 1)))
     # par(mfrow = c(1, 2))
-    path <- path[seq(1, nrow(path), sim_interval), ]
+    path <- path[seq(1, nrow(path), int), ]
 
     col1 <- rgb(1, 0, 0, .5)
     col2 <- rgb(0, 0, 1, .8)
@@ -703,7 +678,7 @@ par_to_df <- function(par) {
     }))
 }
 
-results_table <- function(s = c("K", "RW", "RWM", "RWH", "trad_obsolete", "trad2")) {
+results_table <- function(s = c("K", "RW", "RWM", "RWH", "trad2")) {
   
   # null <- load_output("LL_null")
   

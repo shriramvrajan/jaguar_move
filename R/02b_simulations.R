@@ -4,24 +4,22 @@ source("R/00_functions.R")
 
 ### Landscape generation
 envsize <- 100  # size of landscape in cells
-s1 <- 6         # strength of autocorrelation 
-# s2 <- 1
-r1 <- 5        # range of autocorrelation in cells
-# r2 <- 20
+s1 <- 1         # strength of autocorrelation 
+r1 <- 10        # range of autocorrelation in cells
 
 ### Path generation
 x0 <- 50
 y0 <- 50
 
-# par0 <- c(2.5, -2)         # env scaling parameter for states 1 & 2
-# tprob0 <- c(0.1, 0.7)      # transition probabilities 1→2, 2→1
-par0   <- c(2, -2)            #
+### Model parameters: env1 attraction scalar, move probability exponent
+par0   <- c(1, -2.2)            
 
 sim_interval <- 5   # GPS observations taken every n steps, for simulation
-n_step       <- 1500 # Number of steps to simulate
+n_step       <- 2000 # Number of steps to simulate
 n_obs        <- n_step / sim_interval  
-sim_steps    <- 25  # Number of steps to simulate
-sim_n        <- 1   # Number of simulations to run
+sim_steps    <- sim_interval  # Number of steps to simulate
+sim_n        <- 1   # Number of simulations to 
+step_size    <- 1     # Max # pixels for each step
 
 message(paste0("Simulation interval: ", sim_interval))
 message(paste0("Observations per simulation: ", n_obs))
@@ -48,7 +46,7 @@ paths <- lapply(1:sim_n, function(i) {
           # y0 <- sample(100, 1)
           x0 <- ceiling(envsize / 2)
           y0 <- ceiling(envsize / 2)
-          jag_path(x0, y0, n_step, par = par0, neighb = 3)
+          jag_path(x0, y0, n_step, par = par0, neighb = step_size)
           })
 saveRDS(paths, "data/output/simulations/paths.RDS")
 

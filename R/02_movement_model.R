@@ -62,7 +62,8 @@ if (refit_model) {
   message(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
   nbhd0 <- make_nbhd(i = seq_len(nrow(brdf)), sz = buffersize)                   # 6.4s
 
-  foreach(i = i_todo) %dopar% {
+  # foreach(i = i_todo) %dopar% {
+  for (i in i_todo) {
     message(paste0("Jaguar #: ", i))
     id <- as.numeric(jag_id[i])
 
@@ -113,9 +114,10 @@ if (refit_model) {
     row.names(env) <- seq_len(length(nbhd_index))
 
     # Model objects as list
-    objects <- switch(refit_model0, 
+    objects <- ifelse(refit_model0, 
                       list(env, max_dist, mk, obs),
                       list(env, nbhd, max_dist, n_obs, sim_steps, to_dest, obs))
+    browser()
 
     # Calculate null likelihoods for each jaguar if not already done
     if (model_calcnull) {

@@ -403,23 +403,22 @@ log_likelihood0 <- function(par, objects) {
 log_likelihood <- function(par, objects) {
   # par        : Initial values of parameters for optimization
   
-  # env        : Environmental variables
+  # Environmental variables
   env        <- objects[[1]]
-  # nbhd       : Neighborhood
+  # Neighborhood
   nbhd       <- objects[[2]]
-  # max_dist   : Maximum distance in pixels for one step
+  # Maximum distance in pixels for one step
   max_dist   <- objects[[3]]
-  # n_obs      : Number of GPS observations (length of track)
-  n_obs      <- objects[[4]]
-  # sim_steps:     : Number of steps simulated
-  sim_steps  <- objects[[5]]
+  # Number of GPS observations (length of track)
+  sim_steps  <- objects[[4]]
   # to_dest    : For each cell of the extended neighborhood of the path, what 
   #               are the immediate neighbors? Rows are path cells, columns are 
   #               neighbors.
-  to_dest    <- objects[[6]]
+  to_dest    <- objects[[5]]
   # obs        : Index of the cell of the extended neighborhood that corresponds
   #              to the next GPS observation
-  obs        <- objects[[7]]
+  obs        <- objects[[6]]
+  n_obs <- length(obs)
 
   # Attraction function 1: environmental variables + home range ----------------
   # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
@@ -434,23 +433,28 @@ log_likelihood <- function(par, objects) {
   # attract <- normalize_nbhd(attract_h) 
 
   # Attraction function 3: simulations -----------------------------------------
-  # attract1 <- normalize_nbhd(exp(par[1] * env1)) # + exp(par[2] * env2)
-  # attract2 <- normalize_nbhd(exp(par[2] * env2))
-  # attract <- attract1 # CHECK WHAT IS GOING ON HERE
-
-  # Attraction function 4: With 0-1 parameter ----------------------------------
-  move_prob <- exp01(par[7])
-  attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-                   par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
-  # attract_h <- exp(par[8] * env$home)
-  # attract <- normalize_nbhd(attract_e * attract_h)
-  attract <- normalize_nbhd(attract_e)
-  attract <- t(apply(attract, 1, function(r) {
+  attract1 <- normalize_nbhd(exp(par[1] * env1)) # + exp(par[2] * env2)
+  move_prob <- exp01(par[2])
+  attract <- t(apply(attract1, 1, function(r) {
     cent <- ceiling(length(r) / 2)
     r[cent] <- r[cent] * (1 - move_prob)
     r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
     return(r / sum(r, na.rm = TRUE))
   }))
+
+  # Attraction function 4: With 0-1 parameter ----------------------------------
+  # move_prob <- exp01(par[7])
+  # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+  #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+  # # attract_h <- exp(par[8] * env$home)
+  # # attract <- normalize_nbhd(attract_e * attract_h)
+  # attract <- normalize_nbhd(attract_e)
+  # attract <- t(apply(attract, 1, function(r) {
+  #   cent <- ceiling(length(r) / 2)
+  #   r[cent] <- r[cent] * (1 - move_prob)
+  #   r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
+  #   return(r / sum(r, na.rm = TRUE))
+  # }))
 
   # Array for propagating probabilities forward ================================
   # n_obs      : Number of GPS observations
@@ -477,7 +481,7 @@ log_likelihood <- function(par, objects) {
     #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
     #   nbhd is the 3rd cell of nbhd.
     dest[] <- step_prob[as.vector(to_dest)]
-
+    browser()
     # Summing probabilities up to step j to generate step j+1
     current[, , j + 1] <- rowSums(dest, na.rm = TRUE)
   }

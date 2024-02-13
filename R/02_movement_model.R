@@ -116,8 +116,8 @@ if (refit_model) {
     # Model objects as list
     objects <- ifelse(refit_model0, 
                       list(env, max_dist, mk, obs),
-                      list(env, nbhd, max_dist, n_obs, sim_steps, to_dest, obs))
-    browser()
+                      list(env, nbhd, max_dist, sim_steps, to_dest, obs))
+    # browser()
 
     # Calculate null likelihoods for each jaguar if not already done
     if (model_calcnull) {

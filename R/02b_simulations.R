@@ -3,7 +3,7 @@ source("R/00_functions.R")
 ## Parameters ==================================================================
 
 ### Landscape generation
-envsize <- 100  # size of landscape in cells
+envsize <- 150  # size of landscape in cells
 s1 <- 1         # strength of autocorrelation 
 r1 <- 10        # range of autocorrelation in cells
 
@@ -12,12 +12,12 @@ x0 <- 50
 y0 <- 50
 
 ### Model parameters: env1 attraction scalar, move probability exponent
-par0   <- c(0.3, -0.3)            
+par0   <- c(1.5, -2)            
 
 sim_interval <- 5             # GPS observations taken every n steps, for simulation
-n_step       <- 2000          # Number of steps to simulate
+n_step       <- 10000          # Number of steps to simulate
 n_obs        <- n_step / sim_interval  
-sim_n        <- 6             # Number of simulations to 
+sim_n        <- 1             # Number of simulations to 
 step_size    <- 1             # Max # pixels for each step
 
 ## Landscape generation ========================================================
@@ -52,11 +52,6 @@ envdf <- env01[[2]]
 env_index <- seq_len(nrow(envdf))
 envdf <- cbind(envdf, env_index)
 
-to_dest <- as.data.frame(raster::adjacent(env01[[1]], cells = env_index, 
-                         pairs = FALSE, directions = 8))
-
-obs <- cellFromXY(env01[[1]], paths[[1]][, 1:2])
-
 jag_traject <- lapply(paths, function(p) {
     out <- cbind(p$x, p$y)
     ind <- seq(1, nrow(out), sim_interval)
@@ -82,14 +77,24 @@ for (i in 1:sim_n) {
     message(paste0("Testing path #: ", i, " / ", sim_n))
     current_jag <- i # for use in loglike_fun
     traject <- jag_traject_cells[[i]]
-    # prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
-    #         rdf = env01[[2]])
+    prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
+            rdf = env01[[2]])
+    
     
     env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))
-    
-    objects0 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
+        # Normalizing desired environmental variables for extended neighborhood
+    env1 <- env1[nbhd_index]
+    # Make indexing consistent with env
+    names(env1) <- seq_len(length(nbhd_index))
 
+
+    objects0 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
+    
     # par_optim <- rnorm(1)
     ll <- log_likelihood(par0, objects0)
     saveRDS(ll, file = paste0("data/output/simulations/ll", i, ".rds"))
+
+    par_out <- optim(par0, log_likelihood, objects = objects0)
+
+    objects1 <- list(env1, max_dist, mk, obs)
 }

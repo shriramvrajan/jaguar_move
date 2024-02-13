@@ -254,7 +254,6 @@ normalize_nbhd <- function(v) {
 
 # Prepare input objects for movement model 
 prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
-
     # Extended neighborhoods of each cell in individual's trajectory
     message("Building neighborhoods for each cell")
     nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = r, rdf = rdf)
@@ -262,8 +261,7 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
     # Each entry in the list is the immediate neighborhood of each cell in the 
     # extended neighborhood, as represented by a cell number of raster r
     message("Getting indices of extended neighborhood of each cell")
-    nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                 # 14s
-      # message(i)
+    nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                
       # For each actual cell in the path, what are the cells in the extended
       # neighborhood? Rows are path cells, columns are extended neighborhood.
       row_inds <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
@@ -276,12 +274,13 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
     # Reindexing allows linkage of row numbers from nbhd to raster cells
     nbhd_index <- as.vector(t(nbhd_index))
     nbhd_index <<- nbhd_index
-
+    
     message("Getting indices of immediate neighborhood of each cell")
     # For each cell of the extended neighborhood of the path, what are
     # the immediate neighbors? Rows are path cells, columns are neighbors.
     # All row lengths standardized by turning missing neighbors into NAs.
-    to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {                 # 36s
+    to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {  
+      if (length(x) > 9) print(x)
       out <- c(x, rep(NA, ncol(nbhd) - length(x)))
       return(out)
     })
@@ -402,7 +401,6 @@ log_likelihood0 <- function(par, objects) {
 
 log_likelihood <- function(par, objects) {
   # par        : Initial values of parameters for optimization
-  
   # Environmental variables
   env        <- objects[[1]]
   # Neighborhood
@@ -418,7 +416,7 @@ log_likelihood <- function(par, objects) {
   # obs        : Index of the cell of the extended neighborhood that corresponds
   #              to the next GPS observation
   obs        <- objects[[6]]
-  n_obs <- length(obs)
+  n_obs      <- length(obs) + 1
 
   # Attraction function 1: environmental variables + home range ----------------
   # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
@@ -466,9 +464,6 @@ log_likelihood <- function(par, objects) {
   # Set to 1 at step #1 for each observation because that's where it actually is
   center <- step_range / 2 + 0.5
   current[center, , 1] <- 1
-  
-  # current2 <- current  # DEBUG
-  # dest2 <- dest
 
   for (j in 1:(sim_steps - 1)) {
     # Probabilities across entire nbhd for step j
@@ -481,7 +476,6 @@ log_likelihood <- function(par, objects) {
     #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
     #   nbhd is the 3rd cell of nbhd.
     dest[] <- step_prob[as.vector(to_dest)]
-    browser()
     # Summing probabilities up to step j to generate step j+1
     current[, , j + 1] <- rowSums(dest, na.rm = TRUE)
   }

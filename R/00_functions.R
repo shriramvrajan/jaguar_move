@@ -431,28 +431,28 @@ log_likelihood <- function(par, objects) {
   # attract <- normalize_nbhd(attract_h) 
 
   # Attraction function 3: simulations -----------------------------------------
-  attract1 <- normalize_nbhd(exp(par[1] * env1)) # + exp(par[2] * env2)
-  move_prob <- exp01(par[2])
-  attract <- t(apply(attract1, 1, function(r) {
-    cent <- ceiling(length(r) / 2)
-    r[cent] <- r[cent] * (1 - move_prob)
-    r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
-    return(r / sum(r, na.rm = TRUE))
-  }))
-
-  # Attraction function 4: With 0-1 parameter ----------------------------------
-  # move_prob <- exp01(par[7])
-  # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-  #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
-  # # attract_h <- exp(par[8] * env$home)
-  # # attract <- normalize_nbhd(attract_e * attract_h)
-  # attract <- normalize_nbhd(attract_e)
-  # attract <- t(apply(attract, 1, function(r) {
+  # attract1 <- normalize_nbhd(exp(par[1] * env1)) # + exp(par[2] * env2)
+  # move_prob <- exp01(par[2])
+  # attract <- t(apply(attract1, 1, function(r) {
   #   cent <- ceiling(length(r) / 2)
   #   r[cent] <- r[cent] * (1 - move_prob)
   #   r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
   #   return(r / sum(r, na.rm = TRUE))
   # }))
+
+  # Attraction function 4: With 0-1 parameter ----------------------------------
+  move_prob <- exp01(par[7])
+  attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+                   par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+  # attract_h <- exp(par[8] * env$home)
+  # attract <- normalize_nbhd(attract_e * attract_h)
+  attract <- normalize_nbhd(attract_e)
+  attract <- t(apply(attract, 1, function(r) {
+    cent <- ceiling(length(r) / 2)
+    r[cent] <- r[cent] * (1 - move_prob)
+    r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
+    return(r / sum(r, na.rm = TRUE))
+  }))
 
   # Array for propagating probabilities forward ================================
   # n_obs      : Number of GPS observations

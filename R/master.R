@@ -45,10 +45,11 @@ if (run_model) {
                                     
     ## Parameters                                    
     npar            <- 7              # Number of parameters in current model
-    sim_steps       <- 25             # How many steps to simulate forward
+    sim_steps       <- 10             # How many steps to simulate forward
     buffersize      <- 1              # Jaguars move 1px (1km) at a time
     n_iter          <- nrow(jag_id)   # Number of individuals
     holdout_frac    <- 0.7            # Fraction of points to use for fitting
+    
     message("Parameters set")
     message(paste0("Number of jaguars: ", n_iter))
     message(paste0("Holdout fraction: ", holdout_frac))

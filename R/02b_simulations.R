@@ -1,5 +1,11 @@
 source("R/00_functions.R")
 
+## Set up parallel processing ==================================================
+
+ncores <- 1
+cl <- makeCluster(ncores)
+registerDoParallel(cl)
+
 ## Parameters ==================================================================
 
 ### Landscape generation
@@ -14,10 +20,10 @@ y0 <- 50
 ### Model parameters: env1 attraction scalar, move probability exponent
 par0   <- c(1.5, -2)            
 
-sim_interval <- 5             # GPS observations taken every n steps, for simulation
-n_step       <- 10000          # Number of steps to simulate
+sim_interval <- 5             # GPS observations taken every n steps, for sim
+n_step       <- 5000          # Number of steps to simulate
 n_obs        <- n_step / sim_interval  
-sim_n        <- 1             # Number of simulations to 
+sim_n        <- 20             # Number of simulations 
 step_size    <- 1             # Max # pixels for each step
 
 ## Landscape generation ========================================================
@@ -29,6 +35,7 @@ terra::plot(env01[[1]])
 ## Simulation ==================================================================
 
 paths <- lapply(1:sim_n, function(i) {
+# paths <- foreach(i = 1:sim_n, .combine = list) %dopar% {
           message(paste0("Path #: ", i, " / ", sim_n))
           # x0 <- sample(100, 1)
           # y0 <- sample(100, 1)
@@ -38,7 +45,9 @@ paths <- lapply(1:sim_n, function(i) {
           })
 saveRDS(paths, "data/output/simulations/paths.RDS")
 
-par(mfrow = c(2, 3))
+## HOW TO USE RASTER WITH FOREACH?
+
+par(mfrow = c(4, 5))
 
 for (i in 1:sim_n) {
     plot_path(paths[[i]])
@@ -73,7 +82,8 @@ step_range <- (2 * max_dist + 1) ^ 2
 nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize, 
                    r = env01[[1]], rdf = env01[[2]]) 
 
-for (i in 1:sim_n) {
+fit <- do.call(rbind, lapply(1:sim_n, function(i) {
+# fit <- foreach(i = 1:sim_n, .combine = rbind) %dopar% {
     message(paste0("Testing path #: ", i, " / ", sim_n))
     current_jag <- i # for use in loglike_fun
     traject <- jag_traject_cells[[i]]
@@ -87,14 +97,18 @@ for (i in 1:sim_n) {
     # Make indexing consistent with env
     names(env1) <- seq_len(length(nbhd_index))
 
-
-    objects0 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
+    # MAKE A TRACK FOR MOVEMENT KERNEL
+    
+    # objects0 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
+    objects0 <- list(env1, max_dist, sim_steps, obs)
     
     # par_optim <- rnorm(1)
     ll <- log_likelihood(par0, objects0)
     saveRDS(ll, file = paste0("data/output/simulations/ll", i, ".rds"))
 
     par_out <- optim(par0, log_likelihood, objects = objects0)
+    return(par_out$par)
+    # objects1 <- list(env1, max_dist, mk, obs)
+}))
 
-    objects1 <- list(env1, max_dist, mk, obs)
-}
+saveRDS(fit, "data/output/simulations/fit.RDS")

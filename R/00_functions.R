@@ -11,6 +11,8 @@ library(ctmm)
 library(amt) 
 library(lubridate)
 library(fitdistrplus)
+library(foreach)
+library(doParallel)
 # library(plotly)
 # library(apcluster)
 # library(suncalc)
@@ -241,7 +243,7 @@ make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
   ind1 <- t(rep(-sz:sz, each = 2 * sz + 1))
   ind2 <- t(rep(-sz:sz, 2 * sz + 1))
   for (j in seq_len(length(ind1))) {
-    mat[, j] <- cellFromRowCol(r, rdf$row[i] + ind1[j], rdf$col[i] + ind2[j])
+    mat[, j] <- terra::cellFromRowCol(r, rdf$row[i] + ind1[j], rdf$col[i] + ind2[j])
   }
   return(mat)
 }
@@ -373,11 +375,14 @@ log_likelihood0 <- function(par, objects) {
   max_dist <- objects[[2]]
   mk <- objects[[3]]
   obs <- objects[[4]]
-  n_obs <- length(obs)
+  n_obs <- length(obs) + 1
   
   # Attractiveness function 0: traditional SSF 
-  attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-                   par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+  # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+  #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+
+  # Attractiveness function 1: simulations
+  attract_e <- normalize_nbhd(exp(par[1] * env))
 
   step_range <- (max_dist * 2 + 1) ^ 2
   
@@ -388,7 +393,7 @@ log_likelihood0 <- function(par, objects) {
     # p <- env_local * mk # mk = movement kernel
     # p <- p / sum(p)
     # print(p)
-    env_weight <- exp(par[7]) / (1 + exp(par[7]))
+    env_weight <- exp01(par[2])
     p <- env_weight * env_local + (1 - env_weight) * mk # mk = movement kernel
     # print(p[obs[t]])
     return(ifelse((p[obs[t]] == 0), 0.001, p[obs[t]]))
@@ -402,7 +407,7 @@ log_likelihood0 <- function(par, objects) {
 log_likelihood <- function(par, objects) {
   # par        : Initial values of parameters for optimization
   # Environmental variables
-  env        <- objects[[1]]
+  env1       <- objects[[1]]
   # Neighborhood
   nbhd       <- objects[[2]]
   # Maximum distance in pixels for one step
@@ -584,7 +589,7 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
 
         # Attractiveness of each cell in neighborhood
         nbhd <- as.vector(make_nbhd(r = env01[[1]], rdf = env01[[2]], sz = neighb,
-                          i = cellFromRowCol(env01[[1]], pos[1], pos[2])))
+                          i = terra::cellFromRowCol(env01[[1]], pos[1], pos[2])))
         att <- sapply(nbhd, function(x) {
           if (is.na(x)) return(NA) else return(exp(env01[[1]][x] * par[1])$sim1)
         })

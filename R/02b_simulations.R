@@ -1,8 +1,10 @@
+# Simulation of animal movement and habitat selection, with parallel processing
+
 source("R/00_functions.R")
 
 ## Set up parallel processing ==================================================
 
-ncores <- 1
+ncores <- 5
 cl <- makeCluster(ncores)
 registerDoParallel(cl)
 
@@ -10,15 +12,11 @@ registerDoParallel(cl)
 
 ### Landscape generation
 envsize <- 150  # size of landscape in cells
-s1 <- 1         # strength of autocorrelation 
-r1 <- 10        # range of autocorrelation in cells
-
-### Path generation
-x0 <- 50
-y0 <- 50
+s1 <- 4         # strength of autocorrelation 
+r1 <- 20        # range of autocorrelation in cells
 
 ### Model parameters: env1 attraction scalar, move probability exponent
-par0   <- c(1.5, -2)            
+par0   <- c(2, -2)            
 
 sim_interval <- 5             # GPS observations taken every n steps, for sim
 n_step       <- 5000          # Number of steps to simulate
@@ -26,35 +24,50 @@ n_obs        <- n_step / sim_interval
 sim_n        <- 20             # Number of simulations 
 step_size    <- 1             # Max # pixels for each step
 
+reuse_land   <- FALSE
+reuse_path   <- FALSE
+
 ## Landscape generation ========================================================
 
-env01 <- gen_landscape(size = envsize, s = s1, r = r1)
-writeRaster(env01[[1]], "data/output/simulations/env01.tif", overwrite = TRUE)
-terra::plot(env01[[1]])
+if (reuse_land) {
+    message("Reusing old landscape")
+    env01 <- list(rast("data/output/simulations/env01.tif"),
+                  readRDS("data/output/simulations/env01.rds"))
+} else {
+    message("Generating new landscape")
+    env01 <- gen_landscape(size = envsize, s = s1, r = r1)
+    writeRaster(env01[[1]], "data/output/simulations/env01.tif", overwrite = TRUE)
+    saveRDS(env01[[2]], "data/output/simulations/env01.rds")
+    terra::plot(env01[[1]])
+}
 
 ## Simulation ==================================================================
 
-paths <- lapply(1:sim_n, function(i) {
-# paths <- foreach(i = 1:sim_n, .combine = list) %dopar% {
-          message(paste0("Path #: ", i, " / ", sim_n))
-          # x0 <- sample(100, 1)
-          # y0 <- sample(100, 1)
-          x0 <- ceiling(envsize / 2)
-          y0 <- ceiling(envsize / 2)
-          jag_path(x0, y0, n_step, par = par0, neighb = step_size)
-          })
-saveRDS(paths, "data/output/simulations/paths.RDS")
+if (reuse_path) {
+    message("Reusing old paths")
+    paths <- readRDS("data/output/simulations/paths.RDS")
+} else {
+    message("Simulating new paths")
+    paths <- lapply(1:sim_n, function(i) {
+    # paths <- foreach(i = 1:sim_n, .combine = list) %dopar% {
+        message(paste0("Path #: ", i, " / ", sim_n))
+        x0 <- ceiling(envsize / 2)
+        y0 <- ceiling(envsize / 2)
+        jag_path(x0, y0, n_step, par = par0, neighb = step_size)
+    })
+    saveRDS(paths, "data/output/simulations/paths.RDS")
+}
 
 ## HOW TO USE RASTER WITH FOREACH?
 
 par(mfrow = c(4, 5))
-
 for (i in 1:sim_n) {
     plot_path(paths[[i]])
 }
 
 ## Fitting =====================================================================
 
+message("Preparing to fit model parameters")
 sim_steps    <- sim_interval  # Number of steps to simulate
 
 envdf <- env01[[2]]
@@ -82,33 +95,42 @@ step_range <- (2 * max_dist + 1) ^ 2
 nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize, 
                    r = env01[[1]], rdf = env01[[2]]) 
 
-fit <- do.call(rbind, lapply(1:sim_n, function(i) {
-# fit <- foreach(i = 1:sim_n, .combine = rbind) %dopar% {
+message("Fitting model parameters")
+# fit <- do.call(rbind, lapply(1:sim_n, function(i) {
+fit <- foreach(i = 1:sim_n, .combine = rbind) %dopar% {
     message(paste0("Testing path #: ", i, " / ", sim_n))
     current_jag <- i # for use in loglike_fun
     traject <- jag_traject_cells[[i]]
     prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
             rdf = env01[[2]])
-    
-    
     env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))
         # Normalizing desired environmental variables for extended neighborhood
     env1 <- env1[nbhd_index]
     # Make indexing consistent with env
     names(env1) <- seq_len(length(nbhd_index))
-
-    # MAKE A TRACK FOR MOVEMENT KERNEL
     
-    # objects0 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
-    objects0 <- list(env1, max_dist, sim_steps, obs)
-    
-    # par_optim <- rnorm(1)
-    ll <- log_likelihood(par0, objects0)
-    saveRDS(ll, file = paste0("data/output/simulations/ll", i, ".rds"))
+    message("Fitting parameters for model 1: path-dependent kernel")
+    objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
+    ll <- log_likelihood(par0, objects1)
+    saveRDS(ll, file = paste0("data/output/simulations/ll_fit1", i, ".rds"))
+    par_out1 <- optim(par0, log_likelihood, objects = objects1)
 
-    par_out <- optim(par0, log_likelihood, objects = objects0)
-    return(par_out$par)
-    # objects1 <- list(env1, max_dist, mk, obs)
-}))
+    message("Fitting parameters for model 2: traditional SSF")
+    obs_points <- as.data.frame(jag_traject[[i]])
+    names(obs_points) <- c("x", "y")
+    tr <- steps(amt::make_track(steps, x, y))
+    sl_emp <- as.vector(na.exclude(tr$sl_))
+    ta_emp <- as.vector(na.exclude(tr$ta_))
+    mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, max_dist = max_dist,
+                               scale = 1)
+
+    objects2 <- list(env1, max_dist, mk, obs)
+    ll <- log_likelihood0(par0, objects2)
+    saveRDS(ll, file = paste0("data/output/simulations/ll_fit2", i, ".rds"))
+    par_out2 <- optim(par0, log_likelihood0, objects = objects2)
+
+    return(c(par_out1$par, par_out2$par))
+}
+#))
 
 saveRDS(fit, "data/output/simulations/fit.RDS")

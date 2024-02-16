@@ -40,7 +40,7 @@ if (refit_turns) {
   turn_models <- lapply(jag_id$jag_id, function(id) {
     message(paste("Fitting turn angle mixture model for individual", id))
     # Individual trajectory 
-    jag_track <- make_track(id)
+    jag_track <- make_full_track(id)
     turns <- direction_abs(jag_track)
 
     # Fitting a normal mixture model
@@ -62,8 +62,8 @@ if (refit_model) {
   message(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
   nbhd0 <- make_nbhd(i = seq_len(nrow(brdf)), sz = buffersize)                   # 6.4s
 
-  # foreach(i = i_todo) %dopar% {
-  for (i in i_todo) {
+  foreach(i = i_todo) %dopar% {
+  # for (i in i_todo) {
     message(paste0("Jaguar #: ", i))
     id <- as.numeric(jag_id[i])
 
@@ -95,7 +95,7 @@ if (refit_model) {
         which(nbhd[step, ] == jag_traject_cells[step + 1])
       }))
       nbhd_index <- as.vector(t(nbhd))
-      track <- make_track(id)
+      track <- make_full_track(id)
       sl_emp <- as.vector(na.exclude(track$sl))
       ta_emp <- as.vector(na.exclude(track$ta))
       mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, max_dist = max_dist)

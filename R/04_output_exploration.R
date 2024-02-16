@@ -77,7 +77,7 @@ fitholdout <- lapply(jag, function(i) {
     ll_1 <- log_likelihood(par1, objects)
     print("done ll1")
 
-    track <- make_track(id)
+    track <- make_full_track(id)
     sl_emp <- as.vector(na.exclude(track$sl))
     ta_emp <- as.vector(na.exclude(track$ta))
     mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, max_dist = max_dist)

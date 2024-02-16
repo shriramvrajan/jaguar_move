@@ -50,7 +50,6 @@ if (run_model) {
     n_iter          <- nrow(jag_id)   # Number of individuals
     holdout_frac    <- 0.7            # Fraction of points to use for fitting
     
-    
     message("Parameters set")
     message(paste0("Number of jaguars: ", n_iter))
     message(paste0("Holdout fraction: ", holdout_frac))

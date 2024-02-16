@@ -91,7 +91,7 @@ make_track0 <- function(id) {
 }
 
 # Decompose timestamp into year, month, day, hour and add metadata to track
-make_track <- function(id) {
+make_full_track <- function(id) {
     dat <- jag_move[ID == id]
     dat$year <- as.numeric(format(as.POSIXct(dat$timestamp, 
                             format = "%m/%d/%Y %H:%M"), "%Y"))
@@ -306,12 +306,13 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
     obs <<- obs
 }
 
-make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum = 0) {
+make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist, 
+                                 minimum = 0, scale = 1000) {
   
   avail <- data.frame(sl = sample(sl_emp, n, replace = TRUE),
                       ta = sample(ta_emp, n, replace = TRUE))
-  avail$x <- avail$sl * cos(avail$ta) / 1000
-  avail$y <- avail$sl * sin(avail$ta) / 1000
+  avail$x <- avail$sl * cos(avail$ta) / scale # scales from meters to km
+  avail$y <- avail$sl * sin(avail$ta) / scale 
   avail$xi <- sapply(avail$x, function(x) ifelse(x > 0, floor(x), ceiling(x)))
   avail$yi <- sapply(avail$y, function(y) ifelse(y > 0, floor(y), ceiling(y)))
   density <- tapply(avail$x, list(avail$yi, avail$xi), length)
@@ -387,8 +388,8 @@ log_likelihood0 <- function(par, objects) {
   step_range <- (max_dist * 2 + 1) ^ 2
   
   p_obs <- sapply(seq_len(n_obs - 1), function(t) {
-    env_local <- attract_e[(step_range * (t - 1)):(step_range * t)]
-    env_local <- env_local / sum(env_local)
+    env_local <- attract_e[(step_range * (t - 1) + 1):(step_range * t)]
+    env_local <- env_local / sum(env_local, na.rm = TRUE)
     # env_local[obs[t]]
     # p <- env_local * mk # mk = movement kernel
     # p <- p / sum(p)
@@ -407,7 +408,7 @@ log_likelihood0 <- function(par, objects) {
 log_likelihood <- function(par, objects) {
   # par        : Initial values of parameters for optimization
   # Environmental variables
-  env1       <- objects[[1]]
+  env       <- objects[[1]]
   # Neighborhood
   nbhd       <- objects[[2]]
   # Maximum distance in pixels for one step
@@ -436,28 +437,28 @@ log_likelihood <- function(par, objects) {
   # attract <- normalize_nbhd(attract_h) 
 
   # Attraction function 3: simulations -----------------------------------------
-  # attract1 <- normalize_nbhd(exp(par[1] * env1)) # + exp(par[2] * env2)
-  # move_prob <- exp01(par[2])
-  # attract <- t(apply(attract1, 1, function(r) {
-  #   cent <- ceiling(length(r) / 2)
-  #   r[cent] <- r[cent] * (1 - move_prob)
-  #   r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
-  #   return(r / sum(r, na.rm = TRUE))
-  # }))
-
-  # Attraction function 4: With 0-1 parameter ----------------------------------
-  move_prob <- exp01(par[7])
-  attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-                   par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
-  # attract_h <- exp(par[8] * env$home)
-  # attract <- normalize_nbhd(attract_e * attract_h)
-  attract <- normalize_nbhd(attract_e)
-  attract <- t(apply(attract, 1, function(r) {
+  attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
+  move_prob <- exp01(par[2])
+  attract <- t(apply(attract1, 1, function(r) {
     cent <- ceiling(length(r) / 2)
     r[cent] <- r[cent] * (1 - move_prob)
     r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
     return(r / sum(r, na.rm = TRUE))
   }))
+
+  # Attraction function 4: With 0-1 parameter ----------------------------------
+  # move_prob <- exp01(par[7])
+  # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+  #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
+  # # attract_h <- exp(par[8] * env$home)
+  # # attract <- normalize_nbhd(attract_e * attract_h)
+  # attract <- normalize_nbhd(attract_e)
+  # attract <- t(apply(attract, 1, function(r) {
+  #   cent <- ceiling(length(r) / 2)
+  #   r[cent] <- r[cent] * (1 - move_prob)
+  #   r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
+  #   return(r / sum(r, na.rm = TRUE))
+  # }))
 
   # Array for propagating probabilities forward ================================
   # n_obs      : Number of GPS observations

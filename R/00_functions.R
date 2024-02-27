@@ -29,11 +29,14 @@ wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
 epsg5880 <- "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000 
 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs"
 
+# Simulation parameters
+sim_n <- 1000
+
 # Data =========================================================================
 
 # Jaguar movement data, ID numbers, and metadata
-jag_move <- readRDS("data/jag_data_BR.RDS")
-jag_id <- readRDS("data/jag_list.RDS")
+jag_move <- readRDS("data/jag_data_BR.rds")
+jag_id <- readRDS("data/jag_list.rds")
 njag <- nrow(jag_id)
 jag_meta <- data.table(read.csv("data/input/jaguars/jaguar_metadata2.csv"))
 
@@ -499,9 +502,9 @@ log_likelihood <- function(par, objects) {
 
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
   # log of product is sum of logs
-  # saveRDS(predictions, paste0("data/output/simulations/p", current_jag, ".RDS"))
+  # saveRDS(predictions, paste0("data/output/simulations/p", current_jag, ".rds"))
   # current <- list(current, current2) # DEBUG
-  # saveRDS(current, paste0("data/output/simulations/current", current_jag, ".RDS")) # DEBUG
+  # saveRDS(current, paste0("data/output/simulations/current", current_jag, ".rds")) # DEBUG
   return(-max(log_likelihood, na.rm = TRUE))
   # Return negative of the maximum log likelihood because we want to minimize
   # Lower negative log likelihood = higher likelihood 
@@ -526,11 +529,11 @@ run_optim <- function(param, objects, i) {
     while (ntries <= 20) {
         tryCatch({
             par_out <- optim(param, loglike, objects = objects)
-            saveRDS(par_out, paste0("data/output/par_out_", i, ".RDS"))
+            saveRDS(par_out, paste0("data/output/par_out_", i, ".rds"))
 
             message("Running loglike_fun...")
             likelihood <- loglike(par_out[[1]], objects = objects)
-            saveRDS(likelihood, paste0("data/output/likelihood_", i, ".RDS"))
+            saveRDS(likelihood, paste0("data/output/likelihood_", i, ".rds"))
 
             message(paste0("jaguar ", i, " fitted ", date()))
             ntries <- 21 # End while loop
@@ -540,7 +543,7 @@ run_optim <- function(param, objects, i) {
             message(paste("Try #:", ntries))
             if (ntries == 20) {
               message("Skipping, couldn't fit in 20 tries")
-              saveRDS(NA, paste0("data/output/NA_", i, ".RDS"))
+              saveRDS(NA, paste0("data/output/NA_", i, ".rds"))
             } else {
               message("Retrying")
             }
@@ -631,7 +634,8 @@ vgram <- function(path, cut = 10, window = 14, start = 1) {
 }
 
 # Plot landscape r with jaguar path and vgram
-plot_path <- function(path, int = sim_interval, vgram = FALSE, type = 1, new = TRUE, ...) {
+plot_path <- function(path, int = sim_interval, vgram = FALSE, 
+                      type = 1, new = TRUE, ...) {
     # par(mfrow = c(1, ifelse(vgram, 2, 1)))
     # par(mfrow = c(1, 2))
     path <- path[seq(1, nrow(path), int), ]
@@ -669,8 +673,8 @@ load_output <- function(name) {
     dir <- paste0("data/output/", name)
     # ll_files <- list.files(dir)[grep("likelihood_", list.files(dir))]
     # par_files <- list.files(dir)[grep("par_out_", list.files(dir))]
-    ll_files <- paste0("likelihood_", 1:njag, ".RDS")
-    par_files <- paste0("par_out_", 1:njag, ".RDS")
+    ll_files <- paste0("likelihood_", 1:njag, ".rds")
+    par_files <- paste0("par_out_", 1:njag, ".rds")
     ll <- load_if_exists(ll_files, dir)
     par <- load_if_exists(par_files, dir)
     return(list(unlist(ll), par))

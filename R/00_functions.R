@@ -30,7 +30,7 @@ epsg5880 <- "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000
 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs"
 
 # Simulation parameters
-sim_n <- 1000
+# sim_n <- 1000
 
 # Data =========================================================================
 
@@ -123,6 +123,11 @@ make_full_track <- function(id) {
 
 exp01 <- function(x) {
     return(exp(x) / (1 + exp(x)))
+}
+
+parallel_setup <- function(n_cores = 4) {
+    cl <- makeCluster(n_cores)
+    registerDoParallel(cl)
 }
 
 # 1. Data exploration ----------------------------------------------------------
@@ -307,6 +312,7 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
       obs[y] <- which(index_mat[, y] == test[num])
     } 
     obs <<- obs
+    message("Prepared model objects.")
 }
 
 make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist, 

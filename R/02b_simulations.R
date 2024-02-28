@@ -20,18 +20,19 @@ par0   <- c(2, -2)
 sim_interval <- 5             # GPS observations taken every n steps, for sim
 n_step       <- 4000          # Number of steps to simulate
 n_obs        <- floor(n_step / sim_interval)
-sim_n        <- 50            # Number of simulations 
+sim_n        <- 30            # Number of simulations 
 step_size    <- 1             # Max # pixels for each step
 
 saveRDS(list(envsize, s1, r1, par0, sim_interval, n_step, n_obs, sim_n, 
              step_size), "data/output/simulations/params.RDS")
 
-reuse_land   <- FALSE
-reuse_path   <- FALSE
+gen_land   <- F
+gen_path   <- F
+# fit_indivs   <- F
 
 ## Landscape generation ========================================================
 
-if (reuse_land) {
+if (!gen_land) {
     message("Reusing old landscape")
     env01 <- list(rast("data/output/simulations/env01.tif"),
                   readRDS("data/output/simulations/env01.rds"))
@@ -45,7 +46,7 @@ if (reuse_land) {
 
 ## Simulation ==================================================================
 
-if (reuse_path) {
+if (!gen_path) {
     message("Reusing old paths")
     paths <- readRDS("data/output/simulations/paths.RDS")
 } else {
@@ -70,7 +71,6 @@ for (i in 1:sim_n) {
 
 ## Fitting =====================================================================
 
-message("Preparing to fit model parameters")
 sim_steps    <- sim_interval * 2  # Number of steps to simulate
 
 envdf <- env01[[2]]
@@ -99,14 +99,13 @@ nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize,
                    r = env01[[1]], rdf = env01[[2]]) 
 
 message("Fitting model parameters")
-done <- list.files("data/output/simulations", pattern = "ll_fit1", 
-full.names = TRUE)
-done <- gsub("data/output/simulations/ll_fit1", "", done)
+done <- list.files("data/output/simulations", pattern = "par_out_")
+done <- gsub("data/output/simulations/par_out_", "", done)
 done <- gsub(".rds", "", done)
 done <- as.numeric(done)
 todo <- setdiff(1:sim_n, done)
 # fit <- do.call(rbind, lapply(1:sim_n, function(i) {
-fit <- foreach(i = 1:sim_n, .combine = rbind) %dopar% {
+foreach(i = todo, .combine = rbind) %dopar% {
     message(paste0("Fitting individual #: ", i, " / ", sim_n))
     
     env01 <- list(terra::rast("data/output/simulations/env01.tif"),
@@ -145,8 +144,7 @@ fit <- foreach(i = 1:sim_n, .combine = rbind) %dopar% {
     par_out2 <- optim(par0, log_likelihood0, objects = objects2)
     
     message(paste0("COMPLETED path #: ", i, " / ", sim_n))
-    return(c(par_out1$par, par_out2$par))
+    saveRDS(c(par_out1$par, par_out2$par), 
+            file = paste0("data/output/simulations/par_out_", i, ".RDS"))
 }
 # ))
-
-saveRDS(fit, "data/output/simulations/fit.RDS")

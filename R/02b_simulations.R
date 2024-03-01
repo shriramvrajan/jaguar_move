@@ -23,8 +23,11 @@ n_obs        <- floor(n_step / sim_interval)
 sim_n        <- 30            # Number of simulations 
 step_size    <- 1             # Max # pixels for each step
 
-saveRDS(list(envsize, s1, r1, par0, sim_interval, n_step, n_obs, sim_n, 
-             step_size), "data/output/simulations/params.RDS")
+params <- data.frame(name = c("envsize", "s1", "r1", "a1", "b1", "sim_interval", 
+                               "n_step", "n_obs", "sim_n", "step_size"),
+                     val = c(envsize, s1, r1, par0[[1]], par0[[2]], sim_interval, 
+                             n_step, n_obs, sim_n, step_size))
+write.csv(params, "data/output/simulations/params.csv", row.names = F)
 
 gen_land   <- F
 gen_path   <- F

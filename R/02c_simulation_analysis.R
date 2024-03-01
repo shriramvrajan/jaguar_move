@@ -3,7 +3,6 @@ ifelse(rerun_sim, source("R/01b_simulations.R"), source("R/00_functions.R"))
 
 plot_aic      <- FALSE
 gen_parscape  <- TRUE
-plot_parscape <- FALSE
 
 message("Loading data")
 params <- readRDS("data/output/simulations/params.RDS")
@@ -77,40 +76,45 @@ if (gen_parscape) {
     testvals <- expand.grid(x, y)
     names(testvals) <- c("x", "y")
 
-    i <- 20
-    traject <- jag_traject_cells[[i]]
-    prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
-                    rdf = env01[[2]])
-    env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))
-        # Normalizing desired environmental variables for extended neighborhood
-    env1 <- env1[nbhd_index]
-    # Make indexing consistent with env
-    names(env1) <- seq_len(length(nbhd_index))
-    sim_steps <- sim_interval * 2
+    for (i in 10:nrow(fit)) {
+    # foreach(i = 10:nrow(fit)) %dopar% {    
+        message(paste0("Generating landscape", i, " / ", nrow(fit)))
+        traject <- jag_traject_cells[[i]]
+        prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
+                        rdf = env01[[2]])
+        env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))
+            # Normalizing desired environmental variables for extended neighborhood
+        env1 <- env1[nbhd_index]
+        # Make indexing consistent with env
+        names(env1) <- seq_len(length(nbhd_index))
+        sim_steps <- sim_interval * 2
 
-    objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
-    parallel_setup(20)
+        objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
+        parallel_setup(10)
 
-    message("Calculating log likelihoods")
-    testvals$ll <- unlist(foreach(j = seq_len(nrow(testvals)), .export = c("dest")) %dopar% {
-        message(paste0("Fitting row #: ", j, " / ", nrow(testvals)))
-        val <- as.numeric(testvals[j, ])
-        ll <- log_likelihood(val, objects1)
-        message(paste0("Fitted row #: ", j, " / ", nrow(testvals)))
-        return(ll)
-    })
-    message("Aggregating results")
-    saveRDS(testvals, "data/output/simulations/testll.RDS")
-}
+        message("Calculating log likelihoods")
+        testvals$ll <- unlist(foreach(j = seq_len(nrow(testvals)), .export = c("dest")) %dopar% {
+            message(paste0("Fitting row #: ", j, " / ", nrow(testvals)))
+            val <- as.numeric(testvals[j, ])
+            ll <- log_likelihood(val, objects1)
+            message(paste0("Fitted row #: ", j, " / ", nrow(testvals)))
+            return(ll)
+        })
+    #     message("Aggregating results")
+    #     saveRDS(testvals, "data/output/simulations/testll.RDS")
+    # }
 
-if (plot_parscape) {
-    testvals <- readRDS("data/output/simulations/testll.RDS")
-    plot <- ggplot(testvals, aes(x = x, y = y, fill = ll)) +
-        geom_tile() +
-        scale_fill_viridis_c() +
-        theme_minimal() +
-        labs(title = "Log likelihood surface",
-            x = "a1", y = "b1") +
-        theme(legend.position = "none")
-    plot
+    # if (plot_parscape) {
+    #     testvals <- readRDS("data/output/simulations/testll.RDS")
+        plot <- ggplot(testvals, aes(x = x, y = y, fill = ll)) +
+            geom_tile() +
+            scale_fill_viridis_c(option = "turbo") +
+            theme_minimal() +
+            labs(title = paste0("Log likelihood surface", i),
+                x = "a1", y = "b1") +
+            theme(legend.position = "none") +
+            geom_point(aes(x = 2, y = -2), color = "magenta", size = 3)
+        ggsave(paste0("data/output/simulations/ll_surface_", i, ".png"), plot,
+               bg = "white")
+    }
 }

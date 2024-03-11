@@ -374,6 +374,12 @@ make_movement_kernel1 <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum =
   # out$n <- out$n / sum(out$n)  
 }
 
+env_function <- function(env, par) {
+    # par <- exp01(par)
+    out <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+    return(out)
+}
+
 # Return -(maximum log likelihood) given a set of parameters
 # log_likelihood0: For traditional SSF
 # log_likelihood:  For all others including simulations
@@ -392,7 +398,8 @@ log_likelihood0 <- function(par, objects) {
   #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
 
   # Attractiveness function 1: simulations
-  attract_e <- normalize_nbhd(exp(par[1] * env))
+  # attract_e <- normalize_nbhd(exp(par[1] * env))
+  attract_e <- normalize_nbhd(env_function(env, par[2:4]))
 
   step_range <- (max_dist * 2 + 1) ^ 2
   
@@ -403,7 +410,7 @@ log_likelihood0 <- function(par, objects) {
     # p <- env_local * mk # mk = movement kernel
     # p <- p / sum(p)
     # print(p)
-    env_weight <- exp01(par[2])
+    env_weight <- exp01(par[1])
     p <- env_weight * env_local + (1 - env_weight) * mk # mk = movement kernel
     # print(p[obs[t]])
     return(ifelse((p[obs[t]] == 0), 0.001, p[obs[t]]))
@@ -446,8 +453,9 @@ log_likelihood <- function(par, objects) {
   # attract <- normalize_nbhd(attract_h) 
 
   # Attraction function 3: simulations -----------------------------------------
-  attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
-  move_prob <- exp01(par[2])
+  # attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
+  attract1 <- normalize_nbhd(env_function(env, par[2:4]))
+  move_prob <- exp01(par[1])
   attract <- t(apply(attract1, 1, function(r) {
     cent <- ceiling(length(r) / 2)
     r[cent] <- r[cent] * (1 - move_prob)
@@ -601,7 +609,12 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
         nbhd <- as.vector(make_nbhd(r = env01[[1]], rdf = env01[[2]], sz = neighb,
                           i = terra::cellFromRowCol(env01[[1]], pos[1], pos[2])))
         att <- sapply(nbhd, function(x) {
-          if (is.na(x)) return(NA) else return(exp(env01[[1]][x] * par[1])$sim1)
+          # if (is.na(x)) return(NA) else return(exp(env01[[1]][x] * par[1])$sim1)
+          if (is.na(x)) {
+            return(NA)
+          } else {
+            return(env_function(env01[[1]][x], par)$sim1)
+          }
         })
         if (any(is.na(att))) att[is.na(att)] <- 0
         att <- att / sum(att)

@@ -4,8 +4,7 @@ source("R/00_functions.R")
 
 ## Set up parallel processing ==================================================
 
-ncores <- 15
-registerDoParallel(ncores)
+parallel_setup(20)
 
 ## Parameters ==================================================================
 
@@ -15,22 +14,27 @@ s1 <- 4         # strength of autocorrelation
 r1 <- 20        # range of autocorrelation in cells
 
 ### Model parameters: env1 attraction scalar, move probability exponent
-par0   <- c(2, -2)            
+# par0   <- c(3, -2)    
+# move probability exponent, env1 attraction parameters 1 to 3
+par0 <- c(2, 0, -1, -1)        
 
 sim_interval <- 5             # GPS observations taken every n steps, for sim
 n_step       <- 4000          # Number of steps to simulate
-n_obs        <- floor(n_step / sim_interval)
-sim_n        <- 30            # Number of simulations 
+sim_n        <- 10            # Number of simulations 
 step_size    <- 1             # Max # pixels for each step
+n_obs        <- floor(n_step / sim_interval)
 
-params <- data.frame(name = c("envsize", "s1", "r1", "a1", "b1", "sim_interval", 
-                               "n_step", "n_obs", "sim_n", "step_size"),
-                     val = c(envsize, s1, r1, par0[[1]], par0[[2]], sim_interval, 
-                             n_step, n_obs, sim_n, step_size))
+params <- data.frame(name = c("envsize", "s1", "r1", "sim_interval", "n_step", 
+                              "n_obs", "sim_n", "step_size", "par_move", 
+                              "par_env0", "par_env1", "par_env2"),
+                     val = c(envsize, s1, r1, sim_interval, n_step, n_obs, 
+                             sim_n, step_size, par0[[1]], par0[[2]], par0[[3]],
+                             par0[[4]]))
 write.csv(params, "data/output/simulations/params.csv", row.names = F)
-
+saveRDS(params$val, "data/output/simulations/params.rds")
+print(params)
 gen_land   <- F
-gen_path   <- F
+gen_path   <- T
 # fit_indivs   <- F
 
 ## Landscape generation ========================================================
@@ -51,18 +55,19 @@ if (!gen_land) {
 
 if (!gen_path) {
     message("Reusing old paths")
-    paths <- readRDS("data/output/simulations/paths.RDS")
+    paths <- readRDS("data/output/simulations/paths.rds")
 } else {
     message("Simulating new paths")
-    # paths <- lapply(1:sim_n, function(i) {
-    paths <- foreach(i = 1:sim_n) %dopar% {
+    paths <- lapply(1:sim_n, function(i) {
+    # paths <- foreach(i = 1:sim_n) %dopar% {
         message(paste0("Path #: ", i, " / ", sim_n))
         x0 <- ceiling(envsize / 2)
         y0 <- ceiling(envsize / 2)
-        jag_path(x0, y0, n_step, par = par0, neighb = step_size)
+        jag_path(x0, y0, n_step, par = par0[2:4], neighb = step_size)
         }
-    # )
-    saveRDS(paths, "data/output/simulations/paths.RDS")
+    )
+    saveRDS(paths, "data/output/simulations/paths.rds")
+    message("Saved paths.")
 }
 
 ## HOW TO USE RASTER WITH FOREACH?
@@ -109,7 +114,7 @@ done <- as.numeric(done)
 todo <- setdiff(1:sim_n, done)
 # fit <- do.call(rbind, lapply(1:sim_n, function(i) {
 foreach(i = todo, .combine = rbind) %dopar% {
-    message(paste0("Fitting individual #: ", i, " / ", sim_n))
+    message(paste0("Fitting individual #: ", i, " / ", length(todo)))
     
     env01 <- list(terra::rast("data/output/simulations/env01.tif"),
                   readRDS("data/output/simulations/env01.rds"))
@@ -134,7 +139,7 @@ foreach(i = todo, .combine = rbind) %dopar% {
     message("Fitting parameters for model 2: traditional SSF")
     obs_points <- as.data.frame(jag_traject[[i]])
     names(obs_points) <- c("x", "y")
-    tr <- steps(amt::make_track(obs_points, x, y))
+    tr <- amt::steps(amt::make_track(obs_points, x, y))
     sl_emp <- as.vector(na.exclude(tr$sl_))
     ta_emp <- as.vector(na.exclude(tr$ta_))
     mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, max_dist = max_dist,
@@ -148,6 +153,6 @@ foreach(i = todo, .combine = rbind) %dopar% {
     
     message(paste0("COMPLETED path #: ", i, " / ", sim_n))
     saveRDS(c(par_out1$par, par_out2$par), 
-            file = paste0("data/output/simulations/par_out_", i, ".RDS"))
+            file = paste0("data/output/simulations/par_out_", i, ".rds"))
 }
 # ))

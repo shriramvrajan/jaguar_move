@@ -1,15 +1,14 @@
-rerun_sim <- FALSE
-ifelse(rerun_sim, source("R/01b_simulations.R"), source("R/00_functions.R"))
+source("R/00_functions.R")
 
-plot_aic      <- FALSE
-gen_parscape  <- TRUE
+plot_aic      <- T
+gen_parscape  <- T
 
 message("Loading data")
-params <- readRDS("data/output/simulations/params.RDS")
-sim_interval <- params[[5]]
-sim_n <- params[[8]]
+params <- readRDS("data/output/simulations/params.rds")
+sim_interval <- params[[6]]
+sim_n <- params[[9]]
 
-paths <- readRDS("data/output/simulations/paths.RDS")
+paths <- readRDS("data/output/simulations/paths.rds")
 
 env01 <- rast("data/output/simulations/env01.tif")
 env01 <- list(env01, raster_to_df(env01))
@@ -72,11 +71,11 @@ if (gen_parscape) {
     message("Generating fitting landscape...")
 
     x <- seq(-4, 4, length.out = 50)
-    y <- seq(-4, 1, length.out = 50)
+    y <- seq(-4, 4, length.out = 50)
     testvals <- expand.grid(x, y)
     names(testvals) <- c("x", "y")
 
-    for (i in 10:nrow(fit)) {
+    for (i in seq_len(nrow(fit))) {
     # foreach(i = 10:nrow(fit)) %dopar% {    
         message(paste0("Generating landscape", i, " / ", nrow(fit)))
         traject <- jag_traject_cells[[i]]
@@ -101,11 +100,11 @@ if (gen_parscape) {
             return(ll)
         })
     #     message("Aggregating results")
-    #     saveRDS(testvals, "data/output/simulations/testll.RDS")
+    #     saveRDS(testvals, "data/output/simulations/testll.rds")
     # }
 
     # if (plot_parscape) {
-    #     testvals <- readRDS("data/output/simulations/testll.RDS")
+    #     testvals <- readRDS("data/output/simulations/testll.rds")
         plot <- ggplot(testvals, aes(x = x, y = y, fill = ll)) +
             geom_tile() +
             scale_fill_viridis_c(option = "turbo") +
@@ -113,8 +112,10 @@ if (gen_parscape) {
             labs(title = paste0("Log likelihood surface", i),
                 x = "a1", y = "b1") +
             theme(legend.position = "none") +
-            geom_point(aes(x = 2, y = -2), color = "magenta", size = 3)
+            geom_point(aes(x = 3, y = -2), color = "magenta", size = 3)
         ggsave(paste0("data/output/simulations/ll_surface_", i, ".png"), plot,
                bg = "white")
     }
 }
+
+

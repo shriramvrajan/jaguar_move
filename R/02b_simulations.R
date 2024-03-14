@@ -2,9 +2,12 @@
 
 source("R/00_functions.R")
 
-## Set up parallel processing ==================================================
+## Switches ====================================================================
 
-parallel_setup(20)
+parallel_setup(20) # How many cores?
+gen_land   <- T
+gen_path   <- T
+fit_indivs   <- T
 
 ## Parameters ==================================================================
 
@@ -15,12 +18,12 @@ r1 <- 20        # range of autocorrelation in cells
 
 ### Model parameters: env1 attraction scalar, move probability exponent
 # par0   <- c(3, -2)    
-# move probability exponent, env1 attraction parameters 1 to 3
+# stay probability exponent, env1 attraction parameters 1 to 3
 par0 <- c(2, 0, -1, -1)        
 
 sim_interval <- 5             # GPS observations taken every n steps, for sim
 n_step       <- 4000          # Number of steps to simulate
-sim_n        <- 10            # Number of simulations 
+sim_n        <- 20            # Number of simulations 
 step_size    <- 1             # Max # pixels for each step
 n_obs        <- floor(n_step / sim_interval)
 
@@ -33,9 +36,6 @@ params <- data.frame(name = c("envsize", "s1", "r1", "sim_interval", "n_step",
 write.csv(params, "data/output/simulations/params.csv", row.names = F)
 saveRDS(params$val, "data/output/simulations/params.rds")
 print(params)
-gen_land   <- F
-gen_path   <- T
-# fit_indivs   <- F
 
 ## Landscape generation ========================================================
 
@@ -59,7 +59,7 @@ if (!gen_path) {
 } else {
     message("Simulating new paths")
     paths <- lapply(1:sim_n, function(i) {
-    # paths <- foreach(i = 1:sim_n) %dopar% {
+    # paths <- foreach(i = 1:sim_n, .export = "env01") %dopar% {
         message(paste0("Path #: ", i, " / ", sim_n))
         x0 <- ceiling(envsize / 2)
         y0 <- ceiling(envsize / 2)
@@ -79,80 +79,82 @@ for (i in 1:sim_n) {
 
 ## Fitting =====================================================================
 
-sim_steps    <- sim_interval * 2  # Number of steps to simulate
+if (fit_indivs) {
+    sim_steps    <- sim_interval * 2  # Number of steps to simulate
 
-envdf <- env01[[2]]
-env_index <- seq_len(nrow(envdf))
-envdf <- cbind(envdf, env_index)
+    envdf <- env01[[2]]
+    env_index <- seq_len(nrow(envdf))
+    envdf <- cbind(envdf, env_index)
 
-jag_traject <- lapply(paths, function(p) {
-    out <- cbind(p$x, p$y)
-    ind <- seq(1, nrow(out), sim_interval)
-    out <- out[ind, ]
-    return(out)
-})
+    jag_traject <- lapply(paths, function(p) {
+        out <- cbind(p$x, p$y)
+        ind <- seq(1, nrow(out), sim_interval)
+        out <- out[ind, ]
+        return(out)
+    })
 
-jag_traject_cells <- lapply(jag_traject, function(tr) {
-    raster::cellFromXY(env01[[1]], tr[, 1:2])
-})
+    jag_traject_cells <- lapply(jag_traject, function(tr) {
+        raster::cellFromXY(env01[[1]], tr[, 1:2])
+    })
 
-dist <- lapply(jag_traject, function(tr) {
-    out <- c(0, sqrt(diff(tr[, 1])^2 + diff(tr[, 2])^2))
-    return(out)
-})
-max_dist <- ceiling(max(unlist(dist)) * 1.5)
-step_range <- (2 * max_dist + 1) ^ 2
+    dist <- lapply(jag_traject, function(tr) {
+        out <- c(0, sqrt(diff(tr[, 1])^2 + diff(tr[, 2])^2))
+        return(out)
+    })
+    max_dist <- ceiling(max(unlist(dist)) * 1.5)
+    step_range <- (2 * max_dist + 1) ^ 2
 
-nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize, 
-                   r = env01[[1]], rdf = env01[[2]]) 
+    nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize, 
+                    r = env01[[1]], rdf = env01[[2]]) 
 
-message("Fitting model parameters")
-done <- list.files("data/output/simulations", pattern = "par_out_")
-done <- gsub("data/output/simulations/par_out_", "", done)
-done <- gsub(".rds", "", done)
-done <- as.numeric(done)
-todo <- setdiff(1:sim_n, done)
-# fit <- do.call(rbind, lapply(1:sim_n, function(i) {
-foreach(i = todo, .combine = rbind) %dopar% {
-    message(paste0("Fitting individual #: ", i, " / ", length(todo)))
-    
-    env01 <- list(terra::rast("data/output/simulations/env01.tif"),
-                  readRDS("data/output/simulations/env01.rds"))
+    message("Fitting model parameters")
+    done <- list.files("data/output/simulations", pattern = "par_out_")
+    done <- gsub("data/output/simulations/par_out_", "", done)
+    done <- gsub(".rds", "", done)
+    done <- as.numeric(done)
+    todo <- setdiff(1:sim_n, done)
+    # fit <- do.call(rbind, lapply(1:sim_n, function(i) {
+    foreach(i = todo, .combine = rbind) %dopar% {
+        message(paste0("Fitting individual #: ", i, " / ", length(todo)))
+        
+        env01 <- list(terra::rast("data/output/simulations/env01.tif"),
+                    readRDS("data/output/simulations/env01.rds"))
 
-    current_jag <- i # for use in loglike_fun
-    traject <- jag_traject_cells[[i]]
-    prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
-            rdf = env01[[2]])
-    env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))
-        # Normalizing desired environmental variables for extended neighborhood
-    env1 <- env1[nbhd_index]
-    # Make indexing consistent with env
-    names(env1) <- seq_len(length(nbhd_index))
-    
-    message("Fitting parameters for model 1: path-dependent kernel")
-    objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
-    ll <- log_likelihood(par0, objects1)
-    message(paste0("Saving log-likelihood for model 1: ", i))
-    saveRDS(ll, file = paste0("data/output/simulations/ll_fit1", i, ".rds"))
-    par_out1 <- optim(par0, log_likelihood, objects = objects1)
+        current_jag <- i # for use in loglike_fun
+        traject <- jag_traject_cells[[i]]
+        prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
+                rdf = env01[[2]])
+        env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))
+            # Normalizing desired environmental variables for extended neighborhood
+        env1 <- env1[nbhd_index]
+        # Make indexing consistent with env
+        names(env1) <- seq_len(length(nbhd_index))
+        
+        message("Fitting parameters for model 1: path-dependent kernel")
+        objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
+        ll <- log_likelihood(par0, objects1)
+        message(paste0("Saving log-likelihood for model 1: ", i))
+        saveRDS(ll, file = paste0("data/output/simulations/ll_fit1", i, ".rds"))
+        par_out1 <- optim(par0, log_likelihood, objects = objects1)
 
-    message("Fitting parameters for model 2: traditional SSF")
-    obs_points <- as.data.frame(jag_traject[[i]])
-    names(obs_points) <- c("x", "y")
-    tr <- amt::steps(amt::make_track(obs_points, x, y))
-    sl_emp <- as.vector(na.exclude(tr$sl_))
-    ta_emp <- as.vector(na.exclude(tr$ta_))
-    mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, max_dist = max_dist,
-                               scale = 1)
+        message("Fitting parameters for model 2: traditional SSF")
+        obs_points <- as.data.frame(jag_traject[[i]])
+        names(obs_points) <- c("x", "y")
+        tr <- amt::steps(amt::make_track(obs_points, x, y))
+        sl_emp <- as.vector(na.exclude(tr$sl_))
+        ta_emp <- as.vector(na.exclude(tr$ta_))
+        mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, max_dist = max_dist,
+                                scale = 1)
 
-    objects2 <- list(env1, max_dist, mk, obs)
-    ll <- log_likelihood0(par0, objects2)
-    message(paste0("Saving log-likelihood for model 2: ", i))
-    saveRDS(ll, file = paste0("data/output/simulations/ll_fit2", i, ".rds"))
-    par_out2 <- optim(par0, log_likelihood0, objects = objects2)
-    
-    message(paste0("COMPLETED path #: ", i, " / ", sim_n))
-    saveRDS(c(par_out1$par, par_out2$par), 
-            file = paste0("data/output/simulations/par_out_", i, ".rds"))
+        objects2 <- list(env1, max_dist, mk, obs)
+        ll <- log_likelihood0(par0, objects2)
+        message(paste0("Saving log-likelihood for model 2: ", i))
+        saveRDS(ll, file = paste0("data/output/simulations/ll_fit2", i, ".rds"))
+        par_out2 <- optim(par0, log_likelihood0, objects = objects2)
+        
+        message(paste0("COMPLETED path #: ", i, " / ", sim_n))
+        saveRDS(c(par_out1$par, par_out2$par), 
+                file = paste0("data/output/simulations/par_out_", i, ".rds"))
+    }
 }
 # ))

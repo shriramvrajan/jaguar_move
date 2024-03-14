@@ -1,24 +1,25 @@
 source("R/00_functions.R")
 
+## Switches ====================================================================
 plot_aic      <- T
-gen_parscape  <- T
+gen_parscape  <- F
+plot_parscape <- T
 
+## Load data ===================================================================
 message("Loading data")
 params <- readRDS("data/output/simulations/params.rds")
-sim_interval <- params[[6]]
-sim_n <- params[[9]]
-
+sim_interval <- params[[4]]
+sim_n <- params[[7]]
 paths <- readRDS("data/output/simulations/paths.rds")
-
 env01 <- rast("data/output/simulations/env01.tif")
 env01 <- list(env01, raster_to_df(env01))
-
-fit <- load_if_exists(paste0("par_out_", 1:sim_n, ".RDS"), 
+fit <- load_if_exists(paste0("par_out_", 1:sim_n, ".rds"), 
                              dir = "data/output/simulations") %>%
         do.call(rbind, .) %>% 
         as.data.frame() 
-names(fit) <- c("a1", "b1", "a2", "b2")
+names(fit) <- c("m1", "c1", "b1", "a1", "m2", "c2", "b2", "a2")
 
+## Plot model AIC ==============================================================
 if (plot_aic) {
     par(mfrow = c(1, 2))
     plot(fit$a1, fit$b1)
@@ -33,14 +34,12 @@ if (plot_aic) {
                                 dir = "data/output/simulations"))
     ll2 <- -unlist(load_if_exists(paste0("ll_fit2", 1:sim_n, ".rds"), 
                                 dir = "data/output/simulations"))
-    aic1 <- 2 * 2 - 2 * ll1
-    aic2 <- 2 * 2 - 2 * ll2
+    aic1 <- 2 * 4 - 2 * ll1
+    aic2 <- 2 * 4 - 2 * ll2
 
-    par(mfrow = c(1, 2))
+    par(mfrow = c(1, 1))
     plot(aic1, aic2)
     abline(0, 1)
-    hist(aic1 - aic2, breaks = 20)
-    abline(v = 0, lty = 2)
 }
 
 # Prepare simulation data ======================================================
@@ -66,7 +65,7 @@ step_range <- (2 * max_dist + 1) ^ 2
 nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize, 
                    r = env01[[1]], rdf = env01[[2]]) 
 
-# Generating optim landscape ===================================================
+# Generate optim landscape =====================================================
 if (gen_parscape) {
     message("Generating fitting landscape...")
 
@@ -75,8 +74,9 @@ if (gen_parscape) {
     testvals <- expand.grid(x, y)
     names(testvals) <- c("x", "y")
 
-    for (i in seq_len(nrow(fit))) {
-    # foreach(i = 10:nrow(fit)) %dopar% {    
+    to_gen <- seq_len(nrow(fit))[-which(is.na(fit$a1))]
+    for (i in to_gen) {
+    # foreach(i = to_gen) %dopar% {    
         message(paste0("Generating landscape", i, " / ", nrow(fit)))
         traject <- jag_traject_cells[[i]]
         prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
@@ -89,7 +89,7 @@ if (gen_parscape) {
         sim_steps <- sim_interval * 2
 
         objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
-        parallel_setup(10)
+        parallel_setup(5)
 
         message("Calculating log likelihoods")
         testvals$ll <- unlist(foreach(j = seq_len(nrow(testvals)), .export = c("dest")) %dopar% {
@@ -99,12 +99,14 @@ if (gen_parscape) {
             message(paste0("Fitted row #: ", j, " / ", nrow(testvals)))
             return(ll)
         })
-    #     message("Aggregating results")
-    #     saveRDS(testvals, "data/output/simulations/testll.rds")
-    # }
+        message("Aggregating results")
+        saveRDS(testvals, "data/output/simulations/testll.rds")
+    }
+}
 
-    # if (plot_parscape) {
-    #     testvals <- readRDS("data/output/simulations/testll.rds")
+## Plot parameter landscape ====================================================
+if (plot_parscape) {
+        testvals <- readRDS("data/output/simulations/testll.rds")
         plot <- ggplot(testvals, aes(x = x, y = y, fill = ll)) +
             geom_tile() +
             scale_fill_viridis_c(option = "turbo") +
@@ -115,7 +117,4 @@ if (gen_parscape) {
             geom_point(aes(x = 3, y = -2), color = "magenta", size = 3)
         ggsave(paste0("data/output/simulations/ll_surface_", i, ".png"), plot,
                bg = "white")
-    }
 }
-
-

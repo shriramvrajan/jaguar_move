@@ -239,6 +239,16 @@ lunarize <- function(tel, n = 1) {
     plot(vgram)
 }
 
+calc_move_freq <- function(dat) {
+  # Calculate how often row n = row n+1
+  dat <- as.data.frame(dat)
+  names(dat) <- c("x", "y")
+  dat$stay <- ifelse(dat$x == lag(dat$x) & 
+                     dat$y == lag(dat$y), 1, 0)
+  return(mean(dat$stay, na.rm = T))
+}
+
+
 # 2. Movement model ------------------------------------------------------------
 
 # Outputs a matrix of cell numbers corresponding to raster (r, rdf)
@@ -376,8 +386,10 @@ make_movement_kernel1 <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum =
 
 env_function <- function(env, par) {
     # par <- exp01(par)
-    out <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
-    return(out)
+    attract <- normalize_nbhd(1 / 
+                              (1 + exp(par[1] + par[2] * env + par[3] * env^2)))
+    attract <- normalize_nbhd(attract)
+    return(attract)
 }
 
 # Return -(maximum log likelihood) given a set of parameters
@@ -399,7 +411,7 @@ log_likelihood0 <- function(par, objects) {
 
   # Attractiveness function 1: simulations
   # attract_e <- normalize_nbhd(exp(par[1] * env))
-  attract_e <- normalize_nbhd(env_function(env, par[2:4]))
+  attract_e <- env_function(env, par[2:4])
 
   step_range <- (max_dist * 2 + 1) ^ 2
   
@@ -454,12 +466,12 @@ log_likelihood <- function(par, objects) {
 
   # Attraction function 3: simulations -----------------------------------------
   # attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
-  attract1 <- normalize_nbhd(env_function(env, par[2:4]))
-  move_prob <- exp01(par[1])
+  attract1 <- env_function(env, par[2:4])
+  stay_prob <- exp01(par[1])
   attract <- t(apply(attract1, 1, function(r) {
     cent <- ceiling(length(r) / 2)
-    r[cent] <- r[cent] * (1 - move_prob)
-    r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
+    r[cent] <- r[cent] * (stay_prob)
+    r[-cent] <- r[-cent] * ((1 - stay_prob) / (sum(!is.na(r)) - 1))
     return(r / sum(r, na.rm = TRUE))
   }))
 

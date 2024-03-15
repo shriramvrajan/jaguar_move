@@ -384,11 +384,9 @@ make_movement_kernel1 <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum =
   # out$n <- out$n / sum(out$n)  
 }
 
-env_function <- function(env, par) {
+env_function <- function(env, par, nbhd) {
     # par <- exp01(par)
-    attract <- normalize_nbhd(1 / 
-                              (1 + exp(par[1] + par[2] * env + par[3] * env^2)))
-    attract <- normalize_nbhd(attract)
+    attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
     return(attract)
 }
 
@@ -411,7 +409,7 @@ log_likelihood0 <- function(par, objects) {
 
   # Attractiveness function 1: simulations
   # attract_e <- normalize_nbhd(exp(par[1] * env))
-  attract_e <- env_function(env, par[2:4])
+  attract_e <- normalize_nbhd(env_function(env, par[2:4]))
 
   step_range <- (max_dist * 2 + 1) ^ 2
   
@@ -466,7 +464,7 @@ log_likelihood <- function(par, objects) {
 
   # Attraction function 3: simulations -----------------------------------------
   # attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
-  attract1 <- env_function(env, par[2:4])
+  attract1 <- normalize_nbhd(env_function(env, par[2:4]))
   stay_prob <- exp01(par[1])
   attract <- t(apply(attract1, 1, function(r) {
     cent <- ceiling(length(r) / 2)

@@ -1,9 +1,11 @@
 source("R/00_functions.R")
 
 ## Switches ====================================================================
-plot_aic      <- T
-gen_parscape  <- F
-plot_parscape <- T
+plot_aic      <- F
+gen_parscape  <- T
+plot_parscape <- F
+
+parallel_setup(20)
 
 ## Load data ===================================================================
 message("Loading data")
@@ -17,7 +19,10 @@ fit <- load_if_exists(paste0("par_out_", 1:sim_n, ".rds"),
                              dir = "data/output/simulations") %>%
         do.call(rbind, .) %>% 
         as.data.frame() 
-names(fit) <- c("m1", "c1", "b1", "a1", "m2", "c2", "b2", "a2")
+fit$id <- seq_len(nrow(fit))
+names(fit) <- c("m1", "c1", "b1", "a1", "m2", "c2", "b2", "a2", "id")
+posna <- which(is.na(fit$m1)) # positions of NA
+fit <- fit[-posna, ]
 
 ## Plot model AIC ==============================================================
 if (plot_aic) {
@@ -36,7 +41,7 @@ if (plot_aic) {
                                 dir = "data/output/simulations"))
     aic1 <- 2 * 4 - 2 * ll1
     aic2 <- 2 * 4 - 2 * ll2
-
+    # CHECK NUMBER OF PARAMETERS ^
     par(mfrow = c(1, 1))
     plot(aic1, aic2)
     abline(0, 1)
@@ -89,7 +94,6 @@ if (gen_parscape) {
         sim_steps <- sim_interval * 2
 
         objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
-        parallel_setup(5)
 
         message("Calculating log likelihoods")
         testvals$ll <- unlist(foreach(j = seq_len(nrow(testvals)), .export = c("dest")) %dopar% {
@@ -118,3 +122,29 @@ if (plot_parscape) {
         ggsave(paste0("data/output/simulations/ll_surface_", i, ".png"), plot,
                bg = "white")
 }
+
+
+x1 <- seq(0, 7, length.out = 100)
+
+y0 <- 1 / (1 + exp(2 - 0.2 * x1 - 0.2 * x1^2)) # real parameter values, 0 -1 -1
+y1 <- lapply(fit$id, function(i) {
+    out <- 1 / (1 + exp(fit$c1[i] + fit$b1[i] * x1 + fit$a1[i] * x1^2))
+})
+
+points <- lapply(fit$id, function(i) {
+    path <- paths[[i]]
+    path$move <- c(0, sqrt(diff(path$x)^2 + diff(path$y)^2))
+    path$move[path$move > 0] <- 1
+    path$env <- env01[[2]]$sim1[cellFromXY(env01[[1]], path[, 1:2])]
+    return(path[, c("move", "env")])
+})
+
+par(mfrow = c(4, 5))
+plot(x1, y0, type = "l", main = "Generating function", ylim = c(0, 1))
+for (i in seq_len(nrow(fit))) {
+    plot(x1, y1[[i]], col = "#363636", type = "l", ylim = c(0, 1),
+         main = paste0("Fitted individual ", i))
+    points(points[[i]]$env, points[[i]]$move, col = rgb(0, 0, 0, 0.3), 
+           cex = 0.5, pch = 19)
+}
+

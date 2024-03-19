@@ -130,6 +130,15 @@ parallel_setup <- function(n_cores = 4) {
     registerDoParallel(cl)
 }
 
+moving_window <- function(x, y, window = 0.2) {
+    out <- sapply(seq_len(length(x)), function(i) {
+      pos <- which(x > x[i] - window & x < x[i] + window)
+      return(mean(y[pos], na.rm = T))
+    })
+    df <- data.frame(x = x, y = out)
+    return(df[order(df$x), ])
+}
+
 # 1. Data exploration ----------------------------------------------------------
 
 # Plot environmental layers for path 
@@ -408,21 +417,22 @@ log_likelihood0 <- function(par, objects) {
   #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
 
   # Attractiveness function 1: simulations
-  # attract_e <- normalize_nbhd(exp(par[1] * env))
-  attract_e <- normalize_nbhd(env_function(env, par[2:4]))
+  # attract_e <- normalize_nbhd(env_function(env, par[2:4]))
+
+  # Attractiveness function 1a: simulations, no move param
+  attract_e <- normalize_nbhd(env_function(env, par))
 
   step_range <- (max_dist * 2 + 1) ^ 2
   
   p_obs <- sapply(seq_len(n_obs - 1), function(t) {
+
     env_local <- attract_e[(step_range * (t - 1) + 1):(step_range * t)]
     env_local <- env_local / sum(env_local, na.rm = TRUE)
-    # env_local[obs[t]]
-    # p <- env_local * mk # mk = movement kernel
-    # p <- p / sum(p)
-    # print(p)
+    # TESTING WITHOUT MK -------------------------------------------------------
+    # p <- env_local
+    # With MK ------------------------------------------------------------------
     env_weight <- exp01(par[1])
     p <- env_weight * env_local + (1 - env_weight) * mk # mk = movement kernel
-    # print(p[obs[t]])
     return(ifelse((p[obs[t]] == 0), 0.001, p[obs[t]]))
   })
   ll <- -sum(log(p_obs))
@@ -463,15 +473,18 @@ log_likelihood <- function(par, objects) {
   # attract <- normalize_nbhd(attract_h) 
 
   # Attraction function 3: simulations -----------------------------------------
-  # attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
+  attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
   attract1 <- normalize_nbhd(env_function(env, par[2:4]))
-  stay_prob <- exp01(par[1])
+  move_prob <- exp01(par[1])
   attract <- t(apply(attract1, 1, function(r) {
     cent <- ceiling(length(r) / 2)
-    r[cent] <- r[cent] * (stay_prob)
-    r[-cent] <- r[-cent] * ((1 - stay_prob) / (sum(!is.na(r)) - 1))
+    r[cent] <- r[cent] * (1 - move_prob)
+    r[-cent] <- r[-cent] * ((move_prob) / (sum(!is.na(r)) - 1))
     return(r / sum(r, na.rm = TRUE))
   }))
+
+  # Attraction function 3a: simulation, no move param --------------------------
+  # attract <- normalize_nbhd(env_function(env, par))
 
   # Attraction function 4: With 0-1 parameter ----------------------------------
   # move_prob <- exp01(par[7])
@@ -524,15 +537,14 @@ log_likelihood <- function(par, objects) {
     # observation location, for that observation i, across all time steps
   }
 
-  log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
+  # log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
   # log of product is sum of logs
-  # saveRDS(predictions, paste0("data/output/simulations/p", current_jag, ".rds"))
-  # current <- list(current, current2) # DEBUG
-  # saveRDS(current, paste0("data/output/simulations/current", current_jag, ".rds")) # DEBUG
-  return(-max(log_likelihood, na.rm = TRUE))
+  out <- -max(rowSums(log(predictions), na.rm = TRUE), na.rm = TRUE)
+  if (is.infinite(out)) out <- 0
+
+  return(out)
   # Return negative of the maximum log likelihood because we want to minimize
   # Lower negative log likelihood = higher likelihood 
-  # return(list(current, current2)) # DEBUG
 }
 
 loglike <- function(par, objects) {
@@ -619,7 +631,6 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
         nbhd <- as.vector(make_nbhd(r = env01[[1]], rdf = env01[[2]], sz = neighb,
                           i = terra::cellFromRowCol(env01[[1]], pos[1], pos[2])))
         att <- sapply(nbhd, function(x) {
-          # if (is.na(x)) return(NA) else return(exp(env01[[1]][x] * par[1])$sim1)
           if (is.na(x)) {
             return(NA)
           } else {

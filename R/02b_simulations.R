@@ -4,7 +4,7 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-parallel_setup(10) # How many cores?
+parallel_setup(1) # How many cores?
 gen_land   <- F
 gen_path   <- T
 fit_indivs <- T
@@ -19,7 +19,7 @@ r1 <- 10        # range of autocorrelation in cells
 ### Model parameters: env1 attraction scalar, move probability exponent
 # par0   <- c(3, -2)    
 # stay probability exponent, env1 attraction parameters 1 to 3
-par0 <- c(2, 2, -0.2, -0.2)        
+par0 <- c(1, 2, -0.2, -0.2)        
 
 sim_interval <- 5             # GPS observations taken every n steps, for sim
 n_step       <- 4000          # Number of steps to simulate
@@ -27,15 +27,17 @@ sim_n        <- 10            # Number of simulations
 step_size    <- 1             # Max # pixels for each step
 n_obs        <- floor(n_step / sim_interval)
 
-params <- data.frame(name = c("envsize", "s1", "r1", "sim_interval", "n_step", 
-                              "n_obs", "sim_n", "step_size", "par_move", 
-                              "par_env0", "par_env1", "par_env2"),
-                     val = c(envsize, s1, r1, sim_interval, n_step, n_obs, 
-                             sim_n, step_size, par0[[1]], par0[[2]], par0[[3]],
-                             par0[[4]]))
-write.csv(params, "data/output/simulations/params.csv", row.names = F)
-saveRDS(params$val, "data/output/simulations/params.rds")
+params <- list(envsize, s1, r1, sim_interval, n_step, n_obs, sim_n, step_size, 
+               par0[[1]], par0[[2]], par0[[3]], par0[[4]])
+names(params) <- c("envsize", "s1", "r1", "sim_interval", "n_step", "n_obs", 
+                   "sim_n", "step_size", "par_move", "par_env0", "par_env1", 
+                   "par_env2")
+saveRDS(params, "data/output/simulations/params.rds")
 print(params)
+
+if (any(is.na(par0))) {
+    par0 <- par0[-which(is.na(par0))]  # Remove NA values
+}
 
 ## Landscape generation ========================================================
 
@@ -63,7 +65,7 @@ if (!gen_path) {
         message(paste0("Path #: ", i, " / ", sim_n))
         x0 <- ceiling(envsize / 2)
         y0 <- ceiling(envsize / 2)
-        jag_path(x0, y0, n_step, par = par0[2:4], neighb = step_size)
+        jag_path(x0, y0, n_step, par = par0, neighb = step_size)
         }
     )
     saveRDS(paths, "data/output/simulations/paths.rds")
@@ -114,7 +116,7 @@ if (fit_indivs) {
             as.numeric()
     todo <- setdiff(1:sim_n, done)
     message(paste0("Fitting ", length(todo), " individuals"))
-    fit <- do.call(rbind, lapply(1:sim_n, function(i) {
+    fit <- do.call(rbind, lapply(todo, function(i) {
     # foreach(i = todo, .combine = rbind) %dopar% {
         message(paste0("Fitting individual #: ", i, " / ", length(todo)))
         

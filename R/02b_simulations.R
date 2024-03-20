@@ -4,10 +4,12 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-parallel_setup(1) # How many cores?
+parallel_setup(10) # How many cores?
 gen_land   <- F
 gen_path   <- T
 fit_indivs <- T
+
+# take sim name and make a folder and save all the outputs there
 
 ## Parameters ==================================================================
 
@@ -19,7 +21,7 @@ r1 <- 10        # range of autocorrelation in cells
 ### Model parameters: env1 attraction scalar, move probability exponent
 # par0   <- c(3, -2)    
 # stay probability exponent, env1 attraction parameters 1 to 3
-par0 <- c(1, 2, -0.2, -0.2)        
+par0 <- c(2, 2, -0.2, -0.2)        
 
 sim_interval <- 5             # GPS observations taken every n steps, for sim
 n_step       <- 4000          # Number of steps to simulate

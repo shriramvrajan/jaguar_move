@@ -473,7 +473,7 @@ log_likelihood <- function(par, objects) {
   # attract <- normalize_nbhd(attract_h) 
 
   # Attraction function 3: simulations -----------------------------------------
-  attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
+  # attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
   attract1 <- normalize_nbhd(env_function(env, par[2:4]))
   move_prob <- exp01(par[1])
   attract <- t(apply(attract1, 1, function(r) {
@@ -621,7 +621,7 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
     path[1, ] <- c(x0, y0, NA, NA)
 
     # Probability of moving from current grid cell
-    move_prob <- exp01(par[2])
+    move_prob <- exp01(par[1])
 
     for (i in 2:n_step) {
         if (i %% 10 == 0) print(i)
@@ -634,7 +634,7 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
           if (is.na(x)) {
             return(NA)
           } else {
-            return(env_function(env01[[1]][x], par)$sim1)
+            return(env_function(env01[[1]][x], par[2:4])$sim1)
           }
         })
         if (any(is.na(att))) att[is.na(att)] <- 0

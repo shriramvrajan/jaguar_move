@@ -3,7 +3,7 @@ source("R/00_functions.R")
 ## Switches ====================================================================
 plot_aic    <- F
 param_plots <- T
-simdir      <- "data/output/simulations/"
+simdir      <- "data/output/simulations/sim5/"
 parallel_setup(1)
 
 ## Load data ===================================================================
@@ -115,13 +115,13 @@ if (param_plots) {
     # Generated + fitted, all on same plot
     par(mfrow = c(1, 1))
     plot(x1, y0, type = "l", lwd = 3, ylim = c(0, 1))
-    for (i in seq_len(nrow(fit))) {
+    for (i in fit$id) {
     # for (i in 1) {
         lines(x1, y1[[i]], col = rgb(0, 0, 1, 0.5), lwd = 1.5)
         # lines(x1, y2[[i]], col = rgb(1, 0, 0, 0.5), lwd = 1.5)
         env <- points[[i]]$env
         move <- points[[i]]$move
-        mw <- moving_window(env, move, window = 0.2)
+        mw <- moving_window(env, move, window = 0.5)
         lines(mw$x, mw$y, col = rgb(0, 0, 0, 0.3), lwd = 1)
         model <- glm(move ~ env, family = binomial)
     }

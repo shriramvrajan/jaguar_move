@@ -4,7 +4,7 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-parallel_setup(10) # How many cores?
+parallel_setup(20) # How many cores?
 gen_land   <- F
 gen_path   <- T
 fit_indivs <- T
@@ -15,17 +15,17 @@ fit_indivs <- T
 
 ### Landscape generation
 envsize <- 200  # size of landscape in cells
-s1 <- 4         # strength of autocorrelation 
-r1 <- 10        # range of autocorrelation in cells
+s1 <- 0.01        # strength of autocorrelation 
+r1 <- 0.01        # range of autocorrelation in cells
 
 ### Model parameters: env1 attraction scalar, move probability exponent
 # par0   <- c(3, -2)    
-# stay probability exponent, env1 attraction parameters 1 to 3
+# MOVE probability exponent, env1 attraction parameters 1 to 3
 par0 <- c(2, 2, -0.2, -0.2)        
 
 sim_interval <- 5             # GPS observations taken every n steps, for sim
 n_step       <- 4000          # Number of steps to simulate
-sim_n        <- 10            # Number of simulations 
+sim_n        <- 20           # Number of simulations 
 step_size    <- 1             # Max # pixels for each step
 n_obs        <- floor(n_step / sim_interval)
 
@@ -62,14 +62,16 @@ if (!gen_path) {
     paths <- readRDS("data/output/simulations/paths.rds")
 } else {
     message("Simulating new paths")
-    paths <- lapply(1:sim_n, function(i) {
-    # paths <- foreach(i = 1:sim_n, .export = "env01") %dopar% {
+    env02 <- terra::wrap(env01[[1]])
+    # paths <- lapply(1:sim_n, function(i) {
+    paths <- foreach(i = 1:sim_n, .packages = "terra") %dopar% {
+        env01 <- list(unwrap(env02), env01[[2]])
         message(paste0("Path #: ", i, " / ", sim_n))
         x0 <- ceiling(envsize / 2)
         y0 <- ceiling(envsize / 2)
         jag_path(x0, y0, n_step, par = par0, neighb = step_size)
         }
-    )
+    # )
     saveRDS(paths, "data/output/simulations/paths.rds")
     message("Saved paths.")
 }
@@ -118,8 +120,8 @@ if (fit_indivs) {
             as.numeric()
     todo <- setdiff(1:sim_n, done)
     message(paste0("Fitting ", length(todo), " individuals"))
-    fit <- do.call(rbind, lapply(todo, function(i) {
-    # foreach(i = todo, .combine = rbind) %dopar% {
+    # fit <- do.call(rbind, lapply(todo, function(i) {
+    foreach(i = todo, .combine = rbind) %dopar% {
         message(paste0("Fitting individual #: ", i, " / ", length(todo)))
         
         env01 <- list(terra::rast("data/output/simulations/env01.tif"),
@@ -161,5 +163,5 @@ if (fit_indivs) {
         saveRDS(c(par_out1$par, par_out2$par), 
                 file = paste0("data/output/simulations/par_out_", i, ".rds"))
     }
-    ))
+    # ))
 }

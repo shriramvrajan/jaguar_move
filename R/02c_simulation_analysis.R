@@ -3,7 +3,7 @@ source("R/00_functions.R")
 ## Switches ====================================================================
 plot_aic    <- F
 param_plots <- T
-simdir      <- "data/output/simulations/sim5/"
+simdir      <- "data/output/simulations/sim9/"
 parallel_setup(1)
 
 ## Load data ===================================================================
@@ -59,6 +59,7 @@ x1 <- seq(0, 8, length.out = 100)
 par0 <- unlist(params[10:12])
 # generating parameter values
 y0 <- 1 / (1 + exp(par0[1] + par0[2] * x1 + par0[3] * x1^2)) 
+yhat <- 1 / (1 + exp(mean(fit$c1) + mean(fit$b1) * x1 + mean(fit$a1) * x1^2))
 # fitted parameter values
 y1 <- lapply(seq_len(nrow(fit)), function(i) {
     out <- 1 / (1 + exp(fit$c1[i] + fit$b1[i] * x1 + fit$a1[i] * x1^2))
@@ -102,32 +103,37 @@ if (plot_aic) {
 
 if (param_plots) {
     # Generating + fitted functions, separate plots
-    par(mfrow = c(3, 4))
-    plot(x1, y0, type = "l", main = "Generating function", ylim = c(0, 1))
-    for (i in seq_len(nrow(fit))) {
-        plot(x1, y1[[i]], col = rgb(0, 0, 1, 0.5), type = "l", ylim = c(0, 1),
-            main = paste0("Fitted individual ", i))
-        # lines(x1, y2[[i]], col = rgb(1, 0, 0, 0.5))
-        points(points[[i]]$env, points[[i]]$move, col = rgb(0, 0, 0, 0.3), 
-            cex = 0.5, pch = 19)
-    }
+    # par(mfrow = c(3, 4))
+    # plot(x1, y0, type = "l", main = "Generating function", ylim = c(0, 1))
+    # for (i in seq_len(nrow(fit))) {
+    #     plot(x1, y1[[i]], col = rgb(0, 0, 1, 0.5), type = "l", ylim = c(0, 1),
+    #         main = paste0("Fitted individual ", i))
+    #     # lines(x1, y2[[i]], col = rgb(1, 0, 0, 0.5))
+    #     # points(points[[i]]$env, points[[i]]$move, col = rgb(0, 0, 0, 0.3), 
+    #     #     cex = 0.5, pch = 19)
+    #     mw <- moving_window(points[[i]]$env, points[[i]]$move, window = 0.2)
+    #     lines(mw$x, mw$y, col = rgb(0, 0, 0, 0.2), lwd = 1)
+    #     abline(h = mean(points[[i]]$move), lty = 2, col = "red")
+    # }
 
     # Generated + fitted, all on same plot
     par(mfrow = c(1, 1))
     plot(x1, y0, type = "l", lwd = 3, ylim = c(0, 1))
-    for (i in fit$id) {
+    lines(x1, yhat, lwd = 3, col = "blue")
+    for (i in seq_len(nrow(fit))) {
     # for (i in 1) {
-        lines(x1, y1[[i]], col = rgb(0, 0, 1, 0.5), lwd = 1.5)
+        lines(x1, y1[[i]], col = rgb(0, 0, 1, 0.3), lwd = 1.5)
         # lines(x1, y2[[i]], col = rgb(1, 0, 0, 0.5), lwd = 1.5)
         env <- points[[i]]$env
         move <- points[[i]]$move
         mw <- moving_window(env, move, window = 0.5)
-        lines(mw$x, mw$y, col = rgb(0, 0, 0, 0.3), lwd = 1)
+        lines(mw$x, mw$y, col = rgb(0, 0, 0, 0.2), lwd = 1)
+        abline(h = exp01(params$par_move), lty = 2, col = "red")
         model <- glm(move ~ env, family = binomial)
     }
 
     par(mfrow = c(1, 1))
-    for (i in fit$id) {
+    for (i in seq_len(nrow(fit))) {
         if (i == fit$id[1]) {
             hist(paths[[i]]$att, 100, border = NA, col = rgb(0.5, 0.5, 0.5, 0.5))
         } else {
@@ -140,6 +146,6 @@ if (FALSE) {
     # Jaguar paths
     par(mfrow = c(3, 4))
     for (i in fit$id) {
-        plot_path(paths[[i]])
+        plot_path(paths[[i]])   
     }
 }

@@ -393,10 +393,9 @@ make_movement_kernel1 <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum =
   # out$n <- out$n / sum(out$n)  
 }
 
-env_function <- function(env, par, nbhd) {
-    # par <- exp01(par)
-    attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
-    return(attract)
+env_function <- function(env, par) {
+  attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+  return(attract)
 }
 
 # Return -(maximum log likelihood) given a set of parameters

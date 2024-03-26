@@ -4,9 +4,11 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-parallel_setup(20) # How many cores?
+ncore_path <- 10
+ncore_fit  <- 20
+
 gen_land   <- F
-gen_path   <- T
+gen_path   <- F
 fit_indivs <- T
 
 # take sim name and make a folder and save all the outputs there
@@ -14,18 +16,18 @@ fit_indivs <- T
 ## Parameters ==================================================================
 
 ### Landscape generation
-envsize <- 200  # size of landscape in cells
+envsize <- 200    # size of landscape in cells
 s1 <- 0.01        # strength of autocorrelation 
 r1 <- 0.01        # range of autocorrelation in cells
 
 ### Model parameters: env1 attraction scalar, move probability exponent
 # par0   <- c(3, -2)    
 # MOVE probability exponent, env1 attraction parameters 1 to 3
-par0 <- c(2, 2, -0.2, -0.2)        
+par0 <- c(-2, 2, -0.2, -0.2)        
 
 sim_interval <- 5             # GPS observations taken every n steps, for sim
 n_step       <- 4000          # Number of steps to simulate
-sim_n        <- 20           # Number of simulations 
+sim_n        <- 50           # Number of simulations 
 step_size    <- 1             # Max # pixels for each step
 n_obs        <- floor(n_step / sim_interval)
 
@@ -62,6 +64,7 @@ if (!gen_path) {
     paths <- readRDS("data/output/simulations/paths.rds")
 } else {
     message("Simulating new paths")
+    parallel_setup(ncore_path) # How many cores?
     env02 <- terra::wrap(env01[[1]])
     # paths <- lapply(1:sim_n, function(i) {
     paths <- foreach(i = 1:sim_n, .packages = "terra") %dopar% {
@@ -74,6 +77,7 @@ if (!gen_path) {
     # )
     saveRDS(paths, "data/output/simulations/paths.rds")
     message("Saved paths.")
+    registerDoSEQ()
 }
 
 ## HOW TO USE RASTER WITH FOREACH?
@@ -86,6 +90,7 @@ for (i in 1:sim_n) {
 ## Fitting =====================================================================
 
 if (fit_indivs) {
+    parallel_setup(ncore_fit)
     sim_steps    <- sim_interval * 2  # Number of steps to simulate
 
     envdf <- env01[[2]]

@@ -3,7 +3,7 @@ source("R/00_functions.R")
 ## Switches ====================================================================
 plot_aic    <- F
 param_plots <- T
-simdir      <- "data/output/simulations/sim9/"
+simdir      <- "data/output/simulations/sim11/"
 parallel_setup(1)
 
 ## Load data ===================================================================
@@ -59,7 +59,7 @@ x1 <- seq(0, 8, length.out = 100)
 par0 <- unlist(params[10:12])
 # generating parameter values
 y0 <- 1 / (1 + exp(par0[1] + par0[2] * x1 + par0[3] * x1^2)) 
-yhat <- 1 / (1 + exp(mean(fit$c1) + mean(fit$b1) * x1 + mean(fit$a1) * x1^2))
+yhat <- 1 / (1 + exp(median(fit$c1) + median(fit$b1) * x1 + median(fit$a1) * x1^2))
 # fitted parameter values
 y1 <- lapply(seq_len(nrow(fit)), function(i) {
     out <- 1 / (1 + exp(fit$c1[i] + fit$b1[i] * x1 + fit$a1[i] * x1^2))

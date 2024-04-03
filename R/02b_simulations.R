@@ -5,10 +5,10 @@ source("R/00_functions.R")
 ## Switches ====================================================================
 
 ncore_path <- 10
-ncore_fit  <- 20
+ncore_fit  <- 15
 
 gen_land   <- F
-gen_path   <- F
+gen_path   <- T
 fit_indivs <- T
 
 # take sim name and make a folder and save all the outputs there
@@ -27,7 +27,7 @@ par0 <- c(-2, 2, -0.2, -0.2)
 
 sim_interval <- 5             # GPS observations taken every n steps, for sim
 n_step       <- 4000          # Number of steps to simulate
-sim_n        <- 50           # Number of simulations 
+sim_n        <- 20           # Number of simulations 
 step_size    <- 1             # Max # pixels for each step
 n_obs        <- floor(n_step / sim_interval)
 

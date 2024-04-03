@@ -3,12 +3,12 @@ source("R/00_functions.R")
 ## Switches ====================================================================
 plot_aic    <- F
 param_plots <- T
-simdir      <- "data/output/simulations/sim11/"
+simdir      <- "data/output/simulations/sim12/"
 parallel_setup(1)
 
 ## Load data ===================================================================
 message("Loading data")
-params       <- readRDS(paste0(simdir, "params.rds"))
+params       <- readRDS(paste0(simdir, "params.rds"))   
 print(params)
 sim_interval <- params$sim_interval
 sim_n        <- params$sim_n

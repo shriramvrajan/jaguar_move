@@ -416,15 +416,11 @@ log_likelihood0 <- function(par, objects) {
   #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
 
   # Attractiveness function 1: simulations
-  # attract_e <- normalize_nbhd(env_function(env, par[2:4]))
-
-  # Attractiveness function 1a: simulations, no move param
-  attract_e <- normalize_nbhd(env_function(env, par))
+  attract_e <- normalize_nbhd(env_function(env, par[2:4]))
 
   step_range <- (max_dist * 2 + 1) ^ 2
   
   p_obs <- sapply(seq_len(n_obs - 1), function(t) {
-
     env_local <- attract_e[(step_range * (t - 1) + 1):(step_range * t)]
     env_local <- env_local / sum(env_local, na.rm = TRUE)
     # TESTING WITHOUT MK -------------------------------------------------------
@@ -473,7 +469,7 @@ log_likelihood <- function(par, objects) {
 
   # Attraction function 3: simulations -----------------------------------------
   # attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
-  attract1 <- normalize_nbhd(env_function(env, par[2:4]))
+  attract1 <- env_function(env, par[2:4])
   move_prob <- exp01(par[1])
   attract <- t(apply(attract1, 1, function(r) {
     cent <- ceiling(length(r) / 2)

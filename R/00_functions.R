@@ -395,7 +395,8 @@ make_movement_kernel1 <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum =
 
 env_function <- function(env, par) {
   attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
-  return(attract)
+  out <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
+  return(out)
 }
 
 # Return -(maximum log likelihood) given a set of parameters
@@ -468,7 +469,7 @@ log_likelihood <- function(par, objects) {
   # attract <- normalize_nbhd(attract_h) 
 
   # Attraction function 3: simulations -----------------------------------------
-  # attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
+  attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
   attract1 <- env_function(env, par[2:4])
   move_prob <- exp01(par[1])
   attract <- t(apply(attract1, 1, function(r) {

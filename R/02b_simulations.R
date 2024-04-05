@@ -4,11 +4,11 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-ncore_path <- 10
-ncore_fit  <- 15
+ncore_path <- 1
+ncore_fit  <- 1
 
 gen_land   <- F
-gen_path   <- T
+gen_path   <- F
 fit_indivs <- T
 
 # take sim name and make a folder and save all the outputs there

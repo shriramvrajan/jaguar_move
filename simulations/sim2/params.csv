@@ -1,0 +1,13 @@
+"name","val"
+"envsize",120
+"s1",4
+"r1",20
+"sim_interval",5
+"n_step",4000
+"n_obs",800
+"sim_n",20
+"step_size",1
+"par_move",2
+"par_env0",0
+"par_env1",-1
+"par_env2",-1

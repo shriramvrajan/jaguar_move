@@ -4,11 +4,11 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-ncore_path <- 1
-ncore_fit  <- 1
+ncore_path <- 10
+ncore_fit  <- 15
 
 gen_land   <- F
-gen_path   <- F
+gen_path   <- T
 fit_indivs <- T
 
 # take sim name and make a folder and save all the outputs there
@@ -36,7 +36,7 @@ params <- list(envsize, s1, r1, sim_interval, n_step, n_obs, sim_n, step_size,
 names(params) <- c("envsize", "s1", "r1", "sim_interval", "n_step", "n_obs", 
                    "sim_n", "step_size", "par_move", "par_env0", "par_env1", 
                    "par_env2")
-saveRDS(params, "data/output/simulations/params.rds")
+saveRDS(params, "simulations/params.rds")
 print(params)
 
 if (any(is.na(par0))) {
@@ -47,13 +47,13 @@ if (any(is.na(par0))) {
 
 if (!gen_land) {
     message("Reusing old landscape")
-    env01 <- list(rast("data/output/simulations/env01.tif"),
-                  readRDS("data/output/simulations/env01.rds"))
+    env01 <- list(rast("simulations/env01.tif"),
+                  readRDS("simulations/env01.rds"))
 } else {
     message("Generating new landscape")
     env01 <- gen_landscape(size = envsize, s = s1, r = r1)
-    writeRaster(env01[[1]], "data/output/simulations/env01.tif", overwrite = TRUE)
-    saveRDS(env01[[2]], "data/output/simulations/env01.rds")
+    writeRaster(env01[[1]], "simulations/env01.tif", overwrite = TRUE)
+    saveRDS(env01[[2]], "simulations/env01.rds")
     terra::plot(env01[[1]])
 }
 
@@ -61,7 +61,7 @@ if (!gen_land) {
 
 if (!gen_path) {
     message("Reusing old paths")
-    paths <- readRDS("data/output/simulations/paths.rds")
+    paths <- readRDS("simulations/paths.rds")
 } else {
     message("Simulating new paths")
     parallel_setup(ncore_path) # How many cores?
@@ -75,7 +75,7 @@ if (!gen_path) {
         jag_path(x0, y0, n_step, par = par0, neighb = step_size)
         }
     # )
-    saveRDS(paths, "data/output/simulations/paths.rds")
+    saveRDS(paths, "simulations/paths.rds")
     message("Saved paths.")
     registerDoSEQ()
 }
@@ -119,7 +119,7 @@ if (fit_indivs) {
                     r = env01[[1]], rdf = env01[[2]]) 
 
     message("Fitting model parameters")
-    done <- list.files("data/output/simulations", pattern = "par_out_")
+    done <- list.files("simulations", pattern = "par_out_")
     done <- gsub("par_out_", "", done) %>%
             gsub(".rds", "", .) %>%
             as.numeric()
@@ -129,8 +129,8 @@ if (fit_indivs) {
     foreach(i = todo, .combine = rbind) %dopar% {
         message(paste0("Fitting individual #: ", i, " / ", length(todo)))
         
-        env01 <- list(terra::rast("data/output/simulations/env01.tif"),
-                    readRDS("data/output/simulations/env01.rds"))
+        env01 <- list(terra::rast("simulations/env01.tif"),
+                    readRDS("simulations/env01.rds"))
 
         current_jag <- i # for use in loglike_fun
         traject <- jag_traject_cells[[i]]
@@ -146,7 +146,7 @@ if (fit_indivs) {
         objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
         ll <- log_likelihood(par0, objects1)
         message(paste0("Saving log-likelihood for model 1: ", i))
-        saveRDS(ll, file = paste0("data/output/simulations/ll_fit1", i, ".rds"))
+        saveRDS(ll, file = paste0("simulations/ll_fit1", i, ".rds"))
         par_out1 <- optim(par0, log_likelihood, objects = objects1)
 
         message("Fitting parameters for model 2: traditional SSF")
@@ -161,12 +161,12 @@ if (fit_indivs) {
         objects2 <- list(env1, max_dist, mk, obs)
         ll <- log_likelihood0(par0, objects2)
         message(paste0("Saving log-likelihood for model 2: ", i))
-        saveRDS(ll, file = paste0("data/output/simulations/ll_fit2", i, ".rds"))
+        saveRDS(ll, file = paste0("simulations/ll_fit2", i, ".rds"))
         par_out2 <- optim(par0, log_likelihood0, objects = objects2)
         
         message(paste0("COMPLETED path #: ", i, " / ", sim_n))
         saveRDS(c(par_out1$par, par_out2$par), 
-                file = paste0("data/output/simulations/par_out_", i, ".rds"))
+                file = paste0("simulations/par_out_", i, ".rds"))
     }
     # ))
 }

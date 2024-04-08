@@ -469,7 +469,7 @@ log_likelihood <- function(par, objects) {
   # attract <- normalize_nbhd(attract_h) 
 
   # Attraction function 3: simulations -----------------------------------------
-  attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
+  # attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
   attract1 <- env_function(env, par[2:4])
   move_prob <- exp01(par[1])
   attract <- t(apply(attract1, 1, function(r) {
@@ -561,11 +561,11 @@ run_optim <- function(param, objects, i) {
     while (ntries <= 20) {
         tryCatch({
             par_out <- optim(param, loglike, objects = objects)
-            saveRDS(par_out, paste0("data/output/par_out_", i, ".rds"))
+            saveRDS(par_out, paste0("par_out_", i, ".rds"))
 
             message("Running loglike_fun...")
             likelihood <- loglike(par_out[[1]], objects = objects)
-            saveRDS(likelihood, paste0("data/output/likelihood_", i, ".rds"))
+            saveRDS(likelihood, paste0("likelihood_", i, ".rds"))
 
             message(paste0("jaguar ", i, " fitted ", date()))
             ntries <- 21 # End while loop
@@ -575,7 +575,7 @@ run_optim <- function(param, objects, i) {
             message(paste("Try #:", ntries))
             if (ntries == 20) {
               message("Skipping, couldn't fit in 20 tries")
-              saveRDS(NA, paste0("data/output/NA_", i, ".rds"))
+              saveRDS(NA, paste0("NA_", i, ".rds"))
             } else {
               message("Retrying")
             }

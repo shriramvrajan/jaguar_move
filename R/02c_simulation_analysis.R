@@ -3,7 +3,7 @@ source("R/00_functions.R")
 ## Switches ====================================================================
 plot_aic    <- F
 param_plots <- T
-simdir      <- "data/output/simulations/sim12/"
+simdir      <- "simulations/sim14/"
 parallel_setup(1)
 
 ## Load data ===================================================================

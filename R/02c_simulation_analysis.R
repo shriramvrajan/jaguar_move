@@ -9,12 +9,12 @@ parallel_setup(1)
 ## Load data ===================================================================
 message("Loading data")
 params       <- readRDS(paste0(simdir, "params.rds"))   
-print(params)
 sim_interval <- params$sim_interval
 sim_n        <- params$sim_n
 paths <- readRDS(paste0(simdir, "paths.rds"))
 env01 <- rast(paste0(simdir, "env01.tif"))
 env01 <- list(env01, raster_to_df(env01))
+print(params)
 
 fit <- load_if_exists(paste0("par_out_", 1:sim_n, ".rds"), dir = simdir) %>%
         do.call(rbind, .) %>% 
@@ -139,13 +139,5 @@ if (param_plots) {
         } else {
             hist(paths[[i]]$att, 100, add = TRUE, border = NA, col = rgb(0.5, 0.5, 0.5, 0.5))        
         }
-    }
-}
-
-if (FALSE) {
-    # Jaguar paths
-    par(mfrow = c(3, 4))
-    for (i in fit$id) {
-        plot_path(paths[[i]])   
     }
 }

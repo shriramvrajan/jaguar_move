@@ -24,10 +24,19 @@
 
 11. Uniform landscape - all raster cells = 1.
 
-12. Runif landscape - unif dist from 0 to 8.
+12. White noise landscape - runif from 0 to 8.
 
-13. Uniform landscape, more trials.
+13. White noise landscape, more trials.
 
 14. New method: not normalizing twice. White noise landscape.
 
 15. Replicate of 14.
+
+16. Replicate of 14.
+
+17. Replicate of 11 (all=1) with new method.
+
+18. Newly generated SAC map, new method.
+
+19. Replicate of 18 with 100 runs.
+

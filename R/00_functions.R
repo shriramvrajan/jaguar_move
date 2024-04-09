@@ -393,18 +393,20 @@ make_movement_kernel1 <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum =
   # out$n <- out$n / sum(out$n)  
 }
 
-env_function <- function(env, par) {
+env_function <- function(env, par, format = TRUE) {
   attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
-  out <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
-  return(out)
+  if (format) {
+    attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
+  }
+  return(attract)
 }
 
 # Return -(maximum log likelihood) given a set of parameters
 # log_likelihood0: For traditional SSF
 # log_likelihood:  For all others including simulations
+
 log_likelihood0 <- function(par, objects) {
   # par        : Initial values of parameters for optimization
-  # par[7] <- exp(par[7]) / (1 + exp(par[7])) # Transform to [0, 1]
 
   env <- objects[[1]]
   max_dist <- objects[[2]]
@@ -630,7 +632,7 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
           if (is.na(x)) {
             return(NA)
           } else {
-            return(env_function(env01[[1]][x], par[2:4])$sim1)
+            return(env_function(env01[[1]][x], par[2:4], format = FALSE)$sim1)
           }
         })
         if (any(is.na(att))) att[is.na(att)] <- 0

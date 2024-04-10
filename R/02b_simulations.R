@@ -5,13 +5,14 @@ source("R/00_functions.R")
 ## Switches ====================================================================
 
 # Switches for reusing old data
-gen_land   <- F
-gen_path   <- F
+gen_land   <- T
+gen_path   <- T
 fit_indivs <- T
+minima_test <- F
 
 # Number of cores to use for path generation and fitting
-ncore_path <- 10
-ncore_fit  <- 15
+ncore_path <- 1
+ncore_fit  <- 1
 
 # take sim name and make a folder and save all the outputs there
 
@@ -29,7 +30,7 @@ par0 <- c(-1, 2, -0.2, -0.2)
 ### Path generation parameters:
 sim_interval <- 5             # GPS observations taken every n steps, for sim
 n_step       <- 4000          # Number of steps to simulate
-sim_n        <- 100           # Number of simulations 
+sim_n        <- 30            # Number of simulations 
 step_size    <- 1             # Max # pixels for each step
 n_obs        <- floor(n_step / sim_interval)
 
@@ -135,12 +136,16 @@ if (fit_indivs) {
         
         message("Fitting parameters for model 1: path-dependent kernel") #------
         objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
-        par_out1 <- optim(par0, log_likelihood, objects = objects1)
-        ll <- log_likelihood(par_out1, objects1)
+        if (minima_test) { 
+            par_out1 <- readRDS(paste0("simulations/par_out_", i, ".rds"))
+        } else {
+            par_out1 <- optim(par0, log_likelihood, objects = objects1)
+        }
+        ll <- log_likelihood(par_out1$par, objects1)
         message(paste0("Saving log-likelihood for model 1: ", i))
         saveRDS(ll, file = paste0("simulations/ll_fit1", i, ".rds"))
 
-        message("Fitting parameters for model 2: traditional SSF") #------------
+        message("Fitting parameters for model 2: traditional SSF") #------------ 
         obs_points <- as.data.frame(jag_traject[[i]]) 
         names(obs_points) <- c("x", "y")
         tr <- amt::steps(amt::make_track(obs_points, x, y))
@@ -150,7 +155,7 @@ if (fit_indivs) {
                                    max_dist = max_dist, scale = 1)
         objects2 <- list(env1, max_dist, mk, obs)
         par_out2 <- optim(par0, log_likelihood0, objects = objects2)
-        ll <- log_likelihood0(par_out2, objects2)
+        ll <- log_likelihood0(par_out2$par, objects2)
         message(paste0("Saving log-likelihood for model 2: ", i))
         saveRDS(ll, file = paste0("simulations/ll_fit2", i, ".rds"))
         

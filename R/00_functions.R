@@ -1,8 +1,8 @@
 rm(list = ls())
 
-## Basic functions and libraries ===============================================
+## Basic functions and libraries 
 
-# Libraries
+# Libraries ====================================================================
 library(terra)
 library(tidyverse)
 library(data.table)
@@ -13,16 +13,10 @@ library(lubridate)
 library(fitdistrplus)
 library(foreach)
 library(doParallel)
-# library(plotly)
-# library(apcluster)
-# library(suncalc)
-# library(fractaldim)
-# library(finch)
 
 # Global parameters ============================================================
 
-# How many pixels does jaguar move in 1 time step?
-buffersize <- 1 
+buffersize <- 1     # How many pixels does jaguar move in 1 time step?
 
 # CRS definitions
 wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
@@ -42,7 +36,7 @@ jag_meta <- data.table(read.csv("data/input/jaguars/jaguar_metadata2.csv"))
 
 # RasterStack of environmental variables -- see 01_generate_data.R for details
 brazil_ras <- rast("data/env_layers.grd")
-load("data/env_layers.RData") # as a data frame ('brdf')
+load("data/env_layers.RData") # same information as a dataframe ('brdf')
 
 # Brazil biomes shapefile
 biome <- vect("data/input/Brazil_biomes/Brazil_biomes.shp")
@@ -58,12 +52,18 @@ message <- function(m, f = "data/output/run_log.txt") {
     cat(m, file = f, append = TRUE, sep = "\n")
 }
 
-# Save raster x as filename fn under ./data/
-save_raster <- function(x, fn) {
-    # Save raster often because it can get corrupted while working
-    writeRaster(x, paste0("data/", fn), overwrite = TRUE)
+# Logistic function
+exp01 <- function(x) {
+    return(exp(x) / (1 + exp(x)))
 }
 
+# Save raster r as filename fn under ./data/
+save_raster <- function(r, fn) {
+    # Save raster often because it can get corrupted while working
+    writeRaster(r, paste0("data/", fn), overwrite = TRUE)
+}
+
+# Turn raster into a 3-column dataframe with row, col, and value
 raster_to_df <- function(r) {
     outdf <- as.data.frame(r)
     outdf <- cbind(outdf, rowColFromCell(r, seq_len(nrow(outdf))))
@@ -104,10 +104,10 @@ make_full_track <- function(id) {
                            format = "%m/%d/%Y %H:%M"), "%m"))
     dat$day <- as.numeric(format(as.POSIXct(dat$timestamp, 
                            format = "%m/%d/%Y %H:%M"), "%d"))
-    dat$hr <- format(as.POSIXct(dat$timestamp, format = "%m/%d/%Y %H:%M"), "%H:%M")
+    dat$hr <- format(as.POSIXct(dat$timestamp, 
+                           format = "%m/%d/%Y %H:%M"), "%H:%M")
     dat$hr <- as.numeric(gsub(":[0-9][0-9]", "", dat$hr))
     dat <- dat[, timestamp := NULL]
-
     tr <- make_track0(id)
     st <- steps(tr)
     dat$sl <- c(NA, st$sl_)             # step lengths in m
@@ -115,15 +115,10 @@ make_full_track <- function(id) {
     dat$dir <- c(NA, st$direction_p)    # bearing in radians
     dat$dt <- c(NA, as.numeric(st$dt_)) # time interval in minutes
     dat$spd <- dat$sl / dat$dt
-
-
     return(dat[, c("longitude", "latitude", "ID", "year", "mon", "day", "hr", 
                    "sl", "ta", "dir", "dt", "spd")])
 }
 
-exp01 <- function(x) {
-    return(exp(x) / (1 + exp(x)))
-}
 
 parallel_setup <- function(n_cores = 4) {
     cl <- makeCluster(n_cores)

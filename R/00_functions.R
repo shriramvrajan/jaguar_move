@@ -402,7 +402,6 @@ env_function <- function(env, par, format = TRUE) {
 
 log_likelihood0 <- function(par, objects) {
   # par        : Initial values of parameters for optimization
-
   env <- objects[[1]]
   max_dist <- objects[[2]]
   mk <- objects[[3]]
@@ -467,17 +466,18 @@ log_likelihood <- function(par, objects) {
 
   # Attraction function 3: simulations -----------------------------------------
   # attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
-  attract1 <- env_function(env, par[2:4])
-  move_prob <- exp01(par[1])
-  attract <- t(apply(attract1, 1, function(r) {
-    cent <- ceiling(length(r) / 2)
-    r[cent] <- r[cent] * (1 - move_prob)
-    r[-cent] <- r[-cent] * ((move_prob) / (sum(!is.na(r)) - 1))
-    return(r / sum(r, na.rm = TRUE))
-  }))
+  # print(par)
+  # attract1 <- env_function(env, par[2:4])
+  # move_prob <- exp01(par[1])
+  # attract <- t(apply(attract1, 1, function(r) {
+  #   cent <- ceiling(length(r) / 2)
+  #   r[cent] <- r[cent] * (1 - move_prob)
+  #   r[-cent] <- r[-cent] * ((move_prob) / (sum(!is.na(r)) - 1))
+  #   return(r / sum(r, na.rm = TRUE))
+  # }))
 
   # Attraction function 3a: simulation, no move param --------------------------
-  # attract <- normalize_nbhd(env_function(env, par))
+  attract <- normalize_nbhd(env_function(env, par))
 
   # Attraction function 4: With 0-1 parameter ----------------------------------
   # move_prob <- exp01(par[7])
@@ -530,10 +530,14 @@ log_likelihood <- function(par, objects) {
     # observation location, for that observation i, across all time steps
   }
 
-  # log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
+  log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
   # log of product is sum of logs
-  out <- -max(rowSums(log(predictions), na.rm = TRUE), na.rm = TRUE)
-  if (is.infinite(out)) out <- 0
+  # out <- -max(rowSums(log(predictions), na.rm = TRUE), na.rm = TRUE)
+
+  ##DEBUG
+  out <- -log_likelihood[sim_interval]
+  
+  if (is.infinite(out) || is.na(out)) out <- 0
 
   return(out)
   # Return negative of the maximum log likelihood because we want to minimize
@@ -613,6 +617,8 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
     path <- matrix(NA, nrow = n_step, ncol = 4)
     path[1, ] <- c(x0, y0, NA, NA)
 
+    if (length(par) == 3) par <- c(0, par)
+
     # Probability of moving from current grid cell
     move_prob <- exp01(par[1])
 
@@ -632,12 +638,13 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
         })
         if (any(is.na(att))) att[is.na(att)] <- 0
         att <- att / sum(att)
+        attract <- att
 
-        # Find center cell and scale by move_prob
-        cent <- ceiling(length(att) / 2)
-        att[cent] <- att[cent] * (1 - move_prob)
-        att[-cent] <- att[-cent] * (move_prob / (sum(!is.na(att)) - 1))
-        attract <- att / sum(att)
+        # Find center cell and scale by move_prob (COMMENT OUT FOR NO MOVEPAR)
+        # cent <- ceiling(length(att) / 2)
+        # att[cent] <- att[cent] * (1 - move_prob)
+        # att[-cent] <- att[-cent] * (move_prob / (sum(!is.na(att)) - 1))
+        # attract <- att / sum(att)
 
         # Sample next step
         step <- sample(seq_len(length(attract)), 1, prob = attract)

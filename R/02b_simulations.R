@@ -5,14 +5,15 @@ source("R/00_functions.R")
 ## Switches ====================================================================
 
 # Switches for reusing old data
-gen_land   <- T
+gen_land   <- F
 gen_path   <- T
+
+# Switches for fitting models
 fit_indivs <- T
-minima_test <- F
 
 # Number of cores to use for path generation and fitting
-ncore_path <- 1
-ncore_fit  <- 1
+ncore_path <- 10
+ncore_fit  <- 10
 
 # take sim name and make a folder and save all the outputs there
 
@@ -25,12 +26,12 @@ r1 <- 15          # range of autocorrelation in cells
 
 ### Model parameters:
 # Order: par_move, par_env0, par_env1, par_env2
-par0 <- c(-1, 2, -0.2, -0.2)        
+par0 <- c(NA, 2, -0.2, -0.2)        
 
 ### Path generation parameters:
 sim_interval <- 5             # GPS observations taken every n steps, for sim
 n_step       <- 4000          # Number of steps to simulate
-sim_n        <- 30            # Number of simulations 
+sim_n        <- 20            # Number of simulations 
 step_size    <- 1             # Max # pixels for each step
 n_obs        <- floor(n_step / sim_interval)
 
@@ -42,6 +43,8 @@ names(params) <- c("envsize", "s1", "r1", "sim_interval", "n_step", "n_obs",
                    "par_env2")
 saveRDS(params, "simulations/params.rds")
 print(params)
+
+if(any(is.na(par0))) par0 <- par0[!is.na(par0)]
 
 ## Landscape generation ========================================================
 
@@ -115,6 +118,7 @@ if (fit_indivs) {
     done <- gsub("par_out_", "", done) %>%
             gsub(".rds", "", .) %>%
             as.numeric()
+    # todo <- if (minima_test) 1:sim_n else setdiff(1:sim_n, done)
     todo <- setdiff(1:sim_n, done)
     message(paste0("Fitting ", length(todo), " individuals"))
 
@@ -136,31 +140,31 @@ if (fit_indivs) {
         
         message("Fitting parameters for model 1: path-dependent kernel") #------
         objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
-        if (minima_test) { 
-            par_out1 <- readRDS(paste0("simulations/par_out_", i, ".rds"))
-        } else {
-            par_out1 <- optim(par0, log_likelihood, objects = objects1)
-        }
+        # if (minima_test) { 
+        #     par0 <- c(0, 0, 0, 0)
+        # }
+        par_out1 <- optim(par0, log_likelihood, objects = objects1)
         ll <- log_likelihood(par_out1$par, objects1)
         message(paste0("Saving log-likelihood for model 1: ", i))
         saveRDS(ll, file = paste0("simulations/ll_fit1", i, ".rds"))
 
-        message("Fitting parameters for model 2: traditional SSF") #------------ 
-        obs_points <- as.data.frame(jag_traject[[i]]) 
-        names(obs_points) <- c("x", "y")
-        tr <- amt::steps(amt::make_track(obs_points, x, y))
-        sl_emp <- as.vector(na.exclude(tr$sl_))
-        ta_emp <- as.vector(na.exclude(tr$ta_))
-        mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, 
-                                   max_dist = max_dist, scale = 1)
-        objects2 <- list(env1, max_dist, mk, obs)
-        par_out2 <- optim(par0, log_likelihood0, objects = objects2)
-        ll <- log_likelihood0(par_out2$par, objects2)
-        message(paste0("Saving log-likelihood for model 2: ", i))
-        saveRDS(ll, file = paste0("simulations/ll_fit2", i, ".rds"))
+        # message("Fitting parameters for model 2: traditional SSF") #------------ 
+        # obs_points <- as.data.frame(jag_traject[[i]]) 
+        # names(obs_points) <- c("x", "y")
+        # tr <- amt::steps(amt::make_track(obs_points, x, y))
+        # sl_emp <- as.vector(na.exclude(tr$sl_))
+        # ta_emp <- as.vector(na.exclude(tr$ta_))
+        # mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, 
+        #                            max_dist = max_dist, scale = 1)
+        # objects2 <- list(env1, max_dist, mk, obs)
+        # par_out2 <- optim(par0, log_likelihood0, objects = objects2)
+        # ll <- log_likelihood0(par_out2$par, objects2)
+        # message(paste0("Saving log-likelihood for model 2: ", i))
+        # saveRDS(ll, file = paste0("simulations/ll_fit2", i, ".rds"))
         
         message(paste0("COMPLETED path #: ", i, " / ", sim_n))
-        saveRDS(c(par_out1$par, par_out2$par), 
+        # saveRDS(c(par_out1$par, par_out2$par), 
+        saveRDS(par_out1$par,
                 file = paste0("simulations/par_out_", i, ".rds"))
     }
     # ))

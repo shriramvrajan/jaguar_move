@@ -3,7 +3,7 @@ source("R/00_functions.R")
 ## Switches ====================================================================
 plot_aic    <- F
 param_plots <- T
-simdir      <- "simulations/sim14/"
+simdir      <- "simulations/s3/"
 parallel_setup(1)
 
 ## Load data ===================================================================
@@ -24,6 +24,10 @@ if (ncol(fit) == 9) {
     names(fit) <- c("m1", "c1", "b1", "a1", "m2", "c2", "b2", "a2", "id")
 } else if (ncol(fit) == 7) {
     names(fit) <- c("c1", "b1", "a1", "c2", "b2", "a2", "id")
+} else if (ncol(fit) == 4) {
+    names(fit) <- c("c1", "b1", "a1", "id")
+} else {
+    stop("Unexpected number of columns in fit")
 }
 
 if (any(is.na(fit$c1))) {
@@ -60,13 +64,14 @@ par0 <- unlist(params[10:12])
 # generating parameter values
 y0 <- 1 / (1 + exp(par0[1] + par0[2] * x1 + par0[3] * x1^2)) 
 yhat <- 1 / (1 + exp(median(fit$c1) + median(fit$b1) * x1 + median(fit$a1) * x1^2))
+yhat2 <- 1 / (1 + exp(mean(fit$c1) + mean(fit$b1) * x1 + mean(fit$a1) * x1^2))
 # fitted parameter values
 y1 <- lapply(seq_len(nrow(fit)), function(i) {
     out <- 1 / (1 + exp(fit$c1[i] + fit$b1[i] * x1 + fit$a1[i] * x1^2))
 })
-y2 <- lapply(seq_len(nrow(fit)), function(i) {
-    out <- 1 / (1 + exp(fit$c2[i] + fit$b2[i] * x1 + fit$a2[i] * x1^2))
-})
+# y2 <- lapply(seq_len(nrow(fit)), function(i) {
+#     out <- 1 / (1 + exp(fit$c2[i] + fit$b2[i] * x1 + fit$a2[i] * x1^2))
+# })
 points <- lapply(fit$id, function(i) {
     path <- paths[[i]]
     path$move <- c(0, sqrt(diff(path$x)^2 + diff(path$y)^2))
@@ -102,24 +107,11 @@ if (plot_aic) {
 ## Exploring parameter values ==================================================
 
 if (param_plots) {
-    # Generating + fitted functions, separate plots
-    # par(mfrow = c(3, 4))
-    # plot(x1, y0, type = "l", main = "Generating function", ylim = c(0, 1))
-    # for (i in seq_len(nrow(fit))) {
-    #     plot(x1, y1[[i]], col = rgb(0, 0, 1, 0.5), type = "l", ylim = c(0, 1),
-    #         main = paste0("Fitted individual ", i))
-    #     # lines(x1, y2[[i]], col = rgb(1, 0, 0, 0.5))
-    #     # points(points[[i]]$env, points[[i]]$move, col = rgb(0, 0, 0, 0.3), 
-    #     #     cex = 0.5, pch = 19)
-    #     mw <- moving_window(points[[i]]$env, points[[i]]$move, window = 0.2)
-    #     lines(mw$x, mw$y, col = rgb(0, 0, 0, 0.2), lwd = 1)
-    #     abline(h = mean(points[[i]]$move), lty = 2, col = "red")
-    # }
-
     # Generated + fitted, all on same plot
     par(mfrow = c(1, 1))
     plot(x1, y0, type = "l", lwd = 3, ylim = c(0, 1))
     lines(x1, yhat, lwd = 3, col = "blue")
+    lines(x1, yhat2, lwd = 3, col = "red")
     for (i in seq_len(nrow(fit))) {
     # for (i in 1) {
         lines(x1, y1[[i]], col = rgb(0, 0, 1, 0.3), lwd = 1.5)

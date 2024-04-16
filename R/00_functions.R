@@ -13,6 +13,7 @@ library(lubridate)
 library(fitdistrplus)
 library(foreach)
 library(doParallel)
+library(viridis)
 
 # Global parameters ============================================================
 
@@ -682,6 +683,9 @@ plot_path <- function(path, int = sim_interval, vgram = FALSE,
 
     col1 <- rgb(1, 0, 0, .5)
     col2 <- rgb(0, 0, 1, .8)
+    
+    col1 <- magma(nrow(path))
+
     # Plotting environmental variables + path
     if (new) terra::plot(env01[[1]])
 
@@ -699,7 +703,7 @@ plot_path <- function(path, int = sim_interval, vgram = FALSE,
       }
     } else if (type == 1) {
       points(path, col = col1, pch = 19, cex = 0.5)
-      lines(path, col = col1)
+      # lines(path, col = col1)
     }
     # Plotting variogram
     # if (!vgram) return(NULL)

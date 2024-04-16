@@ -4,4 +4,6 @@
 
 2. Low movement, but with sim_interval fixed.
 
-3. Sim_interval fixed, no movement kernel, only environment.
+3. Sim_interval fixed, no movement kernel, only environment. Median works but not mean.
+
+4. Replicate of 3. 

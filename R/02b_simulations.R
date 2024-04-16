@@ -6,10 +6,11 @@ source("R/00_functions.R")
 
 # Switches for reusing old data
 gen_land   <- F
-gen_path   <- T
+gen_path   <- F
 
 # Switches for fitting models
-fit_indivs <- T
+fit_indivs <- F
+debug_fit  <- T
 
 # Number of cores to use for path generation and fitting
 ncore_path <- 10
@@ -31,7 +32,7 @@ par0 <- c(NA, 2, -0.2, -0.2)
 ### Path generation parameters:
 sim_interval <- 5             # GPS observations taken every n steps, for sim
 n_step       <- 4000          # Number of steps to simulate
-sim_n        <- 20            # Number of simulations 
+sim_n        <- 100           # Number of simulations 
 step_size    <- 1             # Max # pixels for each step
 n_obs        <- floor(n_step / sim_interval)
 
@@ -46,8 +47,7 @@ print(params)
 
 if(any(is.na(par0))) par0 <- par0[!is.na(par0)]
 
-## Landscape generation ========================================================
-
+## Landscape ===================================================================
 if (!gen_land) {
     message("Reusing old landscape")
     env01 <- list(rast("simulations/env01.tif"),
@@ -60,8 +60,7 @@ if (!gen_land) {
     terra::plot(env01[[1]])
 }
 
-## Simulation ==================================================================
-
+## Paths =======================================================================
 if (!gen_path) {
     message("Reusing old paths")
     paths <- readRDS("simulations/paths.rds")
@@ -83,34 +82,32 @@ if (!gen_path) {
     registerDoSEQ()
 }
 
-## Fitting =====================================================================
+### Prepare to fit 
+jag_traject <- lapply(paths, function(p) {
+    out <- cbind(p$x, p$y)
+    ind <- seq(1, nrow(out), sim_interval)
+    out <- out[ind, ]
+    return(out)
+})
+jag_traject_cells <- lapply(jag_traject, function(tr) {
+    raster::cellFromXY(env01[[1]], tr[, 1:2])
+})
+dist <- lapply(jag_traject, function(tr) {
+    out <- c(0, sqrt(diff(tr[, 1])^2 + diff(tr[, 2])^2))
+    return(out)
+})
+max_dist <- ceiling(max(unlist(dist)) * 1.5)
+step_range <- (2 * max_dist + 1) ^ 2
+sim_steps <- sim_interval * 2  # Number of steps to simulate
 
+# Global neighborhood:
+nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize, 
+                r = env01[[1]], rdf = env01[[2]]) 
+
+## Fitting =====================================================================
 if (fit_indivs) {
     parallel_setup(ncore_fit)
     message("Fitting model parameters")
-
-    ### Prepare to fit ---------------------------------------------------------
-    # Paths:
-    jag_traject <- lapply(paths, function(p) {
-        out <- cbind(p$x, p$y)
-        ind <- seq(1, nrow(out), sim_interval)
-        out <- out[ind, ]
-        return(out)
-    })
-    jag_traject_cells <- lapply(jag_traject, function(tr) {
-        raster::cellFromXY(env01[[1]], tr[, 1:2])
-    })
-    dist <- lapply(jag_traject, function(tr) {
-        out <- c(0, sqrt(diff(tr[, 1])^2 + diff(tr[, 2])^2))
-        return(out)
-    })
-    max_dist <- ceiling(max(unlist(dist)) * 1.5)
-    step_range <- (2 * max_dist + 1) ^ 2
-    sim_steps <- sim_interval * 2  # Number of steps to simulate
-
-    # Global neighborhood:
-    nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize, 
-                    r = env01[[1]], rdf = env01[[2]]) 
 
     ### Fitting loop -----------------------------------------------------------
     # Housekeeping for parallel processing
@@ -118,7 +115,6 @@ if (fit_indivs) {
     done <- gsub("par_out_", "", done) %>%
             gsub(".rds", "", .) %>%
             as.numeric()
-    # todo <- if (minima_test) 1:sim_n else setdiff(1:sim_n, done)
     todo <- setdiff(1:sim_n, done)
     message(paste0("Fitting ", length(todo), " individuals"))
 
@@ -140,9 +136,6 @@ if (fit_indivs) {
         
         message("Fitting parameters for model 1: path-dependent kernel") #------
         objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
-        # if (minima_test) { 
-        #     par0 <- c(0, 0, 0, 0)
-        # }
         par_out1 <- optim(par0, log_likelihood, objects = objects1)
         ll <- log_likelihood(par_out1$par, objects1)
         message(paste0("Saving log-likelihood for model 1: ", i))
@@ -168,4 +161,36 @@ if (fit_indivs) {
                 file = paste0("simulations/par_out_", i, ".rds"))
     }
     # ))
+}
+
+## Debug =======================================================================
+
+if (debug_fit) {
+
+    parallel_setup(ncore_fit)
+
+    setwd("simulations/s4/")
+
+    llike <- unlist(load_if_exists(paste0("ll_fit1", 1:sim_n, ".rds"), dir = "."))
+
+    out <- foreach(i = par$id, .combine = c) %dopar% {
+        env01 <- list(terra::rast("simulations/env01.tif"),
+                      readRDS("simulations/env01.rds"))
+        traject <- jag_traject_cells[[i]]
+        prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
+                rdf = env01[[2]])
+        env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))
+        # Normalizing desired environmental variables for extended neighborhood
+        env1 <- env1[nbhd_index] # Make env1/nbhd indexing consistent
+        names(env1) <- seq_len(length(nbhd_index))
+        objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
+        par_fitted <- par0[2:4]
+        if (any(is.na(par_fitted))) return(NA)
+        ll <- log_likelihood(par_fitted, objects1)
+        return(ll)
+    }
+    
+    out <- data.frame(id = par$id, ll_fit = llike, ll_0 = out)
+    saveRDS(out, "optimtest.rds")
+
 }

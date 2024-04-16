@@ -3,7 +3,7 @@ source("R/00_functions.R")
 ## Switches ====================================================================
 plot_aic    <- F
 param_plots <- T
-simdir      <- "simulations/s3/"
+simdir      <- "simulations/s4/"
 parallel_setup(1)
 
 ## Load data ===================================================================
@@ -35,7 +35,7 @@ if (any(is.na(fit$c1))) {
     fit <- fit[-posna, ]
 }
 
-# Prepare simulation data ======================================================
+## Prepare simulation data =====================================================
 message("Preparing simulation data...")
 envdf <- env01[[2]]
 env_index <- seq_len(nrow(envdf))
@@ -58,20 +58,22 @@ step_range <- (2 * max_dist + 1) ^ 2
 nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize, 
                    r = env01[[1]], rdf = env01[[2]]) 
 
-## For exploring parameters
+## Explore parameter values ====================================================
 x1 <- seq(0, 8, length.out = 100)
 par0 <- unlist(params[10:12])
+
 # generating parameter values
 y0 <- 1 / (1 + exp(par0[1] + par0[2] * x1 + par0[3] * x1^2)) 
+# fitted parameter values
 yhat <- 1 / (1 + exp(median(fit$c1) + median(fit$b1) * x1 + median(fit$a1) * x1^2))
 yhat2 <- 1 / (1 + exp(mean(fit$c1) + mean(fit$b1) * x1 + mean(fit$a1) * x1^2))
-# fitted parameter values
 y1 <- lapply(seq_len(nrow(fit)), function(i) {
     out <- 1 / (1 + exp(fit$c1[i] + fit$b1[i] * x1 + fit$a1[i] * x1^2))
 })
 # y2 <- lapply(seq_len(nrow(fit)), function(i) {
 #     out <- 1 / (1 + exp(fit$c2[i] + fit$b2[i] * x1 + fit$a2[i] * x1^2))
 # })
+
 points <- lapply(fit$id, function(i) {
     path <- paths[[i]]
     path$move <- c(0, sqrt(diff(path$x)^2 + diff(path$y)^2))
@@ -79,6 +81,26 @@ points <- lapply(fit$id, function(i) {
     path$env <- env01[[2]]$sim1[cellFromXY(env01[[1]], path[, 1:2])]
     return(path[, c("move", "env")])
 })
+
+if (param_plots) {
+    # Generated + fitted, all on same plot
+    par(mfrow = c(1, 1))
+    plot(x1, y0, type = "l", lwd = 3, ylim = c(0, 1))
+    lines(x1, yhat, lwd = 3, col = "blue")
+    lines(x1, yhat2, lwd = 3, col = "red")
+    for (i in seq_len(nrow(fit))) {
+        lines(x1, y1[[i]], col = rgb(0, 0, 1, 0.1), lwd = 1)
+        # lines(x1, y2[[i]], col = rgb(1, 0, 0, 0.5), lwd = 1.5)
+        env <- points[[i]]$env
+        move <- points[[i]]$move
+        mw <- moving_window(env, move, window = 0.5)
+        lines(mw$x, mw$y, col = rgb(0, 0, 0, 0.2), lwd = 1)
+        abline(h = exp01(params$par_move), lty = 2, col = "red")
+        model <- glm(move ~ env, family = binomial)
+    }
+}
+
+mm <- unlist(lapply(paths, function(x) mean(x$att, na.rm = T)))
 
 
 ## Plot model AIC ==============================================================
@@ -102,34 +124,4 @@ if (plot_aic) {
     par(mfrow = c(1, 1))
     plot(aic1, aic2)
     abline(0, 1)
-}
-
-## Exploring parameter values ==================================================
-
-if (param_plots) {
-    # Generated + fitted, all on same plot
-    par(mfrow = c(1, 1))
-    plot(x1, y0, type = "l", lwd = 3, ylim = c(0, 1))
-    lines(x1, yhat, lwd = 3, col = "blue")
-    lines(x1, yhat2, lwd = 3, col = "red")
-    for (i in seq_len(nrow(fit))) {
-    # for (i in 1) {
-        lines(x1, y1[[i]], col = rgb(0, 0, 1, 0.3), lwd = 1.5)
-        # lines(x1, y2[[i]], col = rgb(1, 0, 0, 0.5), lwd = 1.5)
-        env <- points[[i]]$env
-        move <- points[[i]]$move
-        mw <- moving_window(env, move, window = 0.5)
-        lines(mw$x, mw$y, col = rgb(0, 0, 0, 0.2), lwd = 1)
-        abline(h = exp01(params$par_move), lty = 2, col = "red")
-        model <- glm(move ~ env, family = binomial)
-    }
-
-    par(mfrow = c(1, 1))
-    for (i in seq_len(nrow(fit))) {
-        if (i == fit$id[1]) {
-            hist(paths[[i]]$att, 100, border = NA, col = rgb(0.5, 0.5, 0.5, 0.5))
-        } else {
-            hist(paths[[i]]$att, 100, add = TRUE, border = NA, col = rgb(0.5, 0.5, 0.5, 0.5))        
-        }
-    }
 }

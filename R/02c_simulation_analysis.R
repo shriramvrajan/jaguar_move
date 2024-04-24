@@ -3,7 +3,9 @@ source("R/00_functions.R")
 ## Switches ====================================================================
 plot_aic    <- F
 param_plots <- T
-simdir      <- "simulations/s4/"
+debug_fit   <- F
+
+simdir      <- "simulations/s18/"
 parallel_setup(1)
 
 ## Load data ===================================================================
@@ -87,21 +89,86 @@ if (param_plots) {
     par(mfrow = c(1, 1))
     plot(x1, y0, type = "l", lwd = 3, ylim = c(0, 1))
     lines(x1, yhat, lwd = 3, col = "blue")
-    lines(x1, yhat2, lwd = 3, col = "red")
+    # lines(x1, yhat2, lwd = 3, col = rgb(1, 0, 0, 0.8))
     for (i in seq_len(nrow(fit))) {
-        lines(x1, y1[[i]], col = rgb(0, 0, 1, 0.1), lwd = 1)
+        lines(x1, y1[[i]], col = rgb(0, 0, 1, 0.3), lwd = 1)
         # lines(x1, y2[[i]], col = rgb(1, 0, 0, 0.5), lwd = 1.5)
         env <- points[[i]]$env
         move <- points[[i]]$move
         mw <- moving_window(env, move, window = 0.5)
-        lines(mw$x, mw$y, col = rgb(0, 0, 0, 0.2), lwd = 1)
-        abline(h = exp01(params$par_move), lty = 2, col = "red")
-        model <- glm(move ~ env, family = binomial)
+        # lines(mw$x, mw$y, col = rgb(0, 0, 0, 0.2), lwd = 1)
+        # abline(h = exp01(params$par_move), lty = 2, col = "red")
+        # model <- glm(move ~ env, family = binomial)
     }
 }
 
 mm <- unlist(lapply(paths, function(x) mean(x$att, na.rm = T)))
 
+
+## Debug =======================================================================
+
+if (debug_fit) {
+    # What was I trying to do here...
+    parallel_setup(ncore_fit)
+    llike <- load_if_exists(paste0(simdir, "ll_fit1", 1:sim_n, ".rds"), 
+                            dir = ".") %>%
+             unlist(.)
+    par_fitted <- load_if_exists(paste0(simdir, "par_out_", 1:sim_n, ".rds"), 
+                                 dir = ".") %>%
+                  do.call(rbind, .) %>%
+                  as.data.frame()
+    # out <- foreach(i = seq_along(llike), .combine = c) %dopar% {
+    out <- sapply(seq_along(llike), function(i) {
+        ## !! JUST TESTING WITH ONE FIRST, generalize later !!
+        i <- 12
+        traject <- jag_traject_cells[[i]]
+        prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
+                rdf = env01[[2]])
+        env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))
+        # Normalizing desired environmental variables for extended neighborhood
+        env1 <- env1[nbhd_index] # Make env1/nbhd indexing consistent
+        names(env1) <- seq_along(nbhd_index)
+        sim_steps <- 1
+        objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
+        par_true <- par0
+        if (any(is.na(par_true))) return(NA)
+        ll1 <- log_likelihood(par_true, objects1, debug = TRUE)
+        ll2 <- log_likelihood(unlist(par_fitted[i,]), objects1, debug = TRUE)
+        ll3 <- log_likelihood(c(0, 0, 0), objects1, debug = TRUE)
+
+        l1 <- ll1[[2]][5,]
+        l2 <- ll2[[2]][5,]
+        l3 <- ll3[[2]][5,]
+
+        hist(l2 - l1, 100, main = "Fitted - True", border = NA)
+        abline(v = 0, lty = 2, lwd = 2)
+    }
+    )    
+    out <- data.frame(id = seq_along(llike), ll_fit = llike, ll_0 = out)
+    saveRDS(out, "optimtest.rds")
+
+
+    # Why does leave one step out not work?
+    step2 <- matrix(nrow = 5, ncol = 5, data = runif(25))
+    step2 <- step2 / sum(step2)
+    step1 <- step2[2:4, 2:4]
+    step1 <- step1 / sum(step1)
+    
+    firsts <- sample(1:9, 800, replace = T, prob = as.vector(step1))
+    emp1 <- table(firsts) / sum(table(firsts))
+    plot(as.vector(step1), emp1)
+    abline(0, 1)
+
+    map <- c(7, 8, 9, 12, 13, 14, 17, 18, 19)
+
+    emp2 <- sapply(firsts, function(x) {
+        start <- map[x]
+        ind <- c(-6, -5, -4, -1, 0, 1, 4, 5, 6) + start
+        val <- step2[ind] / sum(step2[ind])
+
+    })
+
+}
 
 ## Plot model AIC ==============================================================
 if (plot_aic) {

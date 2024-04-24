@@ -6,11 +6,11 @@ source("R/00_functions.R")
 
 # Switches for reusing old data
 gen_land   <- F
-gen_path   <- F
+gen_path   <- T
 
 # Switches for fitting models
-fit_indivs <- F
-debug_fit  <- T
+fit_indivs <- T
+debug_fit  <- F
 
 # Number of cores to use for path generation and fitting
 ncore_path <- 10
@@ -21,19 +21,19 @@ ncore_fit  <- 10
 ## Parameters ==================================================================
 
 ### Landscape generation parameters:
-envsize <- 200    # size of landscape in cells
-s1 <- 1           # strength of autocorrelation 
-r1 <- 15          # range of autocorrelation in cells
+envsize <- 400    # size of landscape in cells
+s1 <- 5          # strength of autocorrelation 
+r1 <- 25          # range of autocorrelation in cells
 
 ### Model parameters:
 # Order: par_move, par_env0, par_env1, par_env2
 par0 <- c(NA, 2, -0.2, -0.2)        
 
 ### Path generation parameters:
-sim_interval <- 5             # GPS observations taken every n steps, for sim
-n_step       <- 4000          # Number of steps to simulate
-sim_n        <- 100           # Number of simulations 
-step_size    <- 1             # Max # pixels for each step
+sim_interval <- 2             # GPS observations taken every n steps, for sim
+n_step       <- 2000          # Number of steps to simulate
+sim_n        <- 20           # Number of simulations 
+step_size    <- 1            # Max # pixels for each step
 n_obs        <- floor(n_step / sim_interval)
 
 ### Write parameters to file
@@ -45,7 +45,7 @@ names(params) <- c("envsize", "s1", "r1", "sim_interval", "n_step", "n_obs",
 saveRDS(params, "simulations/params.rds")
 print(params)
 
-if(any(is.na(par0))) par0 <- par0[!is.na(par0)]
+if (any(is.na(par0))) par0 <- par0[!is.na(par0)]
 
 ## Landscape ===================================================================
 if (!gen_land) {
@@ -55,9 +55,9 @@ if (!gen_land) {
 } else {
     message("Generating new landscape")
     env01 <- gen_landscape(size = envsize, s = s1, r = r1)
+    terra::plot(env01[[1]])
     writeRaster(env01[[1]], "simulations/env01.tif", overwrite = TRUE)
     saveRDS(env01[[2]], "simulations/env01.rds")
-    terra::plot(env01[[1]])
 }
 
 ## Paths =======================================================================
@@ -108,7 +108,8 @@ nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize,
 if (fit_indivs) {
     parallel_setup(ncore_fit)
     message("Fitting model parameters")
-
+    par_start <- c(1, 1, 1)
+    
     ### Fitting loop -----------------------------------------------------------
     # Housekeeping for parallel processing
     done <- list.files("simulations", pattern = "par_out_")
@@ -118,25 +119,24 @@ if (fit_indivs) {
     todo <- setdiff(1:sim_n, done)
     message(paste0("Fitting ", length(todo), " individuals"))
 
-    # fit <- do.call(rbind, lapply(todo, function(i) {
-    foreach(i = todo, .combine = rbind) %dopar% {
+    fit <- do.call(rbind, lapply(todo, function(i) {
+
+    # foreach(i = todo, .combine = rbind) %dopar% {
         message(paste0("Fitting individual #: ", i, " / ", length(todo)))
         current_jag <- i # for use in loglike_fun
 
         ### Prepare data for fitting -------------------------------------------
-        env01 <- list(terra::rast("simulations/env01.tif"),
-                    readRDS("simulations/env01.rds"))
         traject <- jag_traject_cells[[i]]
         prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
                 rdf = env01[[2]])
-        env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))
+        env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))  
         # Normalizing desired environmental variables for extended neighborhood
         env1 <- env1[nbhd_index] # Make env1/nbhd indexing consistent
         names(env1) <- seq_len(length(nbhd_index))
         
         message("Fitting parameters for model 1: path-dependent kernel") #------
         objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
-        par_out1 <- optim(par0, log_likelihood, objects = objects1)
+        par_out1 <- optim(par_start, log_likelihood, objects = objects1)
         ll <- log_likelihood(par_out1$par, objects1)
         message(paste0("Saving log-likelihood for model 1: ", i))
         saveRDS(ll, file = paste0("simulations/ll_fit1", i, ".rds"))
@@ -150,7 +150,7 @@ if (fit_indivs) {
         # mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, 
         #                            max_dist = max_dist, scale = 1)
         # objects2 <- list(env1, max_dist, mk, obs)
-        # par_out2 <- optim(par0, log_likelihood0, objects = objects2)
+        # par_out2 <- optim(par_start, log_likelihood0, objects = objects2)
         # ll <- log_likelihood0(par_out2$par, objects2)
         # message(paste0("Saving log-likelihood for model 2: ", i))
         # saveRDS(ll, file = paste0("simulations/ll_fit2", i, ".rds"))
@@ -160,37 +160,5 @@ if (fit_indivs) {
         saveRDS(par_out1$par,
                 file = paste0("simulations/par_out_", i, ".rds"))
     }
-    # ))
-}
-
-## Debug =======================================================================
-
-if (debug_fit) {
-
-    parallel_setup(ncore_fit)
-
-    setwd("simulations/s4/")
-
-    llike <- unlist(load_if_exists(paste0("ll_fit1", 1:sim_n, ".rds"), dir = "."))
-
-    out <- foreach(i = par$id, .combine = c) %dopar% {
-        env01 <- list(terra::rast("simulations/env01.tif"),
-                      readRDS("simulations/env01.rds"))
-        traject <- jag_traject_cells[[i]]
-        prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
-                rdf = env01[[2]])
-        env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))
-        # Normalizing desired environmental variables for extended neighborhood
-        env1 <- env1[nbhd_index] # Make env1/nbhd indexing consistent
-        names(env1) <- seq_len(length(nbhd_index))
-        objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
-        par_fitted <- par0[2:4]
-        if (any(is.na(par_fitted))) return(NA)
-        ll <- log_likelihood(par_fitted, objects1)
-        return(ll)
-    }
-    
-    out <- data.frame(id = par$id, ll_fit = llike, ll_0 = out)
-    saveRDS(out, "optimtest.rds")
-
+    ))
 }

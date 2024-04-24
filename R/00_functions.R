@@ -72,6 +72,17 @@ raster_to_df <- function(r) {
     return(outdf)
 }
 
+rast9 <- function(r, cell) {
+    # Return 9-cell neighborhood of cell in raster r
+    # cell: cell number in raster
+    # r: raster object
+    row <- rowFromCell(r, cell)
+    col <- colFromCell(r, cell)
+    expand <- expand.grid((row - 1):(row + 1), (col - 1):(col + 1))
+    cell9 <- ext(r, cells = terra::cellFromRowCol(r, expand$Var1, expand$Var2))
+    zoom(r, cell9)
+}
+
 # Load files from a list if they exist in a directory dir
 load_if_exists <- function(files, dir) {
     out <- lapply(files, function(f) {
@@ -434,7 +445,7 @@ log_likelihood0 <- function(par, objects) {
   return(ll)
 }
 
-log_likelihood <- function(par, objects) {
+log_likelihood <- function(par, objects, debug = FALSE) {
   # par        : Initial values of parameters for optimization
   # Environmental variables
   env       <- objects[[1]]
@@ -533,14 +544,17 @@ log_likelihood <- function(par, objects) {
 
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
   # log of product is sum of logs
-  # out <- -max(rowSums(log(predictions), na.rm = TRUE), na.rm = TRUE)
 
-  ##DEBUG
-  out <- -log_likelihood[sim_interval]
-  
+  # out <- -max(rowSums(log(predictions), na.rm = TRUE), na.rm = TRUE)
+  ## DEBUG
+  out <- -log_likelihood[sim_interval + 1]
   if (is.infinite(out) || is.na(out)) out <- 0
 
-  return(out)
+  if (debug) {
+    return(list(out = out, predictions = predictions))
+  } else {
+    return(out)
+  }
   # Return negative of the maximum log likelihood because we want to minimize
   # Lower negative log likelihood = higher likelihood 
 }

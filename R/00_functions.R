@@ -14,6 +14,7 @@ library(fitdistrplus)
 library(foreach)
 library(doParallel)
 library(viridis)
+# library(plotly)
 
 # Global parameters ============================================================
 
@@ -146,6 +147,7 @@ moving_window <- function(x, y, window = 0.2) {
     return(df[order(df$x), ])
 }
 
+
 # 1. Data exploration ----------------------------------------------------------
 
 # Plot environmental layers for path 
@@ -156,8 +158,9 @@ moving_window <- function(x, y, window = 0.2) {
 # ras: raster stack of environmental layers
 plot_env <- function(layer, bounds, path, grad = 20, ras = env) {
     terra::plot(crop(ras[[layer]], bounds), main = names(ras)[layer], 
-                col = rev(grey.colors(50, start = 0.7, end = 1)))
-    pal <- colorRampPalette(c("#ff0000", "#1bbe29"))(grad)
+                col = (gray.colors(50, start = 0.7, end = 0.9)))
+    # pal <- colorRampPalette(c("#ff0000", "#1bbe29"))(grad)
+    pal <- rep(rgb(0.5, 0.5, 0.5, 0.5), 20)
     path <- as.data.frame(path)
     path$col <- rep(pal, each = ceiling(nrow(path) / grad))[seq_len(nrow(path))]
     points(x = path$x, y = path$y, pch = 19, cex = 0.8, col = path$col)
@@ -264,14 +267,24 @@ calc_move_freq <- function(dat) {
   return(mean(dat$stay, na.rm = T))
 }
 
+plot_the_curve <- function(par, bounds = c(0, 10)) {
+    # Plot functional form for movement model
+    x <- seq(bounds[1], bounds[2], 0.1)
+    y <- 1 / (1 + exp(par[1] + par[2] * x + par[3] * x^2))
+    plot(x, y, type = "l", col = "blue", lwd = 3, xlab = "Environmental variable", 
+         ylab = "Attractiveness")
+    abline(v = 0, lty = 2)
+    abline(h = 0.5, lty = 2)
+}
 
-# 2. Movement model ------------------------------------------------------------
+### 2. Movement model ==========================================================
 
-# Outputs a matrix of cell numbers corresponding to raster (r, rdf)
-# based on a central cell (i) and a buffer size around that cell (sz)
+# Output neighborhood as matrix ------------------------------------------------
+# r:    Raster object
+# rdf:  Dataframe of raster cells
+# i:    Index of cell in raster
+# sz:   Size of neighborhood
 make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
-  # if x is the center square and o are neighbors, and e.g. sz = 2
-  # (2*sz + 1)^2 represents total neighborhood size 
   mat <- matrix(0, nrow = length(i), ncol = (2 * sz + 1)^2)
   # values to add to central cell's row/col to get neighborhood cells' row/col
   ind1 <- t(rep(-sz:sz, each = 2 * sz + 1))
@@ -282,18 +295,24 @@ make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
   return(mat)
 }
 
-# Normalize probabilities across neighbors of each cell 
+# Normalize probabilities across neighbors of each cell ------------------------
+# v: vector of cell values
 normalize_nbhd <- function(v) {
   out <- matrix(v[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
   out <- out / rowSums(out, na.rm = TRUE)
 }
 
-# Prepare input objects for movement model 
+# Prepare input objects for movement model -------------------------------------
+# traject:   Path of individual, vector of raster cell indices
+# max_dist:  Maximum distance in pixels for one step
+# nbhd0:     Global neighborhood 
+# r:         Raster object
+# rdf:       Dataframe of raster cells
 prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
     # Extended neighborhoods of each cell in individual's trajectory
     message("Building neighborhoods for each cell")
     nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = r, rdf = rdf)
-  
+
     # Each entry in the list is the immediate neighborhood of each cell in the 
     # extended neighborhood, as represented by a cell number of raster r
     message("Getting indices of extended neighborhood of each cell")
@@ -339,6 +358,18 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
     } 
     obs <<- obs
     message("Prepared model objects.")
+}
+
+# Attractiveness function for movement model -----------------------------------
+# env:      Environmental variable values
+# par:      Parameters for functional form
+# format:   TRUE to return as matrix, FALSE to return as vector
+env_function <- function(env, par, format = TRUE) {
+  attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+  if (format) {
+    attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
+  }
+  return(attract)
 }
 
 make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist, 
@@ -400,18 +431,12 @@ make_movement_kernel1 <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum =
   # out$n <- out$n / sum(out$n)  
 }
 
-env_function <- function(env, par, format = TRUE) {
-  attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
-  if (format) {
-    attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
-  }
-  return(attract)
-}
 
-# Return -(maximum log likelihood) given a set of parameters
-# log_likelihood0: For traditional SSF
-# log_likelihood:  For all others including simulations
 
+# Return -(maximum log likelihood) given a set of parameters -------------------
+# For traditional SSF (log_likelihood0) and all others (log_likelihood)
+# par:      Parameters for optimization
+# objects:  List of objects for optimization
 log_likelihood0 <- function(par, objects) {
   # par        : Initial values of parameters for optimization
   env <- objects[[1]]
@@ -445,8 +470,7 @@ log_likelihood0 <- function(par, objects) {
   return(ll)
 }
 
-log_likelihood <- function(par, objects, debug = FALSE) {
-  # par        : Initial values of parameters for optimization
+log_likelihood <- function(par, objects, debug1 = FALSE) {
   # Environmental variables
   env       <- objects[[1]]
   # Neighborhood
@@ -463,18 +487,6 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   #              to the next GPS observation
   obs        <- objects[[6]]
   n_obs      <- length(obs) + 1
-
-  # Attraction function 1: environmental variables + home range ----------------
-  # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-  #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6] +
-  #                  par[7] * env$home)
-  # attract_h <- exp(par[7] * env$home)
-  # attract <- normalize_nbhd(attract_e * attract_h) #* normalize_nbhd(attract_t)
-  # attract <- normalize_nbhd(attract_e)
-
-  # Attraction function 2: just home range -------------------------------------
-  # attract_h <- exp(par[1] * env$home)
-  # attract <- normalize_nbhd(attract_h) 
 
   # Attraction function 3: simulations -----------------------------------------
   # attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
@@ -539,7 +551,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
     prob <- current[obs[i], i, ]
     predictions[, i] <- ifelse(prob == 0, 0.001, prob)
     # returns the probability for the row associated with the next 
-    # observation location, for that observation i, across all time steps
+    # observation location, for that observation i, across all time stepsp
   }
 
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
@@ -547,10 +559,10 @@ log_likelihood <- function(par, objects, debug = FALSE) {
 
   # out <- -max(rowSums(log(predictions), na.rm = TRUE), na.rm = TRUE)
   ## DEBUG
-  out <- -log_likelihood[sim_interval + 1]
+  out <- -log_likelihood[sim_interval + 2]
   if (is.infinite(out) || is.na(out)) out <- 0
 
-  if (debug) {
+  if (debug1) {
     return(list(out = out, predictions = predictions))
   } else {
     return(out)
@@ -693,7 +705,7 @@ plot_path <- function(path, int = sim_interval, vgram = FALSE,
                       type = 1, new = TRUE, ...) {
     # par(mfrow = c(1, ifelse(vgram, 2, 1)))
     # par(mfrow = c(1, 2))
-    path <- path[seq(1, nrow(path), int), ]
+    path <- path[seq(1, nrow(path), int + 1), ]
 
     col1 <- rgb(1, 0, 0, .5)
     col2 <- rgb(0, 0, 1, .8)
@@ -716,8 +728,9 @@ plot_path <- function(path, int = sim_interval, vgram = FALSE,
                   col = c(col1, col2)[path$state[i]])
       }
     } else if (type == 1) {
-      points(path, col = col1, pch = 19, cex = 0.5)
-      # lines(path, col = col1)
+      # points(path, col = col1, pch = 19, cex = 0.5)
+      points(path, col = "black", pch = 19, cex = 1)
+      lines(path, col = rgb(0, 0, 0, 0.5), lwd = 2)
     }
     # Plotting variogram
     # if (!vgram) return(NULL)
@@ -728,7 +741,7 @@ plot_path <- function(path, int = sim_interval, vgram = FALSE,
 
 ## Load parameters and likelihood
 load_output <- function(name) {
-    dir <- paste0("data/output/", name)
+    dir <- paste0("data/output/", name, "/")
     # ll_files <- list.files(dir)[grep("likelihood_", list.files(dir))]
     # par_files <- list.files(dir)[grep("par_out_", list.files(dir))]
     ll_files <- paste0("likelihood_", 1:njag, ".rds")
@@ -786,3 +799,17 @@ results_table <- function(s = c("K", "RW", "RWM", "RWH", "trad2")) {
 
   return(list(df, params))
 }
+
+### EXTRA LOG LIKELIHOOD METHODS ===============================================
+
+  # Attraction function 1: environmental variables + home range ----------------
+  # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
+  #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6] +
+  #                  par[7] * env$home)
+  # attract_h <- exp(par[7] * env$home)
+  # attract <- normalize_nbhd(attract_e * attract_h) #* normalize_nbhd(attract_t)
+  # attract <- normalize_nbhd(attract_e)
+
+  # Attraction function 2: just home range -------------------------------------
+  # attract_h <- exp(par[1] * env$home)
+  # attract <- normalize_nbhd(attract_h) 

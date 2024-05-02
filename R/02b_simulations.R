@@ -4,9 +4,11 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
+simname <- "s4"
+
 # Switches for reusing old data
 gen_land   <- F
-gen_path   <- T
+gen_path   <- F
 
 # Switches for fitting models
 fit_indivs <- T
@@ -30,11 +32,11 @@ r1 <- 25          # range of autocorrelation in cells
 par0 <- c(NA, 2, -0.2, -0.2)        
 
 ### Path generation parameters:
-sim_interval <- 2             # GPS observations taken every n steps, for sim
+sim_interval <- 0             # Number of steps to skip between observations
 n_step       <- 2000          # Number of steps to simulate
-sim_n        <- 20           # Number of simulations 
+sim_n        <- 40           # Number of simulations 
 step_size    <- 1            # Max # pixels for each step
-n_obs        <- floor(n_step / sim_interval)
+n_obs        <- ceiling(n_step / (sim_interval + 1))
 
 ### Write parameters to file
 params <- list(envsize, s1, r1, sim_interval, n_step, n_obs, sim_n, step_size, 
@@ -46,6 +48,10 @@ saveRDS(params, "simulations/params.rds")
 print(params)
 
 if (any(is.na(par0))) par0 <- par0[!is.na(par0)]
+
+# Value to start fitting from
+# par_start <- c(1, 1, 1)
+par_start <- par0
 
 ## Landscape ===================================================================
 if (!gen_land) {
@@ -85,20 +91,23 @@ if (!gen_path) {
 ### Prepare to fit 
 jag_traject <- lapply(paths, function(p) {
     out <- cbind(p$x, p$y)
-    ind <- seq(1, nrow(out), sim_interval)
+    ind <- seq(1, nrow(out), sim_interval + 1)
     out <- out[ind, ]
     return(out)
 })
 jag_traject_cells <- lapply(jag_traject, function(tr) {
-    raster::cellFromXY(env01[[1]], tr[, 1:2])
+    out <- terra::cellFromXY(env01[[1]], tr[, 1:2])
+    return(out)
 })
+
 dist <- lapply(jag_traject, function(tr) {
-    out <- c(0, sqrt(diff(tr[, 1])^2 + diff(tr[, 2])^2))
+    out <- c(0, sqrt(diff(tr)^2 + diff(tr)^2))
     return(out)
 })
 max_dist <- ceiling(max(unlist(dist)) * 1.5)
 step_range <- (2 * max_dist + 1) ^ 2
-sim_steps <- sim_interval * 2  # Number of steps to simulate
+sim_steps <- sim_interval + 2
+# Number of steps to simulate, interval + first and last steps
 
 # Global neighborhood:
 nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize, 
@@ -108,7 +117,6 @@ nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize,
 if (fit_indivs) {
     parallel_setup(ncore_fit)
     message("Fitting model parameters")
-    par_start <- c(1, 1, 1)
     
     ### Fitting loop -----------------------------------------------------------
     # Housekeeping for parallel processing
@@ -119,10 +127,14 @@ if (fit_indivs) {
     todo <- setdiff(1:sim_n, done)
     message(paste0("Fitting ", length(todo), " individuals"))
 
-    fit <- do.call(rbind, lapply(todo, function(i) {
+    env02 <- terra::wrap(env01[[1]]) # foreach needs this
 
-    # foreach(i = todo, .combine = rbind) %dopar% {
+    # fit <- do.call(rbind, lapply(todo, function(i) {
+    foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
         message(paste0("Fitting individual #: ", i, " / ", length(todo)))
+
+        env01 <- list(unwrap(env02), env01[[2]])
+
         current_jag <- i # for use in loglike_fun
 
         ### Prepare data for fitting -------------------------------------------
@@ -160,5 +172,12 @@ if (fit_indivs) {
         saveRDS(par_out1$par,
                 file = paste0("simulations/par_out_", i, ".rds"))
     }
-    ))
+    # ))
 }
+
+## Cleanup =====================================================================
+
+system(paste0("mkdir simulations/", simname))
+system(paste0("mv simulations/*.rds simulations/", simname, "/."))
+system(paste0("mv simulations/*.tif simulations/", simname, "/."))
+system(paste0("cp simulations/", simname, "/env* simulations/."))

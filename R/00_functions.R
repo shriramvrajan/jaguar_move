@@ -47,6 +47,21 @@ biome <- vect("data/input/Brazil_biomes/Brazil_biomes.shp")
 
 # 0. Basic ---------------------------------------------------------------------
 
+# Logistic function 
+exp01 <- function(x) {
+    return(exp(x) / (1 + exp(x)))
+}
+
+# Calculate moving window average
+moving_window <- function(x, y, window = 0.2) {
+    out <- sapply(seq_len(length(x)), function(i) {
+      pos <- which(x > x[i] - window & x < x[i] + window)
+      return(mean(y[pos], na.rm = T))
+    })
+    df <- data.frame(x = x, y = out)
+    return(df[order(df$x), ])
+}
+
 # Output message m both in console and in logfile f
 message <- function(m, f = "data/output/run_log.txt") {
     m <- paste(format(Sys.time(), "%d.%m.%y  %R"), m)
@@ -54,9 +69,21 @@ message <- function(m, f = "data/output/run_log.txt") {
     cat(m, file = f, append = TRUE, sep = "\n")
 }
 
-# Logistic function
-exp01 <- function(x) {
-    return(exp(x) / (1 + exp(x)))
+# Set up parallel processing
+parallel_setup <- function(n_cores = 4) {
+    cl <- makeCluster(n_cores)
+    registerDoParallel(cl)
+}
+
+# Load files from a list if they exist in a directory dir
+load_if_exists <- function(files, dir) {
+    out <- lapply(files, function(f) {
+        if (file.exists(paste0(dir, "/", f))) {
+            readRDS(paste0(dir, "/", f))
+        } else {
+            return(NA)
+        }
+    })
 }
 
 # Save raster r as filename fn under ./data/
@@ -73,8 +100,8 @@ raster_to_df <- function(r) {
     return(outdf)
 }
 
+# Return 9-cell neighborhood of cell in raster r
 rast9 <- function(r, cell) {
-    # Return 9-cell neighborhood of cell in raster r
     # cell: cell number in raster
     # r: raster object
     row <- rowFromCell(r, cell)
@@ -82,17 +109,6 @@ rast9 <- function(r, cell) {
     expand <- expand.grid((row - 1):(row + 1), (col - 1):(col + 1))
     cell9 <- ext(r, cells = terra::cellFromRowCol(r, expand$Var1, expand$Var2))
     zoom(r, cell9)
-}
-
-# Load files from a list if they exist in a directory dir
-load_if_exists <- function(files, dir) {
-    out <- lapply(files, function(f) {
-        if (file.exists(paste0(dir, "/", f))) {
-            readRDS(paste0(dir, "/", f))
-        } else {
-            return(NA)
-        }
-    })
 }
 
 # Produce amt::track object for jaguar i
@@ -131,22 +147,6 @@ make_full_track <- function(id) {
     return(dat[, c("longitude", "latitude", "ID", "year", "mon", "day", "hr", 
                    "sl", "ta", "dir", "dt", "spd")])
 }
-
-
-parallel_setup <- function(n_cores = 4) {
-    cl <- makeCluster(n_cores)
-    registerDoParallel(cl)
-}
-
-moving_window <- function(x, y, window = 0.2) {
-    out <- sapply(seq_len(length(x)), function(i) {
-      pos <- which(x > x[i] - window & x < x[i] + window)
-      return(mean(y[pos], na.rm = T))
-    })
-    df <- data.frame(x = x, y = out)
-    return(df[order(df$x), ])
-}
-
 
 # 1. Data exploration ----------------------------------------------------------
 
@@ -258,6 +258,7 @@ lunarize <- function(tel, n = 1) {
     plot(vgram)
 }
 
+# Calculate frequency of staying in the same cell
 calc_move_freq <- function(dat) {
   # Calculate how often row n = row n+1
   dat <- as.data.frame(dat)
@@ -267,6 +268,7 @@ calc_move_freq <- function(dat) {
   return(mean(dat$stay, na.rm = T))
 }
 
+# Plot movement kernel
 plot_the_curve <- function(par, bounds = c(0, 10)) {
     # Plot functional form for movement model
     x <- seq(bounds[1], bounds[2], 0.1)
@@ -308,7 +310,14 @@ normalize_nbhd <- function(v) {
 # nbhd0:     Global neighborhood 
 # r:         Raster object
 # rdf:       Dataframe of raster cells
-prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
+prep_model_objects <- function(traject, max_dist, r) {
+    
+    # Make global neighborhood from raster
+    message("Building global neighborhood")
+    rdf <- raster_to_df(r)
+    nbhd0 <<- make_nbhd(i = seq_len(nrow(rdf)), sz = buffersize, 
+                        r = r, rdf = rdf) 
+
     # Extended neighborhoods of each cell in individual's trajectory
     message("Building neighborhoods for each cell")
     nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = r, rdf = rdf)
@@ -317,8 +326,6 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
     # extended neighborhood, as represented by a cell number of raster r
     message("Getting indices of extended neighborhood of each cell")
     nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                
-      # For each actual cell in the path, what are the cells in the extended
-      # neighborhood? Rows are path cells, columns are extended neighborhood.
       row_inds <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
       names(row_inds) <- nbhd_index[i, ] # cell numbers as names for indexing
       out <- matrix(row_inds[as.character(nbhd0[nbhd_index[i, ], ])], 
@@ -332,8 +339,8 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
     
     message("Getting indices of immediate neighborhood of each cell")
     # For each cell of the extended neighborhood of the path, what are
-    # the immediate neighbors? Rows are path cells, columns are neighbors.
-    # All row lengths standardized by turning missing neighbors into NAs.
+    # the immediate neighbors? Rows are each cell of nbhd, columns are row #s 
+    # from nbhd. All row lengths standardized with missing neighbors as NAs.
     to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {  
       if (length(x) > 9) print(x)
       out <- c(x, rep(NA, ncol(nbhd) - length(x)))
@@ -342,7 +349,7 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
     to_dest <<- t(matrix(unlist(to_dest), nrow = ncol(nbhd), ncol = nrow(nbhd)))
     dest <<- matrix(0, nrow = nrow(nbhd), ncol = ncol(nbhd))
 
-    message("Indexing observed data...")
+    message("Indexing observed data")
     # Building observed data to test against
     index_mat <- matrix(
       data = seq_len(length(nbhd_index)),
@@ -350,13 +357,21 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
       ncol = length(traject)
     )
     index_mat <<- index_mat
+    # For each step, which cell of the extended nbhd did it go to next?
     obs <- vector(length = ncol(index_mat) - 1)
     for (y in 1:(ncol(index_mat) - 1)) {                                         # 13s
       test <- which(nbhd_index == traject[y + 1])
-      num <- which(index_mat[1, y] < test & test < index_mat[nrow(index_mat), y])
+      num <- which(index_mat[1, y] <= test & test <= index_mat[nrow(index_mat), y])
       obs[y] <- which(index_mat[, y] == test[num])
     } 
     obs <<- obs
+
+    message("Getting environmental variables")
+    # Normalizing desired environmental variables for extended neighborhood    
+    env <- scales::rescale(rdf$sim1[nbhd_index], to = c(0, 1))  
+    names(env) <- seq_len(length(nbhd_index))
+    env <<- env
+
     message("Prepared model objects.")
 }
 
@@ -364,7 +379,7 @@ prep_model_objects <- function(traject, max_dist, nbhd0, r, rdf) {
 # env:      Environmental variable values
 # par:      Parameters for functional form
 # format:   TRUE to return as matrix, FALSE to return as vector
-env_function <- function(env, par, format = TRUE) {
+env_function <- function(env, par, format = FALSE) {
   attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
   if (format) {
     attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))

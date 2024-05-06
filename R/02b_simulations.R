@@ -4,11 +4,11 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s4"
+simname <- "s5"
 
 # Switches for reusing old data
 gen_land   <- F
-gen_path   <- F
+gen_path   <- T
 
 # Switches for fitting models
 fit_indivs <- T
@@ -105,6 +105,7 @@ dist <- lapply(jag_traject, function(tr) {
     return(out)
 })
 max_dist <- ceiling(max(unlist(dist)) * 1.5)
+
 step_range <- (2 * max_dist + 1) ^ 2
 sim_steps <- sim_interval + 2
 # Number of steps to simulate, interval + first and last steps
@@ -117,60 +118,31 @@ nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize,
 if (fit_indivs) {
     parallel_setup(ncore_fit)
     message("Fitting model parameters")
-    
-    ### Fitting loop -----------------------------------------------------------
-    # Housekeeping for parallel processing
     done <- list.files("simulations", pattern = "par_out_")
     done <- gsub("par_out_", "", done) %>%
             gsub(".rds", "", .) %>%
             as.numeric()
     todo <- setdiff(1:sim_n, done)
     message(paste0("Fitting ", length(todo), " individuals"))
-
     env02 <- terra::wrap(env01[[1]]) # foreach needs this
 
     # fit <- do.call(rbind, lapply(todo, function(i) {
     foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
         message(paste0("Fitting individual #: ", i, " / ", length(todo)))
 
-        env01 <- list(unwrap(env02), env01[[2]])
-
-        current_jag <- i # for use in loglike_fun
-
-        ### Prepare data for fitting -------------------------------------------
+        env <- unwrap(env02)
         traject <- jag_traject_cells[[i]]
-        prep_model_objects(traject, max_dist, nbhd0 = nbhd0, r = env01[[1]], 
-                rdf = env01[[2]])
-        env1 <- scales::rescale(env01[[2]]$sim1[nbhd_index], to = c(0, 1))  
-        # Normalizing desired environmental variables for extended neighborhood
-        env1 <- env1[nbhd_index] # Make env1/nbhd indexing consistent
-        names(env1) <- seq_len(length(nbhd_index))
+        prep_model_objects(traject, max_dist, env)
         
-        message("Fitting parameters for model 1: path-dependent kernel") #------
+        message("Fitting parameters for model 1: path-dependent kernel")
         objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
         par_out1 <- optim(par_start, log_likelihood, objects = objects1)
         ll <- log_likelihood(par_out1$par, objects1)
         message(paste0("Saving log-likelihood for model 1: ", i))
         saveRDS(ll, file = paste0("simulations/ll_fit1", i, ".rds"))
-
-        # message("Fitting parameters for model 2: traditional SSF") #------------ 
-        # obs_points <- as.data.frame(jag_traject[[i]]) 
-        # names(obs_points) <- c("x", "y")
-        # tr <- amt::steps(amt::make_track(obs_points, x, y))
-        # sl_emp <- as.vector(na.exclude(tr$sl_))
-        # ta_emp <- as.vector(na.exclude(tr$ta_))
-        # mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, 
-        #                            max_dist = max_dist, scale = 1)
-        # objects2 <- list(env1, max_dist, mk, obs)
-        # par_out2 <- optim(par_start, log_likelihood0, objects = objects2)
-        # ll <- log_likelihood0(par_out2$par, objects2)
-        # message(paste0("Saving log-likelihood for model 2: ", i))
-        # saveRDS(ll, file = paste0("simulations/ll_fit2", i, ".rds"))
-        
-        message(paste0("COMPLETED path #: ", i, " / ", sim_n))
-        # saveRDS(c(par_out1$par, par_out2$par), 
         saveRDS(par_out1$par,
                 file = paste0("simulations/par_out_", i, ".rds"))
+        message(paste0("COMPLETED path #: ", i, " / ", sim_n))
     }
     # ))
 }
@@ -181,3 +153,20 @@ system(paste0("mkdir simulations/", simname))
 system(paste0("mv simulations/*.rds simulations/", simname, "/."))
 system(paste0("mv simulations/*.tif simulations/", simname, "/."))
 system(paste0("cp simulations/", simname, "/env* simulations/."))
+
+## Scratch =====================================================================
+
+## Traditional SSF fitting code
+    # message("Fitting parameters for model 2: traditional SSF") #------------ 
+    # obs_points <- as.data.frame(jag_traject[[i]]) 
+    # names(obs_points) <- c("x", "y")
+    # tr <- amt::steps(amt::make_track(obs_points, x, y))
+    # sl_emp <- as.vector(na.exclude(tr$sl_))
+    # ta_emp <- as.vector(na.exclude(tr$ta_))
+    # mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, 
+    #                            max_dist = max_dist, scale = 1)
+    # objects2 <- list(env1, max_dist, mk, obs)
+    # par_out2 <- optim(par_start, log_likelihood0, objects = objects2)
+    # ll <- log_likelihood0(par_out2$par, objects2)
+    # message(paste0("Saving log-likelihood for model 2: ", i))
+    # saveRDS(ll, file = paste0("simulations/ll_fit2", i, ".rds"))

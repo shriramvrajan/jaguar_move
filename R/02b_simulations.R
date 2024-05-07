@@ -4,7 +4,7 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s5"
+simname <- "s6"
 
 # Switches for reusing old data
 gen_land   <- F
@@ -111,7 +111,7 @@ sim_steps <- sim_interval + 2
 # Number of steps to simulate, interval + first and last steps
 
 # Global neighborhood:
-nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = buffersize, 
+nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = true_step, 
                 r = env01[[1]], rdf = env01[[2]]) 
 
 ## Fitting =====================================================================
@@ -135,7 +135,7 @@ if (fit_indivs) {
         prep_model_objects(traject, max_dist, env)
         
         message("Fitting parameters for model 1: path-dependent kernel")
-        objects1 <- list(env1, nbhd, max_dist, sim_steps, to_dest, obs)
+        objects1 <- list(env, nbhd, max_dist, sim_steps, to_dest, obs)
         par_out1 <- optim(par_start, log_likelihood, objects = objects1)
         ll <- log_likelihood(par_out1$par, objects1)
         message(paste0("Saving log-likelihood for model 1: ", i))
@@ -145,6 +145,7 @@ if (fit_indivs) {
         message(paste0("COMPLETED path #: ", i, " / ", sim_n))
     }
     # ))
+    
 }
 
 ## Cleanup =====================================================================
@@ -165,7 +166,7 @@ system(paste0("cp simulations/", simname, "/env* simulations/."))
     # ta_emp <- as.vector(na.exclude(tr$ta_))
     # mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, 
     #                            max_dist = max_dist, scale = 1)
-    # objects2 <- list(env1, max_dist, mk, obs)
+    # objects2 <- list(env, max_dist, mk, obs)
     # par_out2 <- optim(par_start, log_likelihood0, objects = objects2)
     # ll <- log_likelihood0(par_out2$par, objects2)
     # message(paste0("Saving log-likelihood for model 2: ", i))

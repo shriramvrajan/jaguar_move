@@ -18,7 +18,7 @@ library(viridis)
 
 # Global parameters ============================================================
 
-buffersize <- 1     # How many pixels does jaguar move in 1 time step?
+true_step <- 1     # How many pixels does jaguar move in 1 time step?
 
 # CRS definitions
 wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
@@ -315,7 +315,7 @@ prep_model_objects <- function(traject, max_dist, r) {
     # Make global neighborhood from raster
     message("Building global neighborhood")
     rdf <- raster_to_df(r)
-    nbhd0 <<- make_nbhd(i = seq_len(nrow(rdf)), sz = buffersize, 
+    nbhd0 <<- make_nbhd(i = seq_len(nrow(rdf)), sz = true_step, 
                         r = r, rdf = rdf) 
 
     # Extended neighborhoods of each cell in individual's trajectory
@@ -368,7 +368,8 @@ prep_model_objects <- function(traject, max_dist, r) {
 
     message("Getting environmental variables")
     # Normalizing desired environmental variables for extended neighborhood    
-    env <- scales::rescale(rdf$sim1[nbhd_index], to = c(0, 1))  
+    # env <- scales::rescale(rdf$sim1[nbhd_index], to = c(0, 1))  
+    env <- rdf$sim1[nbhd_index]
     names(env) <- seq_len(length(nbhd_index))
     env <<- env
 

@@ -113,7 +113,9 @@ if (indiv_analysis) {
 
         # Plot env vs probability
         par(mfrow = c(1, 2))
-        x <- env01[[1]][paths[[i]]$cell][[1]]
+        pc <- paths[[i]]$cell
+        x <- env01[[1]][pc][[1]]
+        y0 <- paths[[i]]$att[-1]
         y1 <- l1[[2]][2, 1:1999]
         y2 <- l2[[2]][2, 1:1999]
         plot(x, y1)

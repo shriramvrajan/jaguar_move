@@ -286,7 +286,8 @@ plot_the_curve <- function(par, bounds = c(0, 10)) {
 # rdf:  Dataframe of raster cells
 # i:    Index of cell in raster
 # sz:   Size of neighborhood
-make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
+make_nbhd <- function(r = brazil_ras, i, sz) {
+  rdf <- raster_to_df(r)
   mat <- matrix(0, nrow = length(i), ncol = (2 * sz + 1)^2)
   # values to add to central cell's row/col to get neighborhood cells' row/col
   ind1 <- t(rep(-sz:sz, each = 2 * sz + 1))
@@ -646,11 +647,9 @@ gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {
     out <- predict(model, newdata = xy, nsim = 1)
     if (any(out < 0)) out[out < 0] <- 0
 
-    # Output as both raster and data frame
+    # Output as raster 
     out <- rast(out)
-    # plot(out)
-    outdf <- raster_to_df(out)
-    return(list(raster = out, df = outdf))
+    return(out)
 }
 
 # Generate a jaguar path of n steps starting from (x0, y0) with environmental
@@ -670,13 +669,13 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
         pos <- path[i - 1, 1:2]
 
         # Attractiveness of each cell in neighborhood
-        nbhd <- as.vector(make_nbhd(r = env01[[1]], rdf = env01[[2]], sz = neighb,
-                          i = terra::cellFromRowCol(env01[[1]], pos[1], pos[2])))
+        nbhd <- as.vector(make_nbhd(r = env01[[1]], sz = neighb,
+                          i = terra::cellFromRowCol(env01, pos[1], pos[2])))
         att <- sapply(nbhd, function(x) {
           if (is.na(x)) {
             return(NA)
           } else {
-            return(env_function(env01[[1]][x], par[2:4], format = FALSE)$sim1)
+            return(env_function(env01[x], par[2:4], format = FALSE)$sim1)
           }
         })
         if (any(is.na(att))) att[is.na(att)] <- 0
@@ -691,7 +690,7 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
 
         # Sample next step
         step <- sample(seq_len(length(attract)), 1, prob = attract)
-        path[i, ] <- c(rowColFromCell(env01[[1]], nbhd[step]), 
+        path[i, ] <- c(rowColFromCell(env01, nbhd[step]), 
                        nbhd[step], attract[step])
     }
     path <- as.data.frame(path)

@@ -4,7 +4,7 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s6"
+simname <- "s7"
 
 # Switches for reusing old data
 gen_land   <- F
@@ -56,8 +56,7 @@ par_start <- par0
 ## Landscape ===================================================================
 if (!gen_land) {
     message("Reusing old landscape")
-    env01 <- list(rast("simulations/env01.tif"),
-                  readRDS("simulations/env01.rds"))
+    env01 <- rast("simulations/env01.tif")
 } else {
     message("Generating new landscape")
     env01 <- gen_landscape(size = envsize, s = s1, r = r1)
@@ -73,10 +72,10 @@ if (!gen_path) {
 } else {
     message("Simulating new paths")
     parallel_setup(ncore_path)
-    env02 <- terra::wrap(env01[[1]]) # foreach needs this
+    env02 <- terra::wrap(env01) # foreach needs this
     # paths <- lapply(1:sim_n, function(i) {
     paths <- foreach(i = 1:sim_n, .packages = "terra") %dopar% {
-        env01 <- list(unwrap(env02), env01[[2]])
+        env01 <- unwrap(env02)
         message(paste0("Path #: ", i, " / ", sim_n))
         x0 <- ceiling(envsize / 2)
         y0 <- ceiling(envsize / 2)

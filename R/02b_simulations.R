@@ -8,7 +8,7 @@ simname <- "s7"
 
 # Switches for reusing old data
 gen_land   <- F
-gen_path   <- T
+gen_path   <- F
 
 # Switches for fitting models
 fit_indivs <- T
@@ -60,9 +60,8 @@ if (!gen_land) {
 } else {
     message("Generating new landscape")
     env01 <- gen_landscape(size = envsize, s = s1, r = r1)
-    terra::plot(env01[[1]])
-    writeRaster(env01[[1]], "simulations/env01.tif", overwrite = TRUE)
-    saveRDS(env01[[2]], "simulations/env01.rds")
+    terra::plot(env01)
+    writeRaster(env01, "simulations/env01.tif", overwrite = TRUE)
 }
 
 ## Paths =======================================================================
@@ -95,7 +94,7 @@ jag_traject <- lapply(paths, function(p) {
     return(out)
 })
 jag_traject_cells <- lapply(jag_traject, function(tr) {
-    out <- terra::cellFromXY(env01[[1]], tr[, 1:2])
+    out <- terra::cellFromRowCol(env01, tr[, 1], tr[, 2])
     return(out)
 })
 
@@ -110,8 +109,7 @@ sim_steps <- sim_interval + 2
 # Number of steps to simulate, interval + first and last steps
 
 # Global neighborhood:
-nbhd0 <- make_nbhd(i = seq_len(nrow(env01[[2]])), sz = true_step, 
-                r = env01[[1]], rdf = env01[[2]]) 
+nbhd0 <- make_nbhd(i = seq_len(ncell(env01)), sz = true_step, r = env01) 
 
 ## Fitting =====================================================================
 if (fit_indivs) {
@@ -123,7 +121,7 @@ if (fit_indivs) {
             as.numeric()
     todo <- setdiff(1:sim_n, done)
     message(paste0("Fitting ", length(todo), " individuals"))
-    env02 <- terra::wrap(env01[[1]]) # foreach needs this
+    env02 <- terra::wrap(env01) # foreach needs this
 
     # fit <- do.call(rbind, lapply(todo, function(i) {
     foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {

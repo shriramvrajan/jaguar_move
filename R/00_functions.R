@@ -316,12 +316,11 @@ prep_model_objects <- function(traject, max_dist, r) {
     # Make global neighborhood from raster
     message("Building global neighborhood")
     rdf <- raster_to_df(r)
-    nbhd0 <<- make_nbhd(i = seq_len(nrow(rdf)), sz = true_step, 
-                        r = r, rdf = rdf) 
+    nbhd0 <<- make_nbhd(i = seq_len(nrow(rdf)), sz = true_step, r = r) 
 
     # Extended neighborhoods of each cell in individual's trajectory
     message("Building neighborhoods for each cell")
-    nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = r, rdf = rdf)
+    nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = r)
 
     # Each entry in the list is the immediate neighborhood of each cell in the 
     # extended neighborhood, as represented by a cell number of raster r
@@ -505,34 +504,8 @@ log_likelihood <- function(par, objects, debug1 = FALSE) {
   obs        <- objects[[6]]
   n_obs      <- length(obs) + 1
 
-  # Attraction function 3: simulations -----------------------------------------
-  # attract1 <- normalize_nbhd(exp(par[1] * env)) # + exp(par[2] * env2)
-  # print(par)
-  # attract1 <- env_function(env, par[2:4])
-  # move_prob <- exp01(par[1])
-  # attract <- t(apply(attract1, 1, function(r) {
-  #   cent <- ceiling(length(r) / 2)
-  #   r[cent] <- r[cent] * (1 - move_prob)
-  #   r[-cent] <- r[-cent] * ((move_prob) / (sum(!is.na(r)) - 1))
-  #   return(r / sum(r, na.rm = TRUE))
-  # }))
-
   # Attraction function 3a: simulation, no move param --------------------------
   attract <- normalize_nbhd(env_function(env, par))
-
-  # Attraction function 4: With 0-1 parameter ----------------------------------
-  # move_prob <- exp01(par[7])
-  # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
-  #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6])
-  # # attract_h <- exp(par[8] * env$home)
-  # # attract <- normalize_nbhd(attract_e * attract_h)
-  # attract <- normalize_nbhd(attract_e)
-  # attract <- t(apply(attract, 1, function(r) {
-  #   cent <- ceiling(length(r) / 2)
-  #   r[cent] <- r[cent] * (1 - move_prob)
-  #   r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
-  #   return(r / sum(r, na.rm = TRUE))
-  # }))
 
   # Array for propagating probabilities forward ================================
   # n_obs      : Number of GPS observations
@@ -669,7 +642,7 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
         pos <- path[i - 1, 1:2]
 
         # Attractiveness of each cell in neighborhood
-        nbhd <- as.vector(make_nbhd(r = env01[[1]], sz = neighb,
+        nbhd <- as.vector(make_nbhd(r = env01, sz = neighb,
                           i = terra::cellFromRowCol(env01, pos[1], pos[2])))
         att <- sapply(nbhd, function(x) {
           if (is.na(x)) {
@@ -728,7 +701,7 @@ plot_path <- function(path, int = sim_interval, vgram = FALSE,
     col1 <- magma(nrow(path))
 
     # Plotting environmental variables + path
-    if (new) terra::plot(env01[[1]])
+    if (new) terra::plot(env01)
 
     if (type == 2) {
       points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)

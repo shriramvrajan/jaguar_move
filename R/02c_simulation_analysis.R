@@ -5,10 +5,9 @@ loaded <- TRUE
 plot_aic       <- F
 param_plots    <- T
 debug_fit      <- F
-indiv_analysis <- F
+indiv_analysis <- T
 
-indiv          <- 7
-simdir         <- "simulations/s6/"
+simdir         <- "simulations/s7/"
 
 parallel_setup(1)
 
@@ -21,7 +20,6 @@ sim_n        <- params$sim_n
 paths <- readRDS(paste0(simdir, "paths.rds"))
 
 env01 <- rast(paste0(simdir, "env01.tif"))
-env01 <- list(env01, raster_to_df(env01))
 print(params)
 
 fit <- load_if_exists(paste0("par_out_", 1:sim_n, ".rds"), dir = simdir) %>%
@@ -47,7 +45,7 @@ jag_traject_cells <- lapply(paths, function(p) {
     tr <- cbind(p$x, p$y)
     ind <- seq(1, nrow(tr), sim_interval + 1)
     tr <- tr[ind, ]
-    return(raster::cellFromXY(env01[[1]], tr[, 1:2]))
+    return(raster::cellFromRowCol(env01, tr[, 1], tr[, 2]))
 })
 
 
@@ -69,7 +67,7 @@ if (param_plots) {
         path <- paths[[i]]
         path$move <- c(0, sqrt(diff(path$x)^2 + diff(path$y)^2))
         path$move[path$move > 0] <- 1
-        path$env <- env01[[2]]$sim1[cellFromXY(env01[[1]], path[, 1:2])]
+        path$env <- env01[cellFromRowCol(env01, path[, 1], path[, 2])]
         return(path[, c("move", "env")])
     })
     # Generated + fitted, all on same plot
@@ -103,7 +101,7 @@ if (indiv_analysis) {
         par_true <- unlist(params[10:12]) %>% as.numeric # true parameters
         par_fit <- as.numeric(fit[i, 1:3])               # fitted parameters
         traject <- jag_traject_cells[[i]]                # individual trajectory
-        prep_model_objects(traject, max_dist, env01[[1]]) # prepare model objects
+        prep_model_objects(traject, max_dist, env01) # prepare model objects
         objects1 <- list(env, nbhd, max_dist, sim_steps, to_dest, obs)
 
         l1 <- log_likelihood(par_true, objects1, debug = TRUE)
@@ -114,7 +112,7 @@ if (indiv_analysis) {
         # Plot env vs probability
         par(mfrow = c(1, 2))
         pc <- paths[[i]]$cell
-        x <- env01[[1]][pc][[1]]
+        x <- env01[pc][[1]]
         y0 <- paths[[i]]$att[-1]
         y1 <- l1[[2]][2, 1:1999]
         y2 <- l2[[2]][2, 1:1999]
@@ -142,10 +140,9 @@ if (indiv_analysis) {
 ## Reconstructing the log-likelihood function
 # path_i <- paths[[i]]
 # path_i$cell[1] <- (path_i$x[1] - 1) * 400 + path_i$y[1]
-# nbhd_i <- make_nbhd(i = path_i$cell, sz = true_step, r = env01[[1]], 
-#                     rdf = env01[[2]])
+# nbhd_i <- make_nbhd(i = path_i$cell, sz = true_step, r = env01)
 # env_i <- matrix(nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
-# env_i[] <- env01[[2]]$sim1[nbhd_i]
+# env_i[] <- env01[nbhd_i]
 
 # # nbhd <- nbhd_i
 # att_true <- 1 / (1 + exp(par_true[1] + par_true[2] * env_i + 

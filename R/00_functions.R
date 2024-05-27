@@ -18,8 +18,6 @@ library(viridis)
 
 # Global parameters ============================================================
 
-true_step <- 1     # How many pixels does jaguar move in 1 time step?
-
 # CRS definitions
 wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
 epsg5880 <- "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000 
@@ -316,7 +314,7 @@ prep_model_objects <- function(traject, max_dist, r) {
     # Make global neighborhood from raster
     message("Building global neighborhood")
     rdf <- raster_to_df(r)
-    nbhd0 <<- make_nbhd(i = seq_len(nrow(rdf)), sz = true_step, r = r) 
+    nbhd0 <<- make_nbhd(i = seq_len(nrow(rdf)), sz = step_size, r = r) 
 
     # Extended neighborhoods of each cell in individual's trajectory
     message("Building neighborhoods for each cell")
@@ -359,7 +357,7 @@ prep_model_objects <- function(traject, max_dist, r) {
     index_mat <<- index_mat
     # For each step, which cell of the extended nbhd did it go to next?
     obs <- vector(length = ncol(index_mat) - 1)
-    for (y in 1:(ncol(index_mat) - 1)) {                                         # 13s
+    for (y in 1:(ncol(index_mat) - 1)) {          
       test <- which(nbhd_index == traject[y + 1])
       num <- which(index_mat[1, y] <= test & test <= index_mat[nrow(index_mat), y])
       obs[y] <- which(index_mat[, y] == test[num])
@@ -468,10 +466,10 @@ log_likelihood0 <- function(par, objects) {
   # Attractiveness function 1: simulations
   attract_e <- normalize_nbhd(env_function(env, par[2:4]))
 
-  step_range <- (max_dist * 2 + 1) ^ 2
+  ncell_local <- (max_dist * 2 + 1) ^ 2
   
   p_obs <- sapply(seq_len(n_obs - 1), function(t) {
-    env_local <- attract_e[(step_range * (t - 1) + 1):(step_range * t)]
+    env_local <- attract_e[(ncell_local * (t - 1) + 1):(ncell_local * t)]
     env_local <- env_local / sum(env_local, na.rm = TRUE)
     # TESTING WITHOUT MK -------------------------------------------------------
     # p <- env_local
@@ -486,7 +484,7 @@ log_likelihood0 <- function(par, objects) {
   return(ll)
 }
 
-log_likelihood <- function(par, objects, debug1 = FALSE) {
+log_likelihood <- function(par, objects, debug = FALSE) {
   # Environmental variables
   env       <- objects[[1]]
   # Neighborhood
@@ -510,12 +508,12 @@ log_likelihood <- function(par, objects, debug1 = FALSE) {
   # Array for propagating probabilities forward ================================
   # n_obs      : Number of GPS observations
   # steps      : Number of simulated steps
-  step_range <- (2 * max_dist + 1)^2 
-  current <- array(0, dim = c(step_range, n_obs, sim_steps))
+  ncell_local <- (2 * max_dist + 1)^2 
+  current <- array(0, dim = c(ncell_local, n_obs, sim_steps))
   
-  # center     : Center of step_range (center cell of (2 * buffer + 1)
+  # center     : Center of ncell_local (center cell of (2 * buffer + 1)
   # Set to 1 at step #1 for each observation because that's where it actually is
-  center <- step_range / 2 + 0.5
+  center <- ncell_local / 2 + 0.5
   current[center, , 1] <- 1
 
   for (j in 1:(sim_steps - 1)) {
@@ -547,12 +545,13 @@ log_likelihood <- function(par, objects, debug1 = FALSE) {
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
   # log of product is sum of logs
 
-  # out <- -max(rowSums(log(predictions), na.rm = TRUE), na.rm = TRUE)
+  # out <- -max(log_likelihood, na.rm = TRUE)
   ## DEBUG
-  out <- -log_likelihood[sim_interval + 2]
+  out <- -log_likelihood[obs_interval + 2]
+
   if (is.infinite(out) || is.na(out)) out <- 0
 
-  if (debug1) {
+  if (debug) {
     return(list(out = out, predictions = predictions))
   } else {
     return(out)
@@ -689,7 +688,7 @@ vgram <- function(path, cut = 10, window = 14, start = 1) {
 }
 
 # Plot landscape r with jaguar path and vgram
-plot_path <- function(path, int = sim_interval, vgram = FALSE, 
+plot_path <- function(path, int = obs_interval, vgram = FALSE, 
                       type = 1, new = TRUE, ...) {
     # par(mfrow = c(1, ifelse(vgram, 2, 1)))
     # par(mfrow = c(1, 2))

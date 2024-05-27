@@ -4,11 +4,11 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s7"
+simname <- "s13"
 
 # Switches for reusing old data
 gen_land   <- F
-gen_path   <- F
+gen_path   <- T
 
 # Switches for fitting models
 fit_indivs <- T
@@ -18,30 +18,28 @@ debug_fit  <- F
 ncore_path <- 10
 ncore_fit  <- 10
 
-# take sim name and make a folder and save all the outputs there
-
 ## Parameters ==================================================================
 
 ### Landscape generation parameters:
 envsize <- 400    # size of landscape in cells
-s1 <- 5          # strength of autocorrelation 
-r1 <- 25          # range of autocorrelation in cells
+s1 <- 1           # strength of autocorrelation 
+r1 <- 80          # range of autocorrelation in cells
 
 ### Model parameters:
 # Order: par_move, par_env0, par_env1, par_env2
 par0 <- c(NA, 2, -0.2, -0.2)        
 
 ### Path generation parameters:
-sim_interval <- 0             # Number of steps to skip between observations
-n_step       <- 2000          # Number of steps to simulate
-sim_n        <- 40           # Number of simulations 
 step_size    <- 1            # Max # pixels for each step
-n_obs        <- ceiling(n_step / (sim_interval + 1))
+obs_interval <- 0             # Number of steps to skip between observations
+n_step       <- 2000          # Number of steps to simulate
+sim_n        <- 20           # Number of simulations 
+n_obs        <- ceiling(n_step / (obs_interval + 1))
 
 ### Write parameters to file
-params <- list(envsize, s1, r1, sim_interval, n_step, n_obs, sim_n, step_size, 
+params <- list(envsize, s1, r1, obs_interval, n_step, n_obs, sim_n, step_size, 
                par0[[1]], par0[[2]], par0[[3]], par0[[4]])
-names(params) <- c("envsize", "s1", "r1", "sim_interval", "n_step", "n_obs", 
+names(params) <- c("envsize", "s1", "r1", "obs_interval", "n_step", "n_obs", 
                    "sim_n", "step_size", "par_move", "par_env0", "par_env1", 
                    "par_env2")
 saveRDS(params, "simulations/params.rds")
@@ -50,8 +48,8 @@ print(params)
 if (any(is.na(par0))) par0 <- par0[!is.na(par0)]
 
 # Value to start fitting from
-# par_start <- c(1, 1, 1)
-par_start <- par0
+par_start <- c(1, 1, 1)
+# par_start <- par0
 
 ## Landscape ===================================================================
 if (!gen_land) {
@@ -89,7 +87,7 @@ if (!gen_path) {
 ### Prepare to fit 
 jag_traject <- lapply(paths, function(p) {
     out <- cbind(p$x, p$y)
-    ind <- seq(1, nrow(out), sim_interval + 1)
+    ind <- seq(1, nrow(out), obs_interval + 1)
     out <- out[ind, ]
     return(out)
 })
@@ -98,18 +96,11 @@ jag_traject_cells <- lapply(jag_traject, function(tr) {
     return(out)
 })
 
-dist <- lapply(jag_traject, function(tr) {
-    out <- c(0, sqrt(diff(tr)^2 + diff(tr)^2))
-    return(out)
-})
-max_dist <- ceiling(max(unlist(dist)) * 1.5)
 
-step_range <- (2 * max_dist + 1) ^ 2
-sim_steps <- sim_interval + 2
+max_dist <- step_size * (obs_interval + 1)
+ncell_local <- (2 * max_dist + 1) ^ 2
+sim_steps   <- obs_interval * step_size + 2
 # Number of steps to simulate, interval + first and last steps
-
-# Global neighborhood:
-nbhd0 <- make_nbhd(i = seq_len(ncell(env01)), sz = true_step, r = env01) 
 
 ## Fitting =====================================================================
 if (fit_indivs) {
@@ -141,8 +132,7 @@ if (fit_indivs) {
                 file = paste0("simulations/par_out_", i, ".rds"))
         message(paste0("COMPLETED path #: ", i, " / ", sim_n))
     }
-    # ))
-    
+    # ))    
 }
 
 ## Cleanup =====================================================================

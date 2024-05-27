@@ -7,15 +7,16 @@ param_plots    <- T
 debug_fit      <- F
 indiv_analysis <- T
 
-simdir         <- "simulations/s7/"
+simdir         <- "simulations/s12/"
 
 parallel_setup(1)
 
 ## Load data ===================================================================
 message("Loading data")
 params       <- readRDS(paste0(simdir, "params.rds"))   
-sim_interval <- params$sim_interval
+obs_interval <- params$obs_interval
 sim_n        <- params$sim_n
+step_size    <- params$step_size
 
 paths <- readRDS(paste0(simdir, "paths.rds"))
 
@@ -40,14 +41,6 @@ if (any(is.na(fit$c1))) {
     posna <- which(is.na(fit$c1)) # positions of NA
     fit <- fit[-posna, ]
 }
-
-jag_traject_cells <- lapply(paths, function(p) {
-    tr <- cbind(p$x, p$y)
-    ind <- seq(1, nrow(tr), sim_interval + 1)
-    tr <- tr[ind, ]
-    return(raster::cellFromRowCol(env01, tr[, 1], tr[, 2]))
-})
-
 
 ## Explore parameter values ====================================================
 if (param_plots) {
@@ -93,14 +86,23 @@ if (param_plots) {
 
 if (indiv_analysis) {
     par(mfrow = c(1, 1))
+    
+    jag_traject_cells <- lapply(paths, function(p) {
+        tr <- cbind(p$x, p$y)
+        ind <- seq(1, nrow(tr), obs_interval + 1)
+        tr <- tr[ind, ]
+        return(raster::cellFromRowCol(env01, tr[, 1], tr[, 2]))
+    })    
+
+    max_dist     <- step_size * (obs_interval + 1) # max dist between obs
+    sim_steps    <- max_dist + 1                   # number steps to simulate
+    ncell_local  <- (2 * max_dist + 1) ^ 2         # local nbhd size
+
     comp_hist <- function(i) {
-        true_step <- 1                          # actual radius of movement kernel
-        max_dist <- 1                           # maximum distance to consider
-        step_range <- (2 * max_dist + 1) ^ 2    # number of cells in the nbhd
-        sim_steps <- sim_interval + 2           # add first and last steps
         par_true <- unlist(params[10:12]) %>% as.numeric # true parameters
         par_fit <- as.numeric(fit[i, 1:3])               # fitted parameters
         traject <- jag_traject_cells[[i]]                # individual trajectory
+        
         prep_model_objects(traject, max_dist, env01) # prepare model objects
         objects1 <- list(env, nbhd, max_dist, sim_steps, to_dest, obs)
 
@@ -111,22 +113,25 @@ if (indiv_analysis) {
 
         # Plot env vs probability
         par(mfrow = c(1, 2))
-        pc <- paths[[i]]$cell
-        x <- env01[pc][[1]]
-        y0 <- paths[[i]]$att[-1]
-        y1 <- l1[[2]][2, 1:1999]
-        y2 <- l2[[2]][2, 1:1999]
+        probs <- paths[[i]]$att[-1]
+        names(probs) <- paths[[i]]$cell[-1]
+        x <- env01[traject][[1]]
+        y0 <- probs[traject]
+        y1 <- l1[[2]][sim_steps, ]
+        y2 <- l2[[2]][sim_steps, ]
         plot(x, y1)
         abline(h = 1 / 9, lty = 2, lwd = 3, col = "red")
         plot(x, y2)
         abline(h = 1 / 9, lty = 2, lwd = 3, col = "red")
 
         # Plot histograms
-        range1 <- range(c(l1[[2]][2, ], l2[[2]][2, ]), na.rm = T)
-        hist(l2[[2]][2, ], col = rgb(1, 0, 0, 0.5), 50, border = NA, 
+        range1 <- range(c(l1[[2]][sim_steps, ], l2[[2]][sim_steps, ]), na.rm = T)
+        hist(l2[[2]][sim_steps, ], col = rgb(1, 0, 0, 0.5), 50, border = NA, 
             xlim = range1, main = paste(i, "Red = fitted, blue = true"))
-        hist(l1[[2]][2, ], col = rgb(0, 0, 1, 0.5), 100, border = NA, add = T)
-        abline(v = 1 / 9, lty = 2, lwd = 3)
+        hist(l1[[2]][sim_steps, ], col = rgb(0, 0, 1, 0.5), 100, border = NA, add = T)
+
+        chance <- 1 / ((sim_steps - 1) * 2 + 1) ^ 2
+        abline(v = chance, lty = 2, lwd = 3)
     }
 
     comp_hist(2)
@@ -140,7 +145,7 @@ if (indiv_analysis) {
 ## Reconstructing the log-likelihood function
 # path_i <- paths[[i]]
 # path_i$cell[1] <- (path_i$x[1] - 1) * 400 + path_i$y[1]
-# nbhd_i <- make_nbhd(i = path_i$cell, sz = true_step, r = env01)
+# nbhd_i <- make_nbhd(i = path_i$cell, sz = step_size, r = env01)
 # env_i <- matrix(nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
 # env_i[] <- env01[nbhd_i]
 

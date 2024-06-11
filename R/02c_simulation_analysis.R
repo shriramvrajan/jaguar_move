@@ -7,7 +7,7 @@ param_plots    <- T
 debug_fit      <- F
 indiv_analysis <- T
 
-simdir         <- "simulations/s12/"
+simdir         <- "simulations/s14/"
 
 parallel_setup(1)
 
@@ -66,7 +66,7 @@ if (param_plots) {
     # Generated + fitted, all on same plot
     par(mfrow = c(1, 1))
     plot(x1, y0, type = "l", lwd = 3, ylim = c(0, 1))
-    # lines(x1, yhat, lwd = 3, col = "blue")
+    lines(x1, yhat, lwd = 3, col = "#1a1a9e")
     # lines(x1, yhat2, lwd = 3, col = rgb(1, 0, 0, 0.8))
     for (i in seq_len(nrow(fit))) {
         lines(x1, y1[[i]], col = rgb(0, 0, 1, 0.3), lwd = 3)

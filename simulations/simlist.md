@@ -1,14 +1,4 @@
-# Run descriptions
-
-1. White noise, c(1, 1, 1), interval 0, sight 1
-
-2. White noise, c(1, 1, 1), interval 1, sight 1
-
-3. (Same as 1) but par0 = 4, 0, -0.01
-
-4. (Same as 1) but par_start = par0
-
-== Change prep function ===
+(Change in prep function - cellFromXY and cellFromRowCol do NOT do the same thing!)
 
 5. White noise, par_start = par0, interval 0, sight 1.
 
@@ -27,3 +17,10 @@
 12. replicating 11 with true interval just to check discrepancy (paths reused)
 
 13. interval = 0, sight = 1, true interval, autocorrelated landscape.
+
+14. interval = 0, sight = 1, true interval, autocorrelated landscape, monotonic function
+
+15. (Same as 14 except) white noise landscape
+
+16all. Same as 6 except fitting all together instead of individually.
+

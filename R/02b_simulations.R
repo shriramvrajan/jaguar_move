@@ -4,19 +4,20 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s13"
+simname <- "s16all"
 
 # Switches for reusing old data
 gen_land   <- F
-gen_path   <- T
+gen_path   <- F
 
 # Switches for fitting models
-fit_indivs <- T
+fit_indiv  <- F
+fit_all    <- T
 debug_fit  <- F
 
 # Number of cores to use for path generation and fitting
 ncore_path <- 10
-ncore_fit  <- 10
+ncore_fit  <- 5
 
 ## Parameters ==================================================================
 
@@ -27,7 +28,8 @@ r1 <- 80          # range of autocorrelation in cells
 
 ### Model parameters:
 # Order: par_move, par_env0, par_env1, par_env2
-par0 <- c(NA, 2, -0.2, -0.2)        
+# par0 <- c(1, 3, -2, 0.3)        
+par0 <- c(1, 2, -0.2, -0.2)
 
 ### Path generation parameters:
 step_size    <- 1            # Max # pixels for each step
@@ -48,7 +50,7 @@ print(params)
 if (any(is.na(par0))) par0 <- par0[!is.na(par0)]
 
 # Value to start fitting from
-par_start <- c(1, 1, 1)
+par_start <- rep(1, length(par0))
 # par_start <- par0
 
 ## Landscape ===================================================================
@@ -103,7 +105,7 @@ sim_steps   <- obs_interval * step_size + 2
 # Number of steps to simulate, interval + first and last steps
 
 ## Fitting =====================================================================
-if (fit_indivs) {
+if (fit_indiv || fit_all) {
     parallel_setup(ncore_fit)
     message("Fitting model parameters")
     done <- list.files("simulations", pattern = "par_out_")
@@ -114,25 +116,46 @@ if (fit_indivs) {
     message(paste0("Fitting ", length(todo), " individuals"))
     env02 <- terra::wrap(env01) # foreach needs this
 
-    # fit <- do.call(rbind, lapply(todo, function(i) {
-    foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
-        message(paste0("Fitting individual #: ", i, " / ", length(todo)))
+    if (fit_indiv) {
+        # fit <- do.call(rbind, lapply(todo, function(i) {
+        foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
+            message(paste0("Fitting individual #: ", i, " / ", length(todo)))
 
-        env <- unwrap(env02)
-        traject <- jag_traject_cells[[i]]
-        prep_model_objects(traject, max_dist, env)
-        
-        message("Fitting parameters for model 1: path-dependent kernel")
-        objects1 <- list(env, nbhd, max_dist, sim_steps, to_dest, obs)
-        par_out1 <- optim(par_start, log_likelihood, objects = objects1)
-        ll <- log_likelihood(par_out1$par, objects1)
-        message(paste0("Saving log-likelihood for model 1: ", i))
-        saveRDS(ll, file = paste0("simulations/ll_fit1", i, ".rds"))
-        saveRDS(par_out1$par,
-                file = paste0("simulations/par_out_", i, ".rds"))
-        message(paste0("COMPLETED path #: ", i, " / ", sim_n))
+            env <- unwrap(env02)
+            traject <- jag_traject_cells[[i]]
+            prep_model_objects(traject, max_dist, env)
+            
+            message("Fitting parameters for model 1: path-dependent kernel")
+            objects1 <- list(env, nbhd, max_dist, sim_steps, to_dest, obs)
+            par_out1 <- optim(par_start, log_likelihood, objects = objects1)
+            ll <- log_likelihood(par_out1$par, objects1)
+            message(paste0("Saving log-likelihood for model 1: ", i))
+            saveRDS(ll, file = paste0("simulations/ll_fit1", i, ".rds"))
+            saveRDS(par_out1$par,
+                    file = paste0("simulations/par_out_", i, ".rds"))
+            message(paste0("COMPLETED path #: ", i, " / ", sim_n))
+        }
+        # ))    
+    } else if (fit_all) {
+        opt_fun <- function(par, env, traj) {
+            env02 <- wrap(env)
+            l <- foreach(i = 1:sim_n, .combine = c, .packages = "terra",
+                         .export = ls(globalenv())) %dopar% {
+                message("Fitting all individuals")
+                env <- unwrap(env02)
+                traject <- traj[[i]]
+                prep_model_objects(traject, max_dist, env)
+
+                objects1 <- list(env, nbhd, max_dist, sim_steps, to_dest, obs)
+                ll <- log_likelihood(par, objects1)
+                return(ll)
+                }
+            return(sum(l, na.rm = T))
+        }
+        par_out <- optim(par_start, opt_fun, env = env01, traj = jag_traject_cells)
+        message("Completed fitting all individuals")
+        saveRDS(par_out$par, file = "simulations/par_out_all.rds")
     }
-    # ))    
 }
 
 ## Cleanup =====================================================================

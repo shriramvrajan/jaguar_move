@@ -298,8 +298,8 @@ make_nbhd <- function(r = brazil_ras, i, sz) {
 
 # Normalize probabilities across neighbors of each cell ------------------------
 # v: vector of cell values
-normalize_nbhd <- function(v) {
-  out <- matrix(v[nbhd_i], nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
+normalize_nbhd <- function(v, nbhd) {
+  out <- matrix(v[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
   out <- out / rowSums(out, na.rm = TRUE)
 }
 
@@ -358,8 +358,9 @@ prep_model_objects <- function(traject, max_dist, r) {
     names(env_i) <- seq_len(length(nbhd_index))
 
     message("Prepared model objects.")
-    out <- list(env_i, nbhd_i, to_dest, obs, max_dist, sim_steps)
-    names(out) <- c("env_i", "nbhd_i", "to_dest", "obs", "max_dist", "sim_steps")
+    out <- list(env_i, nbhd_i, to_dest, dest, obs, max_dist, sim_steps)
+    names(out) <- c("env_i", "nbhd_i", "to_dest", "dest", "obs", "max_dist", 
+                    "sim_steps")
     return(out)
 }
 
@@ -482,18 +483,19 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   #               are the immediate neighbors? Rows are path cells, columns are 
   #               neighbors.
   to_dest    <- objects[[3]]
+  dest       <- objects[[4]]
   # obs        : Index of the cell of the extended neighborhood that corresponds
   #              to the next GPS observation
-  obs        <- objects[[4]]
+  obs        <- objects[[5]]
   n_obs      <- length(obs) + 1
 
   # Maximum distance in pixels for one step
-  max_dist   <- objects[[5]]
+  max_dist   <- objects[[6]]
   # Number of GPS observations (length of track)
-  sim_steps  <- objects[[6]]
+  sim_steps  <- objects[[7]]
 
   # Attraction function 3a: simulation, no move param --------------------------
-  attract <- normalize_nbhd(env_function(env_i, par))
+  attract <- normalize_nbhd(env_function(env_i, par), nbhd_i)
 
   # Array for propagating probabilities forward ================================
   # n_obs      : Number of GPS observations

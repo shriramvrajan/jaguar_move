@@ -149,13 +149,13 @@ if (fit_indiv || fit_all) {
 
         # Prepare objects for fitting
         objects_all <- lapply(jag_traject_cells, function(traject) {
-            return(prep_model_objects(traject, max_dist, env0))
+            return(prep_model_objects(traject, max_dist, env01))
         })
         
         # Exports need to be passed to foreach inside optim
         optim_function <- function(par) {
             l <- foreach(i = 1:sim_n, .combine = c, .packages = "terra",
-                         .export = objects_all) %dopar% {
+                         .export = ls(globalenv())) %dopar% {
                     objects1 <- objects_all[[i]]
                     ll <- log_likelihood(par, objects1)
                     message(paste0("Log likelihood calculated, #: ", i))

@@ -71,6 +71,7 @@ message <- function(m, f = "data/output/run_log.txt") {
 parallel_setup <- function(n_cores = 4) {
     cl <- makeCluster(n_cores)
     registerDoParallel(cl)
+    message(paste0("Parallel processing set up with ", n_cores, " cores."))
 }
 
 # Load files from a list if they exist in a directory dir
@@ -281,7 +282,6 @@ plot_the_curve <- function(par, bounds = c(0, 10)) {
 
 # Output neighborhood as matrix ------------------------------------------------
 # r:    Raster object
-# rdf:  Dataframe of raster cells
 # i:    Index of cell in raster
 # sz:   Size of neighborhood
 make_nbhd <- function(r = brazil_ras, i, sz) {
@@ -299,30 +299,20 @@ make_nbhd <- function(r = brazil_ras, i, sz) {
 # Normalize probabilities across neighbors of each cell ------------------------
 # v: vector of cell values
 normalize_nbhd <- function(v) {
-  out <- matrix(v[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
+  out <- matrix(v[nbhd_i], nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
   out <- out / rowSums(out, na.rm = TRUE)
 }
 
 # Prepare input objects for movement model -------------------------------------
 # traject:   Path of individual, vector of raster cell indices
 # max_dist:  Maximum distance in pixels for one step
-# nbhd0:     Global neighborhood 
 # r:         Raster object
-# rdf:       Dataframe of raster cells
 prep_model_objects <- function(traject, max_dist, r) {
-    
-    # Make global neighborhood from raster
-    message("Building global neighborhood")
-    rdf <- raster_to_df(r)
-    nbhd0 <<- make_nbhd(i = seq_len(nrow(rdf)), sz = step_size, r = r) 
-
     # Extended neighborhoods of each cell in individual's trajectory
-    message("Building neighborhoods for each cell")
     nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = r)
 
     # Each entry in the list is the immediate neighborhood of each cell in the 
     # extended neighborhood, as represented by a cell number of raster r
-    message("Getting indices of extended neighborhood of each cell")
     nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                
       row_inds <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
       names(row_inds) <- nbhd_index[i, ] # cell numbers as names for indexing
@@ -330,31 +320,28 @@ prep_model_objects <- function(traject, max_dist, r) {
                     nrow = length(row_inds), ncol = ncol(nbhd0))
       return(out)
     })
-    nbhd <<- do.call(rbind, nbhd_list)
-    # Reindexing allows linkage of row numbers from nbhd to raster cells
+    nbhd_i <- do.call(rbind, nbhd_list)
+    # Reindexing allows linkage of row numbers from nbhd_ito raster cells
     nbhd_index <- as.vector(t(nbhd_index))
-    nbhd_index <<- nbhd_index
     
-    message("Getting indices of immediate neighborhood of each cell")
     # For each cell of the extended neighborhood of the path, what are
-    # the immediate neighbors? Rows are each cell of nbhd, columns are row #s 
+    # the immediate neighbors? Rows are each cell of nbhd_i columns are row #s 
     # from nbhd. All row lengths standardized with missing neighbors as NAs.
-    to_dest <- tapply(seq_len(length(nbhd)), nbhd, function(x) {  
+    to_dest <- tapply(seq_len(length(nbhd_i)), nbhd_i, function(x) {  
       if (length(x) > 9) print(x)
-      out <- c(x, rep(NA, ncol(nbhd) - length(x)))
+      out <- c(x, rep(NA, ncol(nbhd_i) - length(x)))
       return(out)
     })
-    to_dest <<- t(matrix(unlist(to_dest), nrow = ncol(nbhd), ncol = nrow(nbhd)))
-    dest <<- matrix(0, nrow = nrow(nbhd), ncol = ncol(nbhd))
+    to_dest <- t(matrix(unlist(to_dest), nrow = ncol(nbhd_i), ncol = nrow(nbhd_i)))
+    dest <- matrix(0, nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
 
-    message("Indexing observed data")
     # Building observed data to test against
     index_mat <- matrix(
       data = seq_len(length(nbhd_index)),
-      nrow = (nrow(nbhd) / length(traject)),
+      nrow = (nrow(nbhd_i) / length(traject)),
       ncol = length(traject)
     )
-    index_mat <<- index_mat
+    index_mat <- index_mat
     # For each step, which cell of the extended nbhd did it go to next?
     obs <- vector(length = ncol(index_mat) - 1)
     for (y in 1:(ncol(index_mat) - 1)) {          
@@ -362,16 +349,18 @@ prep_model_objects <- function(traject, max_dist, r) {
       num <- which(index_mat[1, y] <= test & test <= index_mat[nrow(index_mat), y])
       obs[y] <- which(index_mat[, y] == test[num])
     } 
-    obs <<- obs
+    obs <- obs
 
-    message("Getting environmental variables")
+    rdf <- raster_to_df(r)
     # Normalizing desired environmental variables for extended neighborhood    
     # env <- scales::rescale(rdf$sim1[nbhd_index], to = c(0, 1))  
-    env <- rdf$sim1[nbhd_index]
-    names(env) <- seq_len(length(nbhd_index))
-    env <<- env
+    env_i <- rdf$sim1[nbhd_index]
+    names(env_i) <- seq_len(length(nbhd_index))
 
     message("Prepared model objects.")
+    out <- list(env_i, nbhd_i, to_dest, obs, max_dist, sim_steps)
+    names(out) <- c("env_i", "nbhd_i", "to_dest", "obs", "max_dist", "sim_steps")
+    return(out)
 }
 
 # Attractiveness function for movement model -----------------------------------
@@ -381,7 +370,7 @@ prep_model_objects <- function(traject, max_dist, r) {
 env_function <- function(env, par, format = FALSE) {
   attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
   if (format) {
-    attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
+    attract <- matrix(attract[nbhd_i], nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
   }
   return(attract)
 }
@@ -486,24 +475,25 @@ log_likelihood0 <- function(par, objects) {
 
 log_likelihood <- function(par, objects, debug = FALSE) {
   # Environmental variables
-  env       <- objects[[1]]
+  env_i       <- objects[[1]]
   # Neighborhood
-  nbhd       <- objects[[2]]
-  # Maximum distance in pixels for one step
-  max_dist   <- objects[[3]]
-  # Number of GPS observations (length of track)
-  sim_steps  <- objects[[4]]
+  nbhd_i      <- objects[[2]]
   # to_dest    : For each cell of the extended neighborhood of the path, what 
   #               are the immediate neighbors? Rows are path cells, columns are 
   #               neighbors.
-  to_dest    <- objects[[5]]
+  to_dest    <- objects[[3]]
   # obs        : Index of the cell of the extended neighborhood that corresponds
   #              to the next GPS observation
-  obs        <- objects[[6]]
+  obs        <- objects[[4]]
   n_obs      <- length(obs) + 1
 
+  # Maximum distance in pixels for one step
+  max_dist   <- objects[[5]]
+  # Number of GPS observations (length of track)
+  sim_steps  <- objects[[6]]
+
   # Attraction function 3a: simulation, no move param --------------------------
-  attract <- normalize_nbhd(env_function(env, par))
+  attract <- normalize_nbhd(env_function(env_i, par))
 
   # Array for propagating probabilities forward ================================
   # n_obs      : Number of GPS observations
@@ -517,7 +507,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   current[center, , 1] <- 1
 
   for (j in 1:(sim_steps - 1)) {
-    # Probabilities across entire nbhd for step j
+    # Probabilities across entire nbhd_ifor step j
     step_prob <- as.vector(current[, , j]) * attract[]
 
     # dest has same dimensions as nbhd
@@ -525,7 +515,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
     #   rows are neighborhood cells, columns are neighbors of those cells
     #   each entry is the index of the neighbor cell
     #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
-    #   nbhd is the 3rd cell of nbhd.
+    #   nbhd_iis the 3rd cell of nbhd.
     dest[] <- step_prob[as.vector(to_dest)]
     # Summing probabilities up to step j to generate step j+1
     current[, , j + 1] <- rowSums(dest, na.rm = TRUE)
@@ -641,9 +631,9 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
         pos <- path[i - 1, 1:2]
 
         # Attractiveness of each cell in neighborhood
-        nbhd <- as.vector(make_nbhd(r = env01, sz = neighb,
-                          i = terra::cellFromRowCol(env01, pos[1], pos[2])))
-        att <- sapply(nbhd, function(x) {
+        nbhd_i <- as.vector(make_nbhd(r = env01, sz = neighb,
+                            i = terra::cellFromRowCol(env01, pos[1], pos[2])))
+        att <- sapply(nbhd_i, function(x) {
           if (is.na(x)) {
             return(NA)
           } else {
@@ -662,8 +652,8 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
 
         # Sample next step
         step <- sample(seq_len(length(attract)), 1, prob = attract)
-        path[i, ] <- c(rowColFromCell(env01, nbhd[step]), 
-                       nbhd[step], attract[step])
+        path[i, ] <- c(rowColFromCell(env01, nbhd_i[step]), 
+                       nbhd_i[step], attract[step])
     }
     path <- as.data.frame(path)
     names(path) <- c("x", "y", "cell", "att")

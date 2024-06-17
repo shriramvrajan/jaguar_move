@@ -4,7 +4,7 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s16all"
+simname <- "s19all"
 
 # Switches for reusing old data
 gen_land   <- F
@@ -28,8 +28,8 @@ r1 <- 80          # range of autocorrelation in cells
 
 ### Model parameters:
 # Order: par_move, par_env0, par_env1, par_env2
-# par0 <- c(1, 3, -2, 0.3)        
-par0 <- c(1, 2, -0.2, -0.2)
+par0 <- c(NA, 3, -2, 0.3)        
+# par0 <- c(NA, 2, -0.2, -0.2)
 
 ### Path generation parameters:
 step_size    <- 1            # Max # pixels for each step
@@ -50,8 +50,9 @@ print(params)
 if (any(is.na(par0))) par0 <- par0[!is.na(par0)]
 
 # Value to start fitting from
-par_start <- rep(1, length(par0))
+# par_start <- rep(1, length(par0))
 # par_start <- par0
+par_start <- c(1.548, -0.993, -1.344)
 
 ## Landscape ===================================================================
 if (!gen_land) {

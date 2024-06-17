@@ -24,3 +24,8 @@
 
 16all. Same as 6 except fitting all together instead of individually.
 
+17all. Same as 14 except fitting all together. 
+
+18all. Same as 17 except starting at par0.
+
+19. Same as 17 and 18 except starting at 17 par_out.

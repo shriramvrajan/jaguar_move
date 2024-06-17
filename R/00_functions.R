@@ -67,6 +67,19 @@ message <- function(m, f = "data/output/run_log.txt") {
     cat(m, file = f, append = TRUE, sep = "\n")
 }
 
+# Output last n lines of logfile
+log_tail <- function(n = 10, f = "data/output/run_log.txt") {
+    tail(readLines(f), n)
+}
+
+# Print list of all simulations from simlist.md
+simlist <- function() {
+    # List all files in the simulations directory
+    sim <- readLines("simulations/simlist.md")
+    sim <- sim[-which(sim == "")]
+    print(sim)
+}
+
 # Set up parallel processing
 parallel_setup <- function(n_cores = 4) {
     cl <- makeCluster(n_cores)
@@ -268,12 +281,12 @@ calc_move_freq <- function(dat) {
 }
 
 # Plot movement kernel
-plot_the_curve <- function(par, bounds = c(0, 10)) {
+plot_the_curve <- function(par, bounds = c(0, 10), ...) {
     # Plot functional form for movement model
     x <- seq(bounds[1], bounds[2], 0.1)
     y <- 1 / (1 + exp(par[1] + par[2] * x + par[3] * x^2))
-    plot(x, y, type = "l", col = "blue", lwd = 3, xlab = "Environmental variable", 
-         ylab = "Attractiveness")
+    plot(x, y, type = "l", xlab = "Environmental variable", 
+         ylab = "Attractiveness", ...)
     abline(v = 0, lty = 2)
     abline(h = 0.5, lty = 2)
 }

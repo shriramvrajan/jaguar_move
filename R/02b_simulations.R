@@ -4,20 +4,20 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s19all"
+simname <- "s22"
 
 # Switches for reusing old data
 gen_land   <- F
-gen_path   <- F
+gen_path   <- T
 
 # Switches for fitting models
-fit_indiv  <- F
-fit_all    <- T
+fit_indiv  <- T
+fit_all    <- F
 debug_fit  <- F
 
 # Number of cores to use for path generation and fitting
 ncore_path <- 10
-ncore_fit  <- 5
+ncore_fit  <- 6
 
 ## Parameters ==================================================================
 
@@ -50,9 +50,9 @@ print(params)
 if (any(is.na(par0))) par0 <- par0[!is.na(par0)]
 
 # Value to start fitting from
-# par_start <- rep(1, length(par0))
+par_start <- rep(1, length(par0))
 # par_start <- par0
-par_start <- c(1.548, -0.993, -1.344)
+# par_start <- c(1.548, -0.993, -1.344)
 
 ## Landscape ===================================================================
 if (!gen_land) {
@@ -164,6 +164,7 @@ if (fit_indiv || fit_all) {
                   }
             return(sum(l, na.rm = T))
         }
+
         par_out <- optim(par_start, optim_function)
         message("Completed fitting all individuals")
         saveRDS(par_out$par, file = "simulations/par_out_all.rds")

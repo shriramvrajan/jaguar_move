@@ -18,7 +18,7 @@
 
 13. interval = 0, sight = 1, true interval, autocorrelated landscape.
 
-14. interval = 0, sight = 1, true interval, autocorrelated landscape, monotonic function
+14. interval = 0, sight = 1, true interval, autocorrelated landscape, non-monotonic env function
 
 15. (Same as 14 except) white noise landscape
 
@@ -29,3 +29,9 @@
 18all. Same as 17 except starting at par0.
 
 19. Same as 17 and 18 except starting at 17 par_out.
+
+20. Same as 17 except sim_steps not fixed at true value.
+
+21. Same as 17 except not monotonic; and env normalized.
+
+22. Not monotonic; env normalized; fit individually.

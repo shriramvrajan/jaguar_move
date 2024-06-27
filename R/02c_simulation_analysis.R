@@ -1,3 +1,4 @@
+
 if (!exists("loaded")) source("R/00_functions.R") else print("R/00 already loaded")
 loaded <- TRUE
 
@@ -5,9 +6,9 @@ loaded <- TRUE
 plot_aic       <- F
 param_plots    <- T
 debug_fit      <- F
-indiv_analysis <- T
+indiv_analysis <- F
 
-simdir         <- "simulations/s14/"
+simdir         <- "simulations/s17all/"
 
 parallel_setup(1)
 
@@ -26,6 +27,7 @@ print(params)
 fit <- load_if_exists(paste0("par_out_", 1:sim_n, ".rds"), dir = simdir) %>%
         do.call(rbind, .) %>% 
         as.data.frame() 
+if (all(is.na(fit))) fit <- readRDS(paste0(simdir, "par_out_all.rds"))
 fit$id <- seq_len(nrow(fit))
 if (ncol(fit) == 9) {
     names(fit) <- c("m1", "c1", "b1", "a1", "m2", "c2", "b2", "a2", "id")
@@ -138,6 +140,53 @@ if (indiv_analysis) {
 
 
 }
+
+## Parameter landscape =========================================================
+jag_traject <- lapply(paths, function(p) {
+    out <- cbind(p$x, p$y)
+    ind <- seq(1, nrow(out), obs_interval + 1)
+    out <- out[ind, ]
+    return(out)
+})
+jag_traject_cells <- lapply(jag_traject, function(tr) {
+    out <- terra::cellFromRowCol(env01, tr[, 1], tr[, 2])
+    return(out)
+})
+# Make global neighborhood from raster
+message("Building global neighborhood")
+nbhd0 <- make_nbhd(i = seq_len(ncell(env01)), sz = step_size, r = env01) 
+
+max_dist <- step_size * (obs_interval + 1)
+ncell_local <- (2 * max_dist + 1) ^ 2
+sim_steps   <- obs_interval * step_size + 2
+# Number of steps to simulate, interval + first and last steps
+
+objects_all <- lapply(jag_traject_cells, function(traject) {
+    return(prep_model_objects(traject, max_dist, env01))
+})
+
+ll_product <- function(par) {
+   ll <- lapply(objects_all, function(o) log_likelihood(par, objects = o)) %>%
+            unlist() %>%
+            sum()
+}
+
+par_test <- expand.grid(c1 = 2,
+                        b1 = seq(-5, 5, length.out = 20),
+                        a1 = seq(-5, 5, length.out = 20))
+
+ll_test <- apply(par_test, 1, function(p) {
+    print(p)
+    ll_product(p) %>% return()
+})
+
+p <- ggplot(data.frame(ll = ll_test, par_test), aes(x = b1, y = a1, fill = ll)) +
+    geom_tile() +
+    scale_fill_viridis_c() +
+    theme_minimal() +
+    labs(title = "Log-likelihood landscape", x = "b1", y = "a1")
+
+
 
 
 ### Scratch ===================================================================

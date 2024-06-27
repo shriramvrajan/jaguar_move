@@ -9,8 +9,8 @@ library(data.table)
 library(gstat)
 library(ctmm)
 library(amt) 
-library(lubridate)
-library(fitdistrplus)
+# library(lubridate)
+# library(fitdistrplus)
 library(foreach)
 library(doParallel)
 library(viridis)
@@ -235,8 +235,6 @@ map_track <- function(i, grad = 20, type = 2) {
 # id: ID number of jaguar
 # vgram: TRUE to plot variogram of path
 map_homerange <- function(id, vgram = FALSE) {
-
-
   message(paste0("Mapping home range of jaguar ", id, "..."))
   path <- jag_move[ID == as.numeric(id)]
   path <- as.telemetry(path, timeformat = "auto")
@@ -281,19 +279,20 @@ calc_move_freq <- function(dat) {
 }
 
 # Plot movement kernel
-plot_the_curve <- function(par, bounds = c(0, 10), ...) {
-    # Plot functional form for movement model
+plot_curve <- function(par, mu = 0, sd = 1, bounds = c(0, 10), ...) {
+    # Plot functional form for 2op, mu/sd reverse normalization of env variable.
     x <- seq(bounds[1], bounds[2], 0.1)
-    y <- 1 / (1 + exp(par[1] + par[2] * x + par[3] * x^2))
+    x0 <- (x - mu) / sd
+    y <- 1 / (1 + exp(par[1] + par[2] * x0 + par[3] * x0^2))
     plot(x, y, type = "l", xlab = "Environmental variable", 
          ylab = "Attractiveness", ...)
     abline(v = 0, lty = 2)
     abline(h = 0.5, lty = 2)
 }
 
-### 2. Movement model ==========================================================
+# 2. Movement model ============================================================
 
-# Output neighborhood as matrix ------------------------------------------------
+# Output neighborhood as matrix
 # r:    Raster object
 # i:    Index of cell in raster
 # sz:   Size of neighborhood
@@ -309,18 +308,18 @@ make_nbhd <- function(r = brazil_ras, i, sz) {
   return(mat)
 }
 
-# Normalize probabilities across neighbors of each cell ------------------------
+# Normalize probabilities across neighbors of each cell
 # v: vector of cell values
 normalize_nbhd <- function(v, nbhd) {
   out <- matrix(v[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
   out <- out / rowSums(out, na.rm = TRUE)
 }
 
-# Prepare input objects for movement model -------------------------------------
+# Prepare input objects for movement model
 # traject:   Path of individual, vector of raster cell indices
 # max_dist:  Maximum distance in pixels for one step
 # r:         Raster object
-prep_model_objects <- function(traject, max_dist, r) {
+prep_model_objects <- function(traject, max_dist, r, norm_env = TRUE) {
     # Extended neighborhoods of each cell in individual's trajectory
     nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = r)
 
@@ -368,16 +367,29 @@ prep_model_objects <- function(traject, max_dist, r) {
     # Normalizing desired environmental variables for extended neighborhood    
     # env <- scales::rescale(rdf$sim1[nbhd_index], to = c(0, 1))  
     env_i <- rdf$sim1[nbhd_index]
+    mu_env <- mean(env_i, na.rm = TRUE)
+    sd_env <- sd(env_i, na.rm = TRUE)
     names(env_i) <- seq_len(length(nbhd_index))
+    if (norm_env) {
+      env_i <- (env_i - mu_env) / sd_env
+    }
 
     message("Prepared model objects.")
     out <- list(env_i, nbhd_i, to_dest, dest, obs, max_dist, sim_steps)
     names(out) <- c("env_i", "nbhd_i", "to_dest", "dest", "obs", "max_dist", 
                     "sim_steps")
+
+    if (norm_env) {
+      out <- list(env_i, nbhd_i, to_dest, dest, obs, max_dist, sim_steps,
+                  mu_env, sd_env)
+      names(out) <- c("env_i", "nbhd_i", "to_dest", "dest", "obs", "max_dist", 
+                    "sim_steps", "mu_env", "sd_env")
+    }
+
     return(out)
 }
 
-# Attractiveness function for movement model -----------------------------------
+# Attractiveness function for movement model
 # env:      Environmental variable values
 # par:      Parameters for functional form
 # format:   TRUE to return as matrix, FALSE to return as vector
@@ -448,12 +460,8 @@ make_movement_kernel1 <- function(n = 10000, sl_emp, ta_emp, max_dist, minimum =
   # out$n <- out$n / sum(out$n)  
 }
 
-
-
-# Return -(maximum log likelihood) given a set of parameters -------------------
-# For traditional SSF (log_likelihood0) and all others (log_likelihood)
-# par:      Parameters for optimization
-# objects:  List of objects for optimization
+# Return -max(log(likelihood)) given parameters and model objects
+# traditional SSF (log_likelihood0) and all others (log_likelihood)
 log_likelihood0 <- function(par, objects) {
   # par        : Initial values of parameters for optimization
   env <- objects[[1]]
@@ -474,12 +482,12 @@ log_likelihood0 <- function(par, objects) {
   p_obs <- sapply(seq_len(n_obs - 1), function(t) {
     env_local <- attract_e[(ncell_local * (t - 1) + 1):(ncell_local * t)]
     env_local <- env_local / sum(env_local, na.rm = TRUE)
-    # TESTING WITHOUT MK -------------------------------------------------------
+    # TESTING WITHOUT MK 
     # p <- env_local
-    # With MK ------------------------------------------------------------------
+    # With MK 
     env_weight <- exp01(par[1])
     p <- env_weight * env_local + (1 - env_weight) * mk # mk = movement kernel
-    return(ifelse((p[obs[t]] == 0), 0.001, p[obs[t]]))
+    return(ifelse((p[obs[t]] == 0), 0.0001, p[obs[t]]))
   })
   ll <- -sum(log(p_obs))
   if (is.infinite(ll)) ll <- 0
@@ -507,10 +515,10 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   # Number of GPS observations (length of track)
   sim_steps  <- objects[[7]]
 
-  # Attraction function 3a: simulation, no move param --------------------------
+  # Attraction function 3a: simulation, no move param 
   attract <- normalize_nbhd(env_function(env_i, par), nbhd_i)
 
-  # Array for propagating probabilities forward ================================
+  # Array for propagating probabilities forward 
   # n_obs      : Number of GPS observations
   # steps      : Number of simulated steps
   ncell_local <- (2 * max_dist + 1)^2 
@@ -542,7 +550,8 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   predictions <- matrix(0, nrow = sim_steps, ncol = n_obs)
   for (i in 1:n_obs) {
     prob <- current[obs[i], i, ]
-    predictions[, i] <- ifelse(prob == 0, 0.001, prob)
+    predictions[, i] <- ifelse(prob == 0, 1e-20, prob)
+    # predictions[, i] <- prob
     # returns the probability for the row associated with the next 
     # observation location, for that observation i, across all time stepsp
   }
@@ -550,9 +559,9 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
   # log of product is sum of logs
 
-  # out <- -max(log_likelihood, na.rm = TRUE)
+  out <- -max(log_likelihood, na.rm = TRUE)
   ## DEBUG
-  out <- -log_likelihood[obs_interval + 2]
+  # out <- -log_likelihood[obs_interval + 2]
 
   if (is.infinite(out) || is.na(out)) out <- 0
 
@@ -792,9 +801,9 @@ results_table <- function(s = c("K", "RW", "RWM", "RWH", "trad2")) {
   return(list(df, params))
 }
 
-### EXTRA LOG LIKELIHOOD METHODS ===============================================
+# Extra attraction functions ===================================================
 
-  # Attraction function 1: environmental variables + home range ----------------
+  ## Attraction function 1: environmental variables + home range ---------------
   # attract_e <- exp(par[1] * env[, 1] + par[2] * env[, 2] + par[3] * env[, 3] +
   #                  par[4] * env[, 4] + par[5] * env[, 5] + par[6] * env[, 6] +
   #                  par[7] * env$home)
@@ -802,6 +811,6 @@ results_table <- function(s = c("K", "RW", "RWM", "RWH", "trad2")) {
   # attract <- normalize_nbhd(attract_e * attract_h) #* normalize_nbhd(attract_t)
   # attract <- normalize_nbhd(attract_e)
 
-  # Attraction function 2: just home range -------------------------------------
+  ## Attraction function 2: just home range ------------------------------------
   # attract_h <- exp(par[1] * env$home)
   # attract <- normalize_nbhd(attract_h) 

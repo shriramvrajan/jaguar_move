@@ -8,7 +8,7 @@ param_plots    <- T
 debug_fit      <- F
 indiv_analysis <- F
 
-simdir         <- "simulations/s17all/"
+simdir         <- "simulations/s22/"
 
 parallel_setup(1)
 
@@ -46,32 +46,53 @@ if (any(is.na(fit$c1))) {
 
 ## Explore parameter values ====================================================
 if (param_plots) {
-    x1 <- seq(0, 8, length.out = 100)
-    par0 <- unlist(params[10:12])
 
-    # generating parameter values
-    y0 <- 1 / (1 + exp(par0[1] + par0[2] * x1 + par0[3] * x1^2)) 
-    # fitted parameter values
-    yhat <- 1 / (1 + exp(median(fit$c1) + median(fit$b1) * x1 + median(fit$a1) * x1^2))
-    yhat2 <- 1 / (1 + exp(mean(fit$c1) + mean(fit$b1) * x1 + mean(fit$a1) * x1^2))
+    jag_traject <- lapply(paths, function(p) {
+        out <- cbind(p$x, p$y)
+        ind <- seq(1, nrow(out), obs_interval + 1)
+        out <- out[ind, ]
+        return(out)
+    })
+    jag_traject_cells <- lapply(jag_traject, function(tr) {
+        out <- terra::cellFromRowCol(env01, tr[, 1], tr[, 2])
+        return(out)
+    })
+    max_dist     <- step_size * (obs_interval + 1)
+    objects_all <- lapply(jag_traject_cells, function(traject) {
+        return(prep_model_objects(traject, max_dist, env01))
+    })
+
+    y0 <- plot_curve(par0, values = TRUE)
     y1 <- lapply(seq_len(nrow(fit)), function(i) {
-        out <- 1 / (1 + exp(fit$c1[i] + fit$b1[i] * x1 + fit$a1[i] * x1^2))
+        mu <- objects_all[[i]]$mu_env
+        sd <- objects_all[[i]]$sd_env
+        out <- plot_curve(unlist(fit[i, 1:3]), mu = mu, sd = sd, values = TRUE)
+        return(out)
     })
 
-    points <- lapply(fit$id, function(i) {
-        path <- paths[[i]]
-        path$move <- c(0, sqrt(diff(path$x)^2 + diff(path$y)^2))
-        path$move[path$move > 0] <- 1
-        path$env <- env01[cellFromRowCol(env01, path[, 1], path[, 2])]
-        return(path[, c("move", "env")])
-    })
+    # # generating parameter values
+    # y0 <- 1 / (1 + exp(par0[1] + par0[2] * x1 + par0[3] * x1^2)) 
+    # # fitted parameter values
+    # yhat <- 1 / (1 + exp(median(fit$c1) + median(fit$b1) * x1 + median(fit$a1) * x1^2))
+    # yhat2 <- 1 / (1 + exp(mean(fit$c1) + mean(fit$b1) * x1 + mean(fit$a1) * x1^2))
+    # y1 <- lapply(seq_len(nrow(fit)), function(i) {
+    #     out <- 1 / (1 + exp(fit$c1[i] + fit$b1[i] * x1 + fit$a1[i] * x1^2))
+    # })
+
+    # points <- lapply(fit$id, function(i) {
+    #     path <- paths[[i]]
+    #     path$move <- c(0, sqrt(diff(path$x)^2 + diff(path$y)^2))
+    #     path$move[path$move > 0] <- 1
+    #     path$env <- env01[cellFromRowCol(env01, path[, 1], path[, 2])]
+    #     return(path[, c("move", "env")])
+    # })
     # Generated + fitted, all on same plot
     par(mfrow = c(1, 1))
-    plot(x1, y0, type = "l", lwd = 3, ylim = c(0, 1))
-    lines(x1, yhat, lwd = 3, col = "#1a1a9e")
+    plot(y0, type = "l", lwd = 3, ylim = c(0, 1))
+    # lines(x1, yhat, lwd = 3, col = "#1a1a9e")
     # lines(x1, yhat2, lwd = 3, col = rgb(1, 0, 0, 0.8))
     for (i in seq_len(nrow(fit))) {
-        lines(x1, y1[[i]], col = rgb(0, 0, 1, 0.3), lwd = 3)
+        lines(y1[[i]], col = rgb(0, 0, 1, 0.3), lwd = 3)
         # readline(paste(i, "Press [enter] to continue"))
     }
 
@@ -137,8 +158,6 @@ if (indiv_analysis) {
     }
 
     comp_hist(2)
-
-
 }
 
 ## Parameter landscape =========================================================

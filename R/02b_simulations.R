@@ -16,7 +16,7 @@ fit_all    <- F
 debug_fit  <- F
 
 # Number of cores to use for path generation and fitting
-ncore_path <- 10
+ncore_path <- 6
 ncore_fit  <- 6
 
 ## Parameters ==================================================================
@@ -32,10 +32,10 @@ par0 <- c(NA, 3, -2, 0.3)
 # par0 <- c(NA, 2, -0.2, -0.2)
 
 ### Path generation parameters:
-step_size    <- 1            # Max # pixels for each step
+step_size    <- 1             # Max # pixels for each step
 obs_interval <- 0             # Number of steps to skip between observations
 n_step       <- 2000          # Number of steps to simulate
-sim_n        <- 20           # Number of simulations 
+sim_n        <- 20            # Number of simulations 
 n_obs        <- ceiling(n_step / (obs_interval + 1))
 
 ### Write parameters to file
@@ -80,7 +80,7 @@ if (!gen_path) {
         x0 <- ceiling(envsize / 2)
         y0 <- ceiling(envsize / 2)
         jag_path(x0, y0, n_step, par = par0, neighb = step_size)
-        }
+    }
     # )
     saveRDS(paths, "simulations/paths.rds")
     message("Saved paths.")
@@ -120,19 +120,19 @@ if (fit_indiv || fit_all) {
     message(paste0("Fitting ", length(todo), " individuals"))
     env02 <- terra::wrap(env01) # foreach needs this
 
+    # Prepare objects for fitting
+    objects_all <- lapply(jag_traject_cells, function(traject) {
+        return(prep_model_objects(traject, max_dist, env01))
+    })
+    
 
     if (fit_indiv) {
         # Fit individuals one at a time ----------------------------------------
         # fit <- do.call(rbind, lapply(todo, function(i) {
         foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
-            message(paste0("Fitting individual #: ", i, " / ", length(todo)))
-
-            env0 <- unwrap(env02)
-            traject <- jag_traject_cells[[i]]
-            prep_model_objects(traject, max_dist, env0)
-            
+            message(paste0("Fitting individual #: ", i, " / ", length(todo)))            
             message("Fitting parameters for model 1: path-dependent kernel")
-            objects1 <- list(env, nbhd_i, max_dist, sim_steps, to_dest, obs)
+            objects1 <- objects_all[[i]]
             par_out1 <- optim(par_start, log_likelihood, objects = objects1)
             ll <- log_likelihood(par_out1$par, objects1)
             message(paste0("Saving log-likelihood for model 1: ", i))
@@ -147,12 +147,6 @@ if (fit_indiv || fit_all) {
     if (fit_all) {
         # Fit all individuals at the same time ---------------------------------
         message("Fitting all individuals")
-
-        # Prepare objects for fitting
-        objects_all <- lapply(jag_traject_cells, function(traject) {
-            return(prep_model_objects(traject, max_dist, env01))
-        })
-        
         # Exports need to be passed to foreach inside optim
         optim_function <- function(par) {
             l <- foreach(i = 1:sim_n, .combine = c, .packages = "terra",

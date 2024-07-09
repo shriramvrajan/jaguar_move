@@ -14,7 +14,7 @@ analyse_output  <- FALSE
 ## Set up parallel processing ==================================================
 
 parallel        <- TRUE
-ncore           <- 8
+ncore           <- 1
 if (parallel) {
     library(doParallel)
     library(foreach)
@@ -46,7 +46,7 @@ if (run_model) {
     ## Parameters                                    
     npar            <- 7              # Number of parameters in current model
     sim_steps       <- 10             # How many steps to simulate forward
-    buffersize      <- 1              # Jaguars move 1px (1km) at a time
+    step_size       <- 1              # Jaguars move 1px (1km) at a time
     n_iter          <- nrow(jag_id)   # Number of individuals
     holdout_frac    <- 0.7            # Fraction of points to use for fitting
     
@@ -55,7 +55,7 @@ if (run_model) {
     message(paste0("Holdout fraction: ", holdout_frac))
     message(paste0("Number of parameters: ", npar))
     message(paste0("Number of simulation steps: ", sim_steps))
-    message(paste0("Buffer size: ", buffersize))
+    message(paste0("Step size: ", step_size))
     message("=========================================")
 
     outfiles <- list.files("data/output")

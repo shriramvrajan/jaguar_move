@@ -279,13 +279,14 @@ calc_move_freq <- function(dat) {
 }
 
 # Plot movement kernel
-plot_curve <- function(par, mu = 0, sd = 1, bounds = c(0, 10), ...) {
+plot_curve <- function(par, mu = 0, sd = 1, bounds = c(0, 10), values = FALSE) {
     # Plot functional form for 2op, mu/sd reverse normalization of env variable.
     x <- seq(bounds[1], bounds[2], 0.1)
     x0 <- (x - mu) / sd
     y <- 1 / (1 + exp(par[1] + par[2] * x0 + par[3] * x0^2))
+    if (values) return(y)
     plot(x, y, type = "l", xlab = "Environmental variable", 
-         ylab = "Attractiveness", ...)
+         ylab = "Attractiveness")
     abline(v = 0, lty = 2)
     abline(h = 0.5, lty = 2)
 }
@@ -394,11 +395,14 @@ prep_model_objects <- function(traject, max_dist, r, norm_env = TRUE) {
 # par:      Parameters for functional form
 # format:   TRUE to return as matrix, FALSE to return as vector
 env_function <- function(env, par, format = FALSE) {
-  attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
-  if (format) {
-    attract <- matrix(attract[nbhd_i], nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
-  }
-  return(attract)
+  # attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+  # if (format) {
+  #   attract <- matrix(attract[nbhd_i], nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
+  # }
+  # return(attract)
+  
+  # For the real thing:
+  
 }
 
 make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist, 
@@ -553,7 +557,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
     predictions[, i] <- ifelse(prob == 0, 1e-20, prob)
     # predictions[, i] <- prob
     # returns the probability for the row associated with the next 
-    # observation location, for that observation i, across all time stepsp
+    # observation location, for that observation i, across all time steps
   }
 
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE)

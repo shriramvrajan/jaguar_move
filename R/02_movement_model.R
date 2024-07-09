@@ -58,9 +58,17 @@ if (refit_turns) {
 if (refit_model) {
 
   message("Fitting model parameters")
-  ncell <- (buffersize * 2 + 1)^2
-  message(paste("Making", ncell, "cell neighborhood for each cell in Brazil"))
-  nbhd0 <- make_nbhd(i = seq_len(nrow(brdf)), sz = buffersize)                   # 6.4s
+  message(paste("Making", (step_size * 2 + 1)^2, 
+                "cell neighborhood for each cell in Brazil"))
+  nbhd0 <- make_nbhd(i = seq_len(nrow(brdf)), sz = step_size)       
+  
+  # Prepare objects for fitting
+  objects_all <- lapply(jag_traject_cells, function(traject) {
+      dist <- (traject[-nrow(traject), ] - traject[-1, ]) /
+              xres(brazil_ras)
+      dist <- (rowSums(dist^2))^.5
+      return(prep_model_objects(traject, max_dist, env01))
+  })             # 6.4s
 
   foreach(i = i_todo) %dopar% {
   # for (i in i_todo) {
@@ -73,19 +81,19 @@ if (refit_model) {
     envdf <- brdf[, c(1:6, 10)]
 
     # Observed trajectory of jaguar i
-    jag_traject <- jag_move[ID == id, 3:4]
+    # jag_traject <- jag_move[ID == id, 3:4]
     
-    if (holdout_set && nrow(jag_traject) > 100) {
-      hold <- seq_len(ceiling(nrow(jag_traject) * holdout_frac))
-      jag_traject <- jag_traject[hold, ]
-    }
+    # if (holdout_set && nrow(jag_traject) > 100) {
+    #   hold <- seq_len(ceiling(nrow(jag_traject) * holdout_frac))
+    #   jag_traject <- jag_traject[hold, ]
+    # }
 
-    jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
-    n_obs <- length(jag_traject_cells)
-    # Calculating step distances; divide by cell size then take hypotenuse
-    dist <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
-            xres(brazil_ras)
-    dist <- (rowSums(dist^2))^.5
+    # jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
+    # n_obs <- length(jag_traject_cells)
+    # # Calculating step distances; divide by cell size then take hypotenuse
+    # dist <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
+    #         xres(brazil_ras)
+    # dist <- (rowSums(dist^2))^.5
     
     if (refit_model0 == TRUE) {
       # Traditional SSF for comparison
@@ -101,24 +109,22 @@ if (refit_model) {
       mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, max_dist = max_dist)
     } else {
       # New model
-      max_dist <- ceiling(max(dist) * 2)   
-      prep_model_objects(jag_traject_cells, max_dist, r = brazil_ras, rdf = brdf, 
-                        nbhd0 = nbhd0)
+      objects <- objects_all[[i]]
     }
   
-    # Normalizing desired environmental variables for extended neighborhood
-    env <- envdf[nbhd_index, ]
-    env <- sweep(env, 2, colMeans(env), "-") 
-    env <- sweep(env, 2, apply(env, 2, sd), "/") 
-    # Make indexing consistent with env
-    row.names(env) <- seq_len(length(nbhd_index))
+    # # Normalizing desired environmental variables for extended neighborhood
+    # env <- envdf[nbhd_index, ]
+    # env <- sweep(env, 2, colMeans(env), "-") 
+    # env <- sweep(env, 2, apply(env, 2, sd), "/") 
+    # # Make indexing consistent with env
+    # row.names(env) <- seq_len(length(nbhd_index))
 
-    # Model objects as list
-    if (refit_model0) {
-      objects <- list(env, max_dist, mk, obs)
-    } else {
-      objects <- list(env, nbhd, max_dist, sim_steps, to_dest, obs)
-    }
+    # # Model objects as list
+    # if (refit_model0) {
+    #   objects <- list(env, max_dist, mk, obs)
+    # } else {
+    #   objects <- list(env, nbhd, max_dist, sim_steps, to_dest, obs)
+    # }
     
     # Calculate null likelihoods for each jaguar if not already done
     if (model_calcnull) {

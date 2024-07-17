@@ -58,73 +58,48 @@ if (refit_turns) {
 if (refit_model) {
 
   message("Fitting model parameters")
-  message(paste("Making", (step_size * 2 + 1)^2, 
-                "cell neighborhood for each cell in Brazil"))
-  nbhd0 <- make_nbhd(i = seq_len(nrow(brdf)), sz = step_size)       
-  
-  # Prepare objects for fitting
-  objects_all <- lapply(jag_traject_cells, function(traject) {
-      dist <- (traject[-nrow(traject), ] - traject[-1, ]) /
-              xres(brazil_ras)
-      dist <- (rowSums(dist^2))^.5
-      return(prep_model_objects(traject, max_dist, env01))
-  })             # 6.4s
 
   foreach(i = i_todo) %dopar% {
-  # for (i in i_todo) {
+  # for (i in i_todo) {  # easier to debug
     message(paste0("Jaguar #: ", i))
     id <- as.numeric(jag_id[i])
 
     # Adding individual home range (AKDE) to brdf
     home <- rast(paste0("data/homeranges/homerange_", id, ".grd"))
     brdf$home <- as.vector(home)
-    envdf <- brdf[, c(1:6, 10)]
+    envdf <- brdf[, c(1:6)] # add 10 for homerange
 
     # Observed trajectory of jaguar i
-    # jag_traject <- jag_move[ID == id, 3:4]
+    jag_traject <- jag_move[ID == id, 3:4]
     
-    # if (holdout_set && nrow(jag_traject) > 100) {
-    #   hold <- seq_len(ceiling(nrow(jag_traject) * holdout_frac))
-    #   jag_traject <- jag_traject[hold, ]
-    # }
-
-    # jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
-    # n_obs <- length(jag_traject_cells)
-    # # Calculating step distances; divide by cell size then take hypotenuse
-    # dist <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
-    #         xres(brazil_ras)
-    # dist <- (rowSums(dist^2))^.5
-    
-    if (refit_model0 == TRUE) {
-      # Traditional SSF for comparison
-      max_dist <- floor(max(dist)) 
-      nbhd <- make_nbhd(i = jag_traject_cells, sz = max_dist)
-      obs <- unlist(lapply(seq_len(nrow(nbhd) - 1), function(step) {
-        which(nbhd[step, ] == jag_traject_cells[step + 1])
-      }))
-      nbhd_index <- as.vector(t(nbhd))
-      track <- make_full_track(id)
-      sl_emp <- as.vector(na.exclude(track$sl))
-      ta_emp <- as.vector(na.exclude(track$ta))
-      mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, max_dist = max_dist)
-    } else {
-      # New model
-      objects <- objects_all[[i]]
+    if (holdout_set && nrow(jag_traject) > 100) {
+      hold <- seq_len(ceiling(nrow(jag_traject) * holdout_frac))
+      jag_traject <- jag_traject[hold, ]
     }
-  
-    # # Normalizing desired environmental variables for extended neighborhood
-    # env <- envdf[nbhd_index, ]
-    # env <- sweep(env, 2, colMeans(env), "-") 
-    # env <- sweep(env, 2, apply(env, 2, sd), "/") 
-    # # Make indexing consistent with env
-    # row.names(env) <- seq_len(length(nbhd_index))
 
-    # # Model objects as list
-    # if (refit_model0) {
-    #   objects <- list(env, max_dist, mk, obs)
-    # } else {
-    #   objects <- list(env, nbhd, max_dist, sim_steps, to_dest, obs)
-    # }
+    jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
+    n_obs <- length(jag_traject_cells)
+    # Calculating step distances; divide by cell size then take hypotenuse
+    dist <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
+            xres(brazil_ras)
+    dist <- (rowSums(dist^2))^.5
+    max_dist <- ceiling(max(dist) * 1.5)
+    
+    if (refit_model0 == FALSE) {
+      objects <- prep_model_objects(jag_traject_cells, max_dist, envdf)
+    } else {
+      # Traditional SSF for comparison
+      # max_dist <- floor(max(dist)) 
+      # nbhd <- make_nbhd(i = jag_traject_cells, sz = max_dist)
+      # obs <- unlist(lapply(seq_len(nrow(nbhd) - 1), function(step) {
+      #   which(nbhd[step, ] == jag_traject_cells[step + 1])
+      # }))
+      # nbhd_index <- as.vector(t(nbhd))
+      # track <- make_full_track(id)
+      # sl_emp <- as.vector(na.exclude(track$sl))
+      # ta_emp <- as.vector(na.exclude(track$ta))
+      # mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, max_dist = max_dist)
+    }
     
     # Calculate null likelihoods for each jaguar if not already done
     if (model_calcnull) {

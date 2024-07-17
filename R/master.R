@@ -1,8 +1,10 @@
 ## Main script for running others
-
-rm(list = ls())
-
-source("R/00_functions.R")
+if (!exists("functions_loaded")) {
+    source("R/00_functions.R")
+} else {
+    message("Functions already loaded")
+}
+functions_loaded <- TRUE
 
 ## Global switches =============================================================
 
@@ -14,7 +16,7 @@ analyse_output  <- FALSE
 ## Set up parallel processing ==================================================
 
 parallel        <- TRUE
-ncore           <- 1
+ncore           <- 6
 if (parallel) {
     library(doParallel)
     library(foreach)
@@ -44,7 +46,7 @@ if (run_model) {
                                         # refit_model must be TRUE for this one
                                     
     ## Parameters                                    
-    npar            <- 7              # Number of parameters in current model
+    npar            <- 14             # Number of parameters in current model
     sim_steps       <- 10             # How many steps to simulate forward
     step_size       <- 1              # Jaguars move 1px (1km) at a time
     n_iter          <- nrow(jag_id)   # Number of individuals
@@ -59,13 +61,21 @@ if (run_model) {
     message("=========================================")
 
     outfiles <- list.files("data/output")
-    done <- gsub(".RDS", "", outfiles) %>% 
+    done <- gsub(".rds", "", outfiles) %>% 
         gsub("par_out_", "", .) %>% 
         gsub("NA_", "", .) %>%
         as.numeric()
     done <- done[!is.na(done)]
     i_todo <- setdiff(seq_len(n_iter), done)
     message(paste0("Number of jaguars to process: ", length(i_todo)))
+
+    if (!exists("nbhd0")) {
+        message(paste("Generating", (step_size * 2 + 1)^2, 
+                      "cell neighborhood for each cell in Brazil"))
+        nbhd0 <- make_nbhd(i = seq_len(nrow(brdf)), sz = step_size) 
+    } else {
+        message("Global neighborhood matrix already generated")
+    }
 
     source("R/02_movement_model.R")
 }

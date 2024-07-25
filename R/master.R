@@ -40,7 +40,7 @@ if (run_model) {
 
     ## Actual fitting options
     refit_model     <- TRUE             # Refit movement model parameters
-      refit_model0  <- FALSE            # Refit traditional SSF model
+    model_type      <- 1                # 1 = tradSSF, 2 = path propagation
     holdout_set     <- TRUE             # Hold out a set of locations
     model_calcnull  <- FALSE            # Calculate null likelihoods 
                                         # refit_model must be TRUE for this one

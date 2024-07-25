@@ -11,12 +11,20 @@ res <- results_table(s)[[1]]  # [[2]] = parameter values
 param <- results_table(s)[[2]]
 # need to figure out what happened to the null likelihoods
 
+pp <- param[[2]]
 
-if (plotstuff) {
-    res <- cbind(res, param$RWM)
-
-    excl <- which(res$nmove < 100)
-    res <- res[-excl, ]
-
-    ggplot(res, aes(x = aic_holdRWM - aic_trad1, y = nmove, col = meandist)) + geom_point(size = 3)
+plot1 <- function(i, p) {
+    names <- c("footprint", "elevation", "slope", "forestcover", "dist2water", "dist2road")
+    x <- seq(from = -1, to = 1, length.out = 100)
+    par <- pp[i, c(2 * p, 2 * p + 1)]
+    plot(x, par[1] * x + par[2] * x ^2, main = names[p], type = "l")
 }
+
+plotmain <- function(i) {
+    par(mfrow = c(2, 3))
+    for (p in 1:6) {
+        plot1(i, p)
+    }
+}
+
+# map_track and plotmain to compare

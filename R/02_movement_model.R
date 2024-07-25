@@ -59,57 +59,61 @@ if (refit_model) {
 
   message("Fitting model parameters")
 
-  foreach(i = i_todo) %dopar% {
-  # for (i in i_todo) {  # easier to debug
+  # foreach(i = i_todo) %dopar% {
+  for (i in i_todo) {  # easier to debug
     message(paste0("Jaguar #: ", i))
-    id <- as.numeric(jag_id[i])
-
-    # Adding individual home range (AKDE) to brdf
-    home <- rast(paste0("data/homeranges/homerange_", id, ".grd"))
-    brdf$home <- as.vector(home)
-    envdf <- brdf[, c(1:6)] # add 10 for homerange
-
-    # Observed trajectory of jaguar i
-    jag_traject <- jag_move[ID == id, 3:4]
+    id                <- as.numeric(jag_id[i])
+    jag_traject       <- jag_move[ID == id, 3:4]
+    jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
+    n_obs             <- length(jag_traject_cells)
+    # Calculating step distances; divide by cell size then take hypotenuse
+    dist     <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
+                 xres(brazil_ras)
+    dist     <- (rowSums(dist^2))^.5
+    max_dist <- ceiling(max(dist) * 1.5)
+    # home      <- rast(paste0("data/homeranges/homerange_", id, ".grd"))
+    # brdf$home <- as.vector(home)
+    envdf    <- brdf[, c(1:6)] # add 10 for homerange
     
     if (holdout_set && nrow(jag_traject) > 100) {
       hold <- seq_len(ceiling(nrow(jag_traject) * holdout_frac))
       jag_traject <- jag_traject[hold, ]
     }
 
-    jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
-    n_obs <- length(jag_traject_cells)
-    # Calculating step distances; divide by cell size then take hypotenuse
-    dist <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
-            xres(brazil_ras)
-    dist <- (rowSums(dist^2))^.5
-    max_dist <- ceiling(max(dist) * 1.5)
-    
-    if (refit_model0 == FALSE) {
+    param0 <- rnorm(npar)
+
+    if (model_type == 1) {
+      message("Using traditional step selection function model")
+      nbhd <- make_nbhd(i = jag_traject_cells, sz = max_dist)
+      obs <- sapply(seq_along(jag_traject_cells), function(i) {
+        if (i == length(jag_traject_cells)) {
+          return(NULL)
+        } else {
+          step <- jag_traject_cells[i + 1]
+          return(which(nbhd[i, ] == step))
+        }
+      }) %>% unlist()
+      env <- scale(envdf[unique(nbhd), ])
+      if (any(is.na(env))) env[which(is.na(env))] <- 0
+      nbhd_c <- matrix(as.character(nbhd), nrow = nrow(nbhd), ncol = ncol(nbhd)) # needs to be character for this one
+      objects <- list(nbhd_c, obs, env)
+    } else if (model_type == 2) {
+      message("Using path propagation model")
       objects <- prep_model_objects(jag_traject_cells, max_dist, envdf)
     } else {
-      # Traditional SSF for comparison
-      # max_dist <- floor(max(dist)) 
-      # nbhd <- make_nbhd(i = jag_traject_cells, sz = max_dist)
-      # obs <- unlist(lapply(seq_len(nrow(nbhd) - 1), function(step) {
-      #   which(nbhd[step, ] == jag_traject_cells[step + 1])
-      # }))
-      # nbhd_index <- as.vector(t(nbhd))
-      # track <- make_full_track(id)
-      # sl_emp <- as.vector(na.exclude(track$sl))
-      # ta_emp <- as.vector(na.exclude(track$ta))
-      # mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, max_dist = max_dist)
+      stop("Invalid model type")
     }
-    
     # Calculate null likelihoods for each jaguar if not already done
     if (model_calcnull) {
       message(paste0("Calculating null likelihood for jaguar ", i))
-      null_likelihood <- loglike(c(rep(0, npar)), objects)
+      null_likelihood <- switch(model_type,
+                                log_likelihood0(c(rep(0, npar)), objects),
+                                log_likelihood1(c(rep(0, npar)), objects))
       saveRDS(null_likelihood, paste0("data/output/null_", i, ".RDS"))
     } else {
-      param <- rnorm(npar)
       message("Running optim...")
-      run_optim(param, objects, i)
+      run_optim(param0, objects, i)
     } 
+
   }
 }

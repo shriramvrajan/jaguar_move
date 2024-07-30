@@ -59,8 +59,8 @@ if (refit_model) {
 
   message("Fitting model parameters")
 
-  # foreach(i = i_todo) %dopar% {
-  for (i in i_todo) {  # easier to debug
+  foreach(i = i_todo) %dopar% {
+  # for (i in i_todo) {  # easier to debug
     message(paste0("Jaguar #: ", i))
     id                <- as.numeric(jag_id[i])
     jag_traject       <- jag_move[ID == id, 3:4]
@@ -96,7 +96,7 @@ if (refit_model) {
       env <- scale(envdf[unique(nbhd), ])
       if (any(is.na(env))) env[which(is.na(env))] <- 0
       nbhd_c <- matrix(as.character(nbhd), nrow = nrow(nbhd), ncol = ncol(nbhd)) # needs to be character for this one
-      objects <- list(nbhd_c, obs, env)
+      objects <- list(nbhd_c, obs, env, max_dist)
     } else if (model_type == 2) {
       message("Using path propagation model")
       objects <- prep_model_objects(jag_traject_cells, max_dist, envdf)

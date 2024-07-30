@@ -394,9 +394,10 @@ env_function <- function(env, par, nbhd, sim = FALSE) {
 }
 
 log_likelihood0 <- function(par, objects) {
-  nbhd <- objects[[1]]
-  obs  <- objects[[2]]
-  env  <- objects[[3]]
+  nbhd     <- objects[[1]]
+  obs      <- objects[[2]]
+  env      <- objects[[3]]
+  max_dist <- objects[[4]]
 
   kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[14]))
   kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
@@ -408,13 +409,20 @@ log_likelihood0 <- function(par, objects) {
   }
 
   attract0 <- env_function(env, par, nbhd)
+
   attract <- t(apply(attract0, 1, function(r) {
     return((r * kernel) / sum(r * kernel))
   }))
 
-  sapply(seq_along(obs), function(i) {
-    return(attract[obs[i], i])
+  like <- sapply(seq_along(obs), function(i) {
+    return(attract[i, obs[i]])
   })
+  if (any(like == 0)) like[like == 0] <- 1e-4
+  out <- -sum(log(like), na.rm = TRUE)
+
+  if (is.infinite(out) || is.na(out)) out <- 0
+
+  return(out)
 }
 
 # env_i       : Env variables for each cell of the extended neighborhood

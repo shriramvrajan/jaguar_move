@@ -16,7 +16,7 @@ analyse_output  <- FALSE
 ## Set up parallel processing ==================================================
 
 parallel        <- TRUE
-ncore           <- 6
+ncore           <- 8
 if (parallel) {
     library(doParallel)
     library(foreach)

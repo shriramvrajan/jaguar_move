@@ -56,11 +56,13 @@ if (refit_turns) {
 
 ### Fitting environmental parameters -------------------------------------------
 if (refit_model) {
+  
+  ll_func <- switch(model_type, log_likelihood0, log_likelihood)
 
   message("Fitting model parameters")
 
-  foreach(i = i_todo) %dopar% {
-  # for (i in i_todo) {  # easier to debug
+  # foreach(i = i_todo) %dopar% {
+  for (i in i_todo) {  # easier to debug
     message(paste0("Jaguar #: ", i))
     id                <- as.numeric(jag_id[i])
     jag_traject       <- jag_move[ID == id, 3:4]
@@ -80,10 +82,14 @@ if (refit_model) {
       jag_traject <- jag_traject[hold, ]
     }
 
-    param0 <- rnorm(npar)
+    param0 <- rep(1, npar)
 
+    # Preparing model objects based on model type; 1 = SSF, 2 = path propagation
     if (model_type == 1) {
       message("Using traditional step selection function model")
+      # track <- make_full_track(id)
+      # sl_emp <- as.vector(na.exclude(track$sl))
+      # ta_emp <- as.vector(na.exclude(track$ta))
       nbhd <- make_nbhd(i = jag_traject_cells, sz = max_dist)
       obs <- sapply(seq_along(jag_traject_cells), function(i) {
         if (i == length(jag_traject_cells)) {
@@ -103,6 +109,7 @@ if (refit_model) {
     } else {
       stop("Invalid model type")
     }
+
     # Calculate null likelihoods for each jaguar if not already done
     if (model_calcnull) {
       message(paste0("Calculating null likelihood for jaguar ", i))
@@ -113,7 +120,12 @@ if (refit_model) {
     } else {
       message("Running optim...")
       run_optim(param0, objects, i)
+      if (debug_02) {
+        message("Debugging 02_movement_model.R")
+        par1 <- readRDS(paste0("data/output/par_out_", i, ".rds"))$par
+        fname <- paste0("data/output/debug_", i, ".rds")
+        ll_func(par1, objects, debug = TRUE) %>% saveRDS(fname)
+      }
     } 
-
   }
 }

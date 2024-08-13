@@ -309,6 +309,30 @@ make_nbhd <- function(r = brazil_ras, i, sz) {
   return(mat)
 }
 
+make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist, 
+                                 minimum = 0, scale = 1000) {
+  
+  avail <- data.frame(sl = sample(sl_emp, n, replace = TRUE),
+                      ta = sample(ta_emp, n, replace = TRUE))
+  avail$x <- avail$sl * cos(avail$ta) / scale # scales from meters to km
+  avail$y <- avail$sl * sin(avail$ta) / scale 
+  avail$xi <- sapply(avail$x, function(x) ifelse(x > 0, floor(x), ceiling(x)))
+  avail$yi <- sapply(avail$y, function(y) ifelse(y > 0, floor(y), ceiling(y)))
+  density <- tapply(avail$x, list(avail$yi, avail$xi), length)
+  density <- reshape2::melt(density)
+  names(density) <- c("x", "y", "n")
+  size <- max_dist * 2 + 1
+  out <- data.frame(x = rep(-max_dist:max_dist, times = size),
+                    y = rep(-max_dist:max_dist, each = size))
+
+  out <- merge(out, density, by = c("x", "y"), all.x = TRUE)
+  out$n[is.na(out$n)] <- 0
+  out$n <- out$n + minimum
+  out$n <- out$n / sum(out$n)
+  
+  return(out$n)
+}
+
 # Normalize probabilities across neighbors of each cell
 # v: vector of cell values
 normalize_nbhd <- function(v, nbhd) {
@@ -383,23 +407,26 @@ prep_model_objects <- function(traject, max_dist, rdf, norm_env = TRUE,
 # par:      Parameters for functional form
 # format:   TRUE to return as matrix, FALSE to return as vector
 env_function <- function(env, par, nbhd, sim = FALSE) {
-  attract <- 1 / (1 + exp(par[1] + par[2] * env[, 1] + par[3] * env[, 1]^2 +   # footprint
-                          par[4] * env[, 2] + par[5] * env[, 2]^2 +            # elevation
-                          par[6] * env[, 3] + par[7] * env[, 3]^2 +            # slope
-                          par[8] * env[, 4] + par[9] * env[, 4]^2 +            # forest cover
-                          par[10] * env[, 5] + par[11] * env[, 5]^2 +          # distance to water
-                          par[12] * env[, 6] + par[13] * env[, 6]^2))          # distance to road
+  # attract <- 1 / (1 + exp(par[1] + par[2] * env[, 1] + par[3] * env[, 1]^2 +   # footprint
+  #                         par[4] * env[, 2] + par[5] * env[, 2]^2 +            # elevation
+  #                         par[6] * env[, 3] + par[7] * env[, 3]^2 +            # slope
+  #                         par[8] * env[, 4] + par[9] * env[, 4]^2 +            # forest cover
+  #                         par[10] * env[, 5] + par[11] * env[, 5]^2 +          # distance to water
+  #                         par[12] * env[, 6] + par[13] * env[, 6]^2))          # distance to road
+  attract <- 1 / (1 + exp(par[1] + par[2] * env[, 1] + par[3] * env[, 2] +
+                          par[4] * env[, 3] + par[5] * env[, 4] + 
+                          par[6] * env[, 5] + par[7] * env[, 6]))
   attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
   return(attract)  
 }
 
-log_likelihood0 <- function(par, objects) {
+log_likelihood0 <- function(par, objects, debug = FALSE) {
   nbhd     <- objects[[1]]
   obs      <- objects[[2]]
   env      <- objects[[3]]
   max_dist <- objects[[4]]
 
-  kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[14]))
+  kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[length(par)])) # last one is move par
   kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
   center <- max_dist + 1
   for (i in seq_len(center + max_dist)) {
@@ -409,7 +436,7 @@ log_likelihood0 <- function(par, objects) {
   }
 
   attract0 <- env_function(env, par, nbhd)
-
+  # attract  <- attract0 / rowSums(attract0)
   attract <- t(apply(attract0, 1, function(r) {
     return((r * kernel) / sum(r * kernel))
   }))
@@ -422,7 +449,7 @@ log_likelihood0 <- function(par, objects) {
 
   if (is.infinite(out) || is.na(out)) out <- 0
 
-  return(out)
+  if (debug) return(list(attract = attract, like = like, out = out)) else return(out)
 }
 
 # env_i       : Env variables for each cell of the extended neighborhood
@@ -436,7 +463,7 @@ log_likelihood0 <- function(par, objects) {
 # n_obs      : Number of GPS observations
 # max_dist   : Maximum distance in pixels for one step
 # sim_steps  : Number of steps to simulate
-log_likelihood <- function(par, objects, debug = FALSE, model = 1) {
+log_likelihood <- function(par, objects, debug = FALSE) {
   env_i       <- objects[[1]]
   nbhd_i      <- objects[[2]]
   to_dest    <- objects[[3]]
@@ -447,7 +474,7 @@ log_likelihood <- function(par, objects, debug = FALSE, model = 1) {
   n_obs      <- length(obs) + 1
 
   attract <- env_function(env_i, par, nbhd = nbhd_i)
-  move_prob <- exp01(par[14])
+  move_prob <- exp01(par[length(par)]) # last one is move par
   attract <- t(apply(attract, 1, function(r) {
     cent <- ceiling(length(r) / 2)
     r[cent] <- r[cent] * (1 - move_prob)
@@ -478,20 +505,16 @@ log_likelihood <- function(par, objects, debug = FALSE, model = 1) {
   predictions <- matrix(0, nrow = sim_steps, ncol = n_obs)
   for (i in 1:n_obs) {
     prob <- current[obs[i], i, ]
-    predictions[, i] <- ifelse(prob == 0, 1e-20, prob)
+    predictions[, i] <- ifelse(prob == 0, 1e-10, prob)
   }
 
-  log_likelihood <- rowSums(log(predictions), na.rm = TRUE)
-  # log of product is sum of logs
-
-  out <- -max(log_likelihood, na.rm = TRUE)
+  log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
+  out            <- -max(log_likelihood, na.rm = TRUE)
   ## DEBUG
-  # out <- -log_likelihood[obs_interval + 2]
-
+  # out          <- -log_likelihood[obs_interval + 2]
   if (is.infinite(out) || is.na(out)) out <- 0
-
   if (debug) {
-    return(list(out = out, predictions = predictions))
+    return(list(out = out, array = current, predictions = predictions))
   } else {
     return(out)
   }
@@ -671,12 +694,8 @@ par_to_df <- function(par) {
 }
 
 results_table <- function(s) {
-  
   # null <- load_output("LL_null")
-  
-  output <- lapply(s, function(x) {
-    load_output(paste0("LL_", x))
-  })
+  output <- lapply(s, function(x) load_output(x))
 
   likelihood <- lapply(output, function(x) -x[[1]])
   params <- lapply(output, function(x) par_to_df(x[[2]]))
@@ -685,7 +704,6 @@ results_table <- function(s) {
   aic <- lapply(seq_len(length(likelihood)), function(i) {
     2 * npar[i] - 2 * likelihood[[i]]
   })  
-  
 
   df <- as.data.frame(cbind(do.call(cbind, likelihood), do.call(cbind, aic)))
   colnames(df) <- c(paste0("l_", s), paste0("aic_", s))

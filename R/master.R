@@ -41,7 +41,7 @@ if (run_model) {
 
     ## Actual fitting options
     refit_model     <- TRUE             # Refit movement model parameters
-    model_type      <- 1                # 1 = tradSSF, 2 = path propagation
+    model_type      <- 2                # 1 = tradSSF, 2 = path propagation
     holdout_set     <- TRUE             # Hold out a set of points
     holdout_frac    <- 0.7              # Fraction of points to use for fitting
     model_calcnull  <- FALSE            # Calculate null likelihoods 
@@ -67,7 +67,7 @@ if (run_model) {
         gsub("NA_", "", .) %>%
         as.numeric()
     done <- done[!is.na(done)]
-    # i_todo <- setdiff(seq_len(n_iter), done)
+    i_todo <- setdiff(seq_len(n_iter), done)
     i_todo <- 4
     message(paste0("Number of jaguars to process: ", length(i_todo)))
 

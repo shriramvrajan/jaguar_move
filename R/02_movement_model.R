@@ -80,9 +80,11 @@ if (refit_model) {
     if (holdout_set && nrow(jag_traject) > 100) {
       hold <- seq_len(ceiling(nrow(jag_traject) * holdout_frac))
       jag_traject <- jag_traject[hold, ]
+      jag_traject_cells <- jag_traject_cells[hold]
     }
 
-    param0 <- rep(1, npar)
+    param0 <- c(0, 0, 0, 0, 0, 0, 0.63)
+    # param0 <- rep(1, npar)
 
     # Preparing model objects based on model type; 1 = SSF, 2 = path propagation
     if (model_type == 1) {
@@ -99,7 +101,7 @@ if (refit_model) {
           return(which(nbhd[i, ] == step))
         }
       }) %>% unlist()
-      env <- scale(envdf[unique(nbhd), ])
+      env <- scale(envdf[unique(nbhd), ]) 
       if (any(is.na(env))) env[which(is.na(env))] <- 0
       nbhd_c <- matrix(as.character(nbhd), nrow = nrow(nbhd), ncol = ncol(nbhd)) # needs to be character for this one
       objects <- list(nbhd_c, obs, env, max_dist)

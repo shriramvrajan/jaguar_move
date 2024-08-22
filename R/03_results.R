@@ -34,3 +34,7 @@ plotmain(1, param[[1]])
 
 m1 <- readRDS("data/output/debug_trad/debug_4.rds")
 m2 <- readRDS("data/output/debug_pp/debug_4.rds")
+m3 <- readRDS("data/output/debug_pp_nointercept/debug_4.rds")
+
+aic1 <- 2 * 8 + 2 * m1$out  # sign flipped in model
+aic2 <- 2 * 8 + 2 * m2$out

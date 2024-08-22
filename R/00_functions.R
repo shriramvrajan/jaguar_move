@@ -47,7 +47,7 @@ biome <- vect("data/input/Brazil_biomes/Brazil_biomes.shp")
 
 # Logistic function 
 exp01 <- function(x) {
-    return(exp(x) / (1 + exp(x)))
+    return(1 / (1 + exp(x)))
 }
 
 # Calculate moving window average
@@ -168,11 +168,11 @@ make_full_track <- function(id) {
 # path: path of jaguar
 # grad: number of colors to use for path
 # ras: raster stack of environmental layers
-plot_env <- function(layer, bounds, path, grad = 20, ras = env) {
+plot_env <- function(layer, bounds, path, grad = 20, ras = brazil_ras) {
     terra::plot(crop(ras[[layer]], bounds), main = names(ras)[layer], 
-                col = (viridis(50)))
+                col = (gray.colors(50)))
     # pal <- colorRampPalette(c("#ff0000", "#1bbe29"))(grad)
-    pal <- rep(rgb(0.5, 0.5, 0.5, 0.5), 20)
+    pal <- viridis(grad)
     path <- as.data.frame(path)
     path$col <- rep(pal, each = ceiling(nrow(path) / grad))[seq_len(nrow(path))]
     points(x = path$x, y = path$y, pch = 19, cex = 0.8, col = path$col)
@@ -393,6 +393,7 @@ prep_model_objects <- function(traject, max_dist, rdf, norm_env = TRUE,
 
     # Normalizing desired environmental variables for extended neighborhood    
     env_i <- if (sim) scale(rdf$sim1[nbhd_index]) else scale(rdf[nbhd_index, ])
+    if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
     message("Environmental variables prepared.")
 
     message("Prepared model objects.")
@@ -407,16 +408,25 @@ prep_model_objects <- function(traject, max_dist, rdf, norm_env = TRUE,
 # par:      Parameters for functional form
 # format:   TRUE to return as matrix, FALSE to return as vector
 env_function <- function(env, par, nbhd, sim = FALSE) {
+  # Second order
   # attract <- 1 / (1 + exp(par[1] + par[2] * env[, 1] + par[3] * env[, 1]^2 +   # footprint
   #                         par[4] * env[, 2] + par[5] * env[, 2]^2 +            # elevation
   #                         par[6] * env[, 3] + par[7] * env[, 3]^2 +            # slope
   #                         par[8] * env[, 4] + par[9] * env[, 4]^2 +            # forest cover
   #                         par[10] * env[, 5] + par[11] * env[, 5]^2 +          # distance to water
   #                         par[12] * env[, 6] + par[13] * env[, 6]^2))          # distance to road
-  attract <- 1 / (1 + exp(par[1] + par[2] * env[, 1] + par[3] * env[, 2] +
-                          par[4] * env[, 3] + par[5] * env[, 4] + 
-                          par[6] * env[, 5] + par[7] * env[, 6]))
+
+  # First order
+  # attract <- 1 / (1 + exp(par[1] + par[2] * env[, 1] + par[3] * env[, 2] +
+  #                         par[4] * env[, 3] + par[5] * env[, 4] + 
+  #                         par[6] * env[, 5] + par[7] * env[, 6]))
+  
+  # # First order no intercept
+  attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
+                          par[3] * env[, 3] + par[4] * env[, 4] + 
+                          par[5] * env[, 5] + par[6] * env[, 6]))
   attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
+  attract <- attract / rowSums(attract, na.rm = TRUE)
   return(attract)  
 }
 
@@ -426,7 +436,8 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   env      <- objects[[3]]
   max_dist <- objects[[4]]
 
-  kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[length(par)])) # last one is move par
+  # kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[length(par) - 1])) # second last one is move par
+  kernel0 <- dexp(1:(max_dist + 1), rate = par[length(par) - 1]) # fitted move par for jag#4  
   kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
   center <- max_dist + 1
   for (i in seq_len(center + max_dist)) {
@@ -434,11 +445,14 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
       kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
     }
   }
+  kernel <- kernel / sum(kernel)
 
+  env_weight <- exp01(par[length(par)]) # last one is env weighting par
   attract0 <- env_function(env, par, nbhd)
   # attract  <- attract0 / rowSums(attract0)
   attract <- t(apply(attract0, 1, function(r) {
-    return((r * kernel) / sum(r * kernel))
+    p <- env_weight * r + (1 - env_weight) * kernel
+    return(p / sum(p, na.rm = T))
   }))
 
   like <- sapply(seq_along(obs), function(i) {
@@ -448,8 +462,11 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   out <- -sum(log(like), na.rm = TRUE)
 
   if (is.infinite(out) || is.na(out)) out <- 0
-
-  if (debug) return(list(attract = attract, like = like, out = out)) else return(out)
+  if (debug) {
+    return(list(attract = attract, like = like, out = out, par = par))
+  } else {
+    return(out)
+  }
 }
 
 # env_i       : Env variables for each cell of the extended neighborhood
@@ -472,7 +489,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   max_dist   <- objects[[6]]
   sim_steps  <- objects[[7]]
   n_obs      <- length(obs) + 1
-
+  
   attract <- env_function(env_i, par, nbhd = nbhd_i)
   move_prob <- exp01(par[length(par)]) # last one is move par
   attract <- t(apply(attract, 1, function(r) {
@@ -480,7 +497,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
     r[cent] <- r[cent] * (1 - move_prob)
     r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
     return(r / sum(r, na.rm = TRUE))
-  })) %>% normalize_nbhd(nbhd_i)
+  })) #%>% normalize_nbhd(nbhd_i)
 
   # Array for propagating probabilities forward 
   ncell_local <- (2 * max_dist + 1)^2 
@@ -505,7 +522,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   predictions <- matrix(0, nrow = sim_steps, ncol = n_obs)
   for (i in 1:n_obs) {
     prob <- current[obs[i], i, ]
-    predictions[, i] <- ifelse(prob == 0, 1e-10, prob)
+    predictions[, i] <- ifelse(prob == 0, 1e-4, prob)
   }
 
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
@@ -514,7 +531,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   # out          <- -log_likelihood[obs_interval + 2]
   if (is.infinite(out) || is.na(out)) out <- 0
   if (debug) {
-    return(list(out = out, array = current, predictions = predictions))
+    return(list(out = out, array = current, predictions = predictions, par = par))
   } else {
     return(out)
   }

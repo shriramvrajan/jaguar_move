@@ -10,28 +10,6 @@ res <- results_table(s)[[1]]  # [[2]] = parameter values
 head(res)
 param <- results_table(s)[[2]]
 
-plot(res$aic_sim_ss, res$aic_sim_pp, xlab = "AIC traditional", ylab = "AIC path propagation")
-abline(0, 1)
-
-# 
-
-# plotting histograms for individuals 5 and 54
-# our model is slightly worse for 5, better for 54p
-
-plot2 <- function(i) {
-
-
-    hist(pss, col = rgb(1, 0, 0, 0.3), border = NA, breaks = 50, xlim = c(0, 1))
-    hist(ppp, col = rgb(0, 0, 1, 0.3), border = NA, breaks = 80, add = TRUE)
-}
-
-
-
-
-
-
-
-
 
 
 # Parameter plots --------------------------------------------------------------

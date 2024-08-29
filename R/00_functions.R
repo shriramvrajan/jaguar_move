@@ -546,8 +546,7 @@ run_optim <- function(param, objects, i) {
             par_out <- optim(param, llfunc, objects = objects)
 
             message("Running loglike_fun...")
-            likelihood <- llfunc(par_out[[1]], objects = objects)
-            out <- list(par = par_out, likelihood = likelihood)    
+            out <- llfunc(par_out[[1]], objects = objects, debug = TRUE)  
             saveRDS(out, paste0("data/output/out_", i, ".rds"))
 
             message(paste0("jaguar ", i, " fitted ", date()))
@@ -697,11 +696,11 @@ load_output <- function(name) {
     dir <- paste0("data/output/", name, "/")
     # ll_files <- list.files(dir)[grep("likelihood_", list.files(dir))]
     # par_files <- list.files(dir)[grep("par_out_", list.files(dir))]
-    ll_files <- paste0("likelihood_", 1:njag, ".rds")
-    par_files <- paste0("par_out_", 1:njag, ".rds")
-    ll <- load_if_exists(ll_files, dir)
-    par <- load_if_exists(par_files, dir)
-    return(list(unlist(ll), par))
+    # ll_files <- paste0("likelihood_", 1:njag, ".rds")
+    # par_files <- paste0("par_out_", 1:njag, ".rds")
+    out_files <- paste0("out_", 1:njag, ".rds")
+    out <- load_if_exists(out_files, dir)
+    return(out)
 }
 
 par_to_df <- function(par) {
@@ -714,7 +713,9 @@ results_table <- function(s) {
   # null <- load_output("LL_null")
   output <- lapply(s, function(x) load_output(x))
 
-  likelihood <- lapply(output, function(x) -x[[1]])
+  likelihood <- lapply(output, function(x) {
+    print(x[2])
+  })
   params <- lapply(output, function(x) par_to_df(x[[2]]))
   names(params) <- s
   npar <- sapply(params, function(x) ncol(x))

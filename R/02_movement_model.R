@@ -61,8 +61,8 @@ if (refit_model) {
 
   message("Fitting model parameters")
 
-  # foreach(i = i_todo) %dopar% {
-  for (i in i_todo) {  # easier to debug
+  foreach(i = i_todo) %dopar% {
+  # for (i in i_todo) {  # easier to debug
     message(paste0("Jaguar #: ", i))
     id                <- as.numeric(jag_id[i])
     jag_traject       <- jag_move[ID == id, 3:4]
@@ -83,8 +83,7 @@ if (refit_model) {
       jag_traject_cells <- jag_traject_cells[hold]
     }
 
-    param0 <- c(0, 0, 0, 0, 0, 0, 0.63)
-    # param0 <- rep(1, npar)
+    param0 <- rep(1, npar)
 
     # Preparing model objects based on model type; 1 = SSF, 2 = path propagation
     if (model_type == 1) {
@@ -115,9 +114,7 @@ if (refit_model) {
     # Calculate null likelihoods for each jaguar if not already done
     if (model_calcnull) {
       message(paste0("Calculating null likelihood for jaguar ", i))
-      null_likelihood <- switch(model_type,
-                                log_likelihood0(c(rep(0, npar)), objects),
-                                log_likelihood1(c(rep(0, npar)), objects))
+      null_likelihood <- ll_func(c(rep(0, npar)), objects)
       saveRDS(null_likelihood, paste0("data/output/null_", i, ".RDS"))
     } else {
       message("Running optim...")

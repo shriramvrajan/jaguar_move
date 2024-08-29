@@ -436,8 +436,7 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   env      <- objects[[3]]
   max_dist <- objects[[4]]
 
-  # kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[length(par) - 1])) # second last one is move par
-  kernel0 <- dexp(1:(max_dist + 1), rate = par[length(par) - 1]) # fitted move par for jag#4  
+  kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[length(par) - 1])) # second last one is move par
   kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
   center <- max_dist + 1
   for (i in seq_len(center + max_dist)) {
@@ -458,6 +457,7 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   like <- sapply(seq_along(obs), function(i) {
     return(attract[i, obs[i]])
   })
+  
   if (any(like == 0)) like[like == 0] <- 1e-4
   out <- -sum(log(like), na.rm = TRUE)
 
@@ -544,11 +544,11 @@ run_optim <- function(param, objects, i) {
     while (ntries <= 20) {
         tryCatch({
             par_out <- optim(param, llfunc, objects = objects)
-            saveRDS(par_out, paste0("data/output/par_out_", i, ".rds"))
 
             message("Running loglike_fun...")
             likelihood <- llfunc(par_out[[1]], objects = objects)
-            saveRDS(likelihood, paste0("data/output/likelihood_", i, ".rds"))
+            out <- list(par = par_out, likelihood = likelihood)    
+            saveRDS(out, paste0("data/output/out_", i, ".rds"))
 
             message(paste0("jaguar ", i, " fitted ", date()))
             ntries <- 21 # End while loop

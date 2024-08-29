@@ -16,7 +16,7 @@ debug_02        <- TRUE
 
 ## Set up parallel processing ==================================================
 
-parallel        <- FALSE
+parallel        <- TRUE
 ncore           <- 8
 if (parallel) {
     library(doParallel)
@@ -41,25 +41,25 @@ if (run_model) {
 
     ## Actual fitting options
     refit_model     <- TRUE             # Refit movement model parameters
-    model_type      <- 2                # 1 = tradSSF, 2 = path propagation
-    holdout_set     <- TRUE             # Hold out a set of points
-    holdout_frac    <- 0.7              # Fraction of points to use for fitting
+    model_type      <-   1              # 1 = tradSSF, 2 = path propagation
+    holdout_set     <- FALSE             # Hold out a set of points
+    # holdout_frac    <- 0.7              # Fraction of points to use for fitting
     model_calcnull  <- FALSE            # Calculate null likelihoods 
                                         # refit_model must be TRUE for this one
     ## Parameters                                    
-    npar            <- 8              # Number of parameters in current model
+    npar            <- switch(model_type, 8, 7)              # Number of parameters in current model
     sim_steps       <- 8              # How many steps to simulate forward
     step_size       <- 1              # Jaguars move 1px (1km) at a time
-    # n_iter          <- nrow(jag_id)   # Number of individuals
-    n_iter          <- 5
+    n_iter          <- nrow(jag_id)   # Number of individuals
     
+    message("============================================")
     message("Parameters set")
     message(paste0("Number of jaguars: ", n_iter))
-    message(paste0("Holdout fraction: ", holdout_frac))
     message(paste0("Number of parameters: ", npar))
     message(paste0("Number of simulation steps: ", sim_steps))
     message(paste0("Step size: ", step_size))
-    message("=========================================")
+    if (holdout_set) message(paste0("Holdout fraction: ", holdout_frac))
+    message("============================================")
 
     outfiles <- list.files("data/output")
     done <- gsub(".rds", "", outfiles) %>% 
@@ -68,7 +68,6 @@ if (run_model) {
         as.numeric()
     done <- done[!is.na(done)]
     i_todo <- setdiff(seq_len(n_iter), done)
-    i_todo <- 4
     message(paste0("Number of jaguars to process: ", length(i_todo)))
 
     if (!exists("nbhd0")) {

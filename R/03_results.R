@@ -1,16 +1,52 @@
 source("R/00_functions.R")
 
+# probably need to rewrite results_table function
+s <- c("sim_ss", "sim_pp")
+
+res <- results_table(s)
+
+# jaguar
+# hypothesis: model works better (aic_ss>aic_pp) if steps are longer
+aicdiff <- res$aic_ss - res$aic_pp
+distprop <- by(jag_move, jag_move$ID, function(x) {
+    return(length(which(x$dist > 3000)) / length(x$dist))
+}) %>% unlist() %>% as.numeric()
+plot(distprop, )
+
+jag_move$step_time <- as.POSIXct(jag_move$timestamp, format = "%m/%d/%y %H:%M")
+jag_move <- jag_move[-which(ID == 25), ]
+interval  <- by(jag_move, jag_move$ID, function(x) {
+    return(difftime(x$step_time, lag(x$step_time), units = "hours"))
+}) %>% unlist() %>% as.numeric()
+
+
+
+
+# lets look at individuals first
+i <- 52
+lss <- paste0("data/output/sim_ss/out_", i, ".rds") %>% readRDS()
+lpp <- paste0("data/output/out_", i, ".rds") %>% readRDS()
+print(lss$out * 2 + 14)
+print(lpp$out * 2 + 16)
+l1 <- lss$attract
+l2 <- t(lpp$array[, , which.max(rowSums(log(lpp$predictions), na.rm = T))])
+plotl <- function(i) {
+    plot(l1[i, ], type = "l", col = "red", ylim = c(0, 1))
+    lines(l2[i, ], col = "blue")
+}
+plotl(330)
+
+# now next step- compare AICs and look at how they relate to step lengths
+results_table <- function(s) {
+
+}
+
+
+
+
 # Results ----------------------------------------------------------------------
 jagmeta_br <- jag_meta[ID %in% jag_id[[1]], ]
 env <- brazil_ras
-
-s <- c("sim_ss", "sim_pp")
-# s <- c("o_trad", "o_rwm", "o_newfunc", "s2", "s6", "s7")
-res <- results_table(s)[[1]]  # [[2]] = parameter values
-head(res)
-param <- results_table(s)[[2]]
-
-
 
 # Parameter plots --------------------------------------------------------------
 # need to figure out what happened to the null likelihoods

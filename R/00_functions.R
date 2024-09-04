@@ -9,7 +9,7 @@ library(data.table)
 library(gstat)
 library(ctmm)
 library(amt) 
-# library(lubridate)
+library(lubridate)
 # library(fitdistrplus)
 library(foreach)
 library(doParallel)
@@ -436,7 +436,7 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   env      <- objects[[3]]
   max_dist <- objects[[4]]
 
-  kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[length(par) - 1])) # second last one is move par
+  kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[7])) # move par
   kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
   center <- max_dist + 1
   for (i in seq_len(center + max_dist)) {
@@ -446,11 +446,11 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   }
   kernel <- kernel / sum(kernel)
 
-  env_weight <- exp01(par[length(par)]) # last one is env weighting par
+  # env_weight <- exp01(par[length(par)]) # last one is env weighting par
   attract0 <- env_function(env, par, nbhd)
   # attract  <- attract0 / rowSums(attract0)
-  attract <- t(apply(attract0, 1, function(r) {
-    p <- env_weight * r + (1 - env_weight) * kernel
+  attract <- t(apply(attract0, 1, function(env) {
+    p <- env * kernel
     return(p / sum(p, na.rm = T))
   }))
 
@@ -497,7 +497,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
     r[cent] <- r[cent] * (1 - move_prob)
     r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
     return(r / sum(r, na.rm = TRUE))
-  })) #%>% normalize_nbhd(nbhd_i)
+  })) # multiply environmental kernel and movement kernel
 
   # Array for propagating probabilities forward 
   ncell_local <- (2 * max_dist + 1)^2 
@@ -710,43 +710,48 @@ par_to_df <- function(par) {
 }
 
 results_table <- function(s) {
-  # null <- load_output("LL_null")
-  output <- lapply(s, function(x) load_output(x))
+  
+  lldf <- sapply(s, function(i) {
+    indiv <- paste0("out_", 1:82, ".rds")
+    out <- sapply(indiv, function(j) {
+      print(paste(i, j))
+      if (!(j %in% list.files(paste0("data/output/", i, "/")))) {
+        return(NA)
+      } else {
+        out <- readRDS(paste0("data/output/", i, "/", j))
+        return(out$out)
+      }
+    })
+  }) %>% data.table()
 
-  likelihood <- lapply(output, function(x) {
-    print(x[2])
+  # npar <- sapply(params, function(x) length(x[[1]]))
+  npar <- 7 # fix this later
+  aic <- apply(lldf, 2, function(x) {
+    return(2 * x + 2 * npar)
   })
-  params <- lapply(output, function(x) par_to_df(x[[2]]))
-  names(params) <- s
-  npar <- sapply(params, function(x) ncol(x))
-  aic <- lapply(seq_len(length(likelihood)), function(i) {
-    2 * npar[i] - 2 * likelihood[[i]]
-  })  
-
-  df <- as.data.frame(cbind(do.call(cbind, likelihood), do.call(cbind, aic)))
-  colnames(df) <- c(paste0("l_", s), paste0("aic_", s))
-
+  colnames(aic) <- gsub("sim", "aic", s)
+  df <- cbind(lldf, aic)
+  
   ## Extra variables
-  nmove <- sapply(1:njag, function(x) {
+  df$nmove <- sapply(1:njag, function(x) {
     length(which(jag_move$ID == as.numeric(jag_id[x])))
   })
-  ndays <- sapply(1:njag, function(x) {
+  df$ndays <- sapply(1:njag, function(x) {
     moves <- jag_move[ID == as.numeric(jag_id[x])]
     dates <- sort(as.Date(sapply(moves$timestamp, function(dt) {
             strsplit(as.character(dt), " ")[[1]][1]
         }), format = "%m/%d/%y"))
     return(as.numeric(difftime(dates[length(dates)], dates[1])))
   })
-  meandist <- tapply(jag_move$dist, jag_move$ID, function(x) mean(x, na.rm = TRUE))
-  totdist <- tapply(jag_move$dist, jag_move$ID, function(x) sum(x, na.rm = TRUE))
+  df$meandist <- tapply(jag_move$dist, jag_move$ID, function(x) mean(x, na.rm = TRUE))
+  df$totdist <- tapply(jag_move$dist, jag_move$ID, function(x) sum(x, na.rm = TRUE))
 
-  df <- cbind(jag_id, sex = as.factor(jagmeta_br$Sex),
-                  age = as.numeric(jagmeta_br$Estimated.Age),
-                  weight = as.numeric(jagmeta_br$Weight),
-                  bio = as.factor(jagmeta_br$biome),
-                  nmove, ndays, meandist, totdist, df)
+  df <- cbind(jag_id, sex = as.factor(jag_meta$Sex),
+                  age = as.numeric(jag_meta$Estimated.Age),
+                  weight = as.numeric(jag_meta$Weight),
+                  bio = as.factor(jag_meta$biome), df)
 
-  return(list(df, params))
+  return(df)
 }
 
 # Extra attraction functions in 00a_attraction_functions.R

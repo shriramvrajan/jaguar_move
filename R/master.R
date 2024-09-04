@@ -14,17 +14,6 @@ analyse_output  <- FALSE
 
 debug_02        <- TRUE
 
-## Set up parallel processing ==================================================
-
-parallel        <- TRUE
-ncore           <- 8
-if (parallel) {
-    library(doParallel)
-    library(foreach)
-    registerDoParallel(ncore)
-    message(paste0("number of workers: ", getDoParWorkers()))
-}
-
 ## Data generation =============================================================
 
 if (generate_data) {
@@ -41,7 +30,7 @@ if (run_model) {
 
     ## Actual fitting options
     refit_model     <- TRUE             # Refit movement model parameters
-    model_type      <-   2              # 1 = tradSSF, 2 = path propagation
+    model_type      <- 1                # 1 = tradSSF, 2 = path propagation
     holdout_set     <- FALSE             # Hold out a set of points
     # holdout_frac    <- 0.7              # Fraction of points to use for fitting
     model_calcnull  <- FALSE            # Calculate null likelihoods 
@@ -52,6 +41,16 @@ if (run_model) {
     step_size       <- 1              # Jaguars move 1px (1km) at a time
     n_iter          <- nrow(jag_id)   # Number of individuals
     
+    ## Set up parallel processing
+    parallel        <- TRUE
+    ncore           <- switch(model_type, 10, 6)
+    if (parallel) {
+        library(doParallel)
+        library(foreach)
+        registerDoParallel(ncore)
+        message(paste0("number of workers: ", getDoParWorkers()))
+    }
+
     message("============================================")
     message("Parameters set")
     message(paste0("Number of jaguars: ", n_iter))
@@ -63,7 +62,7 @@ if (run_model) {
 
     outfiles <- list.files("data/output")
     done <- gsub(".rds", "", outfiles) %>% 
-        gsub("par_out_", "", .) %>% 
+        gsub("out_", "", .) %>% 
         gsub("NA_", "", .) %>%
         as.numeric()
     done <- done[!is.na(done)]

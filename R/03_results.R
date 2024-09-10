@@ -1,26 +1,39 @@
 source("R/00_functions.R")
 
-# probably need to rewrite results_table function
-s <- c("sim_ss", "sim_pp")
-
+s <- c("ss3", "pp", "pp3")
 res <- results_table(s)
+
+plotpdf()
+plot(res$aic_ss3, res$aic_pp, pch = 19, cex = 0.7, xlab = "AIC for step selection",
+     ylab = "AIC for path propagation")
+abline(0, 1)
+# points(res$aic_ss3, res$aic_pp5, pch = 19, cex = 0.7, col = "#194b19")
+# points(res$aic_ss3, res$aic_pp3, pch = 19, cex = 0.7, col = "#a03a15")
+dev.off()
+
+
+
+plot(res$aic_ss3, res$aic_pp, pch = 19)
+abline(0, 1)
+points(res$aic_ss3, res$aic_pp2, pch = 19, col = "red")
+points(res$ss3, res$ssH, pch = 19, col = "green")
+plot(res$ssH, res$ppH, pch = 19)
+abline(0, 1)
 
 # jaguar
 # hypothesis: model works better (aic_ss>aic_pp) if steps are longer
-aicdiff <- res$aic_ss - res$aic_pp
+aicdiff <- res$aic_ss2 - res$aic_pp
 distprop <- by(jag_move, jag_move$ID, function(x) {
     return(length(which(x$dist > 3000)) / length(x$dist))
 }) %>% unlist() %>% as.numeric()
-plot(distprop, )
+plot(distprop, aicdiff)
+plot(distprop, aicdiff, ylim = c(-500, 500))
 
-jag_move$step_time <- as.POSIXct(jag_move$timestamp, format = "%m/%d/%y %H:%M")
-jag_move <- jag_move[-which(ID == 25), ]
-interval  <- by(jag_move, jag_move$ID, function(x) {
-    return(difftime(x$step_time, lag(x$step_time), units = "hours"))
-}) %>% unlist() %>% as.numeric()
-
-
-
+# jag_move$step_time <- as.POSIXct(jag_move$timestamp, format = "%m/%d/%y %H:%M")
+# jag_move <- jag_move[-which(ID == 25), ]
+# interval  <- by(jag_move, jag_move$ID, function(x) {
+#     return(difftime(x$step_time, lag(x$step_time), units = "hours"))
+# }) %>% unlist() %>% as.numeric()
 
 # lets look at individuals first
 i <- 52

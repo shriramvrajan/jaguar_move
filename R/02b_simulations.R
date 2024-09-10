@@ -1,10 +1,9 @@
 # Simulation of animal movement and habitat selection, with parallel processing
-
 source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s22"
+simname <- "s2"
 
 # Switches for reusing old data
 gen_land   <- F
@@ -14,6 +13,7 @@ gen_path   <- T
 fit_indiv  <- T
 fit_all    <- F
 debug_fit  <- F
+sim_steps  <- 8
 
 # Number of cores to use for path generation and fitting
 ncore_path <- 6
@@ -33,9 +33,9 @@ par0 <- c(NA, 3, -2, 0.3)
 
 ### Path generation parameters:
 step_size    <- 1             # Max # pixels for each step
-obs_interval <- 0             # Number of steps to skip between observations
-n_step       <- 2000          # Number of steps to simulate
-sim_n        <- 20            # Number of simulations 
+obs_interval <- 5             # Number of steps to skip between observations
+n_step       <- 500          # Number of steps to simulate
+sim_n        <- 10            # Number of simulations 
 n_obs        <- ceiling(n_step / (obs_interval + 1))
 
 ### Write parameters to file
@@ -73,8 +73,8 @@ if (!gen_path) {
     message("Simulating new paths")
     parallel_setup(ncore_path)
     env02 <- terra::wrap(env01) # foreach needs this
-    # paths <- lapply(1:sim_n, function(i) {
     paths <- foreach(i = 1:sim_n, .packages = "terra") %dopar% {
+    # paths <- for (i in 1:sim_n) { # easier to debug
         env01 <- unwrap(env02)
         message(paste0("Path #: ", i, " / ", sim_n))
         x0 <- ceiling(envsize / 2)
@@ -106,7 +106,7 @@ if (fit_indiv || fit_all) {
 
     max_dist <- step_size * (obs_interval + 1)
     ncell_local <- (2 * max_dist + 1) ^ 2
-    sim_steps   <- obs_interval * step_size + 2
+    # sim_steps   <- obs_interval * step_size + 2
     # Number of steps to simulate, interval + first and last steps
 
     parallel_setup(ncore_fit)
@@ -118,30 +118,38 @@ if (fit_indiv || fit_all) {
             as.numeric()
     todo <- setdiff(1:sim_n, done)
     message(paste0("Fitting ", length(todo), " individuals"))
-    env02 <- terra::wrap(env01) # foreach needs this
 
     # Prepare objects for fitting
-    objects_all <- lapply(jag_traject_cells, function(traject) {
-        return(prep_model_objects(traject, max_dist, env01))
+    objects_all <- lapply(seq_len(sim_n), function(n) {
+        paste0("Preparing objects for path: ", n) %>% message()
+        out           <- prep_model_objects(jag_traject_cells[[n]], max_dist, env01, sim = TRUE)
+        out$sim_steps <- sim_steps
+        return(out)
     })
     
-
     if (fit_indiv) {
         # Fit individuals one at a time ----------------------------------------
-        # fit <- do.call(rbind, lapply(todo, function(i) {
-        foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
+        fit <- do.call(rbind, lapply(todo, function(i) { # easier to debug
+        # foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
             message(paste0("Fitting individual #: ", i, " / ", length(todo)))            
-            message("Fitting parameters for model 1: path-dependent kernel")
+            message("Fitting parameters for model 1: step-selection")
             objects1 <- objects_all[[i]]
-            par_out1 <- optim(par_start, log_likelihood, objects = objects1)
-            ll <- log_likelihood(par_out1$par, objects1)
-            message(paste0("Saving log-likelihood for model 1: ", i))
-            saveRDS(ll, file = paste0("simulations/ll_fit1", i, ".rds"))
+            par_out1 <- optim(par_start, log_likelihood0, objects = objects1)
+            ll1 <- log_likelihood0(par_out1$par, objects1)
+            message("Fitting parameters for model 2: path-propagation")
+            par_out2 <- optim(par_start, log_likelihood, objects = objects1)
+            ll2 <- log_likelihood(par_out2$par, objects1)
+
+            message(paste0("Saving log-likelihoods: ", i))
+            saveRDS(ll1, file = paste0("simulations/ll_fit1", i, ".rds"))
             saveRDS(par_out1$par,
-                    file = paste0("simulations/par_out_", i, ".rds"))
+                    file = paste0("simulations/par_out1_", i, ".rds"))
+            saveRDS(ll2, file = paste0("simulations/ll_fit2", i, ".rds"))
+            saveRDS(par_out2$par,
+                    file = paste0("simulations/par_out2_", i, ".rds"))
             message(paste0("COMPLETED path #: ", i, " / ", sim_n))
         }
-        # ))    
+        ))    # easier to debug
     }
     
     if (fit_all) {

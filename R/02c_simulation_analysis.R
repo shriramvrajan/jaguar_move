@@ -8,9 +8,7 @@ param_plots    <- T
 debug_fit      <- F
 indiv_analysis <- F
 
-simdir         <- "simulations/s22/"
-
-parallel_setup(1)
+simdir         <- "simulations/old/s22/"
 
 ## Load data ===================================================================
 message("Loading data")
@@ -27,7 +25,11 @@ print(params)
 fit <- load_if_exists(paste0("par_out_", 1:sim_n, ".rds"), dir = simdir) %>%
         do.call(rbind, .) %>% 
         as.data.frame() 
-if (all(is.na(fit))) fit <- readRDS(paste0(simdir, "par_out_all.rds"))
+# fit2 <- load_if_exists(paste0("par_out2_", 1:sim_n, ".rds"), dir = simdir) %>%
+#         do.call(rbind, .) %>% 
+#         as.data.frame() 
+# fit <- cbind(fit1, fit2)
+# if (all(is.na(fit))) fit <- readRDS(paste0(simdir, "par_out_all.rds"))
 fit$id <- seq_len(nrow(fit))
 if (ncol(fit) == 9) {
     names(fit) <- c("m1", "c1", "b1", "a1", "m2", "c2", "b2", "a2", "id")
@@ -58,10 +60,15 @@ if (param_plots) {
         return(out)
     })
     max_dist     <- step_size * (obs_interval + 1)
+
+    message("Building global neighborhood")
+    nbhd0 <- make_nbhd(i = seq_len(ncell(env01)), sz = step_size, r = env01) 
+
     objects_all <- lapply(jag_traject_cells, function(traject) {
-        return(prep_model_objects(traject, max_dist, env01))
+        return(prep_model_objects(traject, max_dist, env01, sim = TRUE))
     })
 
+    par0 <- c(3, -2, 0.3)
     y0 <- plot_curve(par0, values = TRUE)
     y1 <- lapply(seq_len(nrow(fit)), function(i) {
         mu <- objects_all[[i]]$mu_env
@@ -85,17 +92,21 @@ if (param_plots) {
     #     path$move[path$move > 0] <- 1
     #     path$env <- env01[cellFromRowCol(env01, path[, 1], path[, 2])]
     #     return(path[, c("move", "env")])
-    # })
+    # })aaa
     # Generated + fitted, all on same plot
+    plotpdf(nm = "figs/simplot1.pdf")
     par(mfrow = c(1, 1))
-    plot(y0, type = "l", lwd = 3, ylim = c(0, 1))
+    plot(y0, type = "l", lwd = 3, ylim = c(0, 1), xlab = "Environmental variable",
+         ylab = "Attraction")
     # lines(x1, yhat, lwd = 3, col = "#1a1a9e")
     # lines(x1, yhat2, lwd = 3, col = rgb(1, 0, 0, 0.8))
     for (i in seq_len(nrow(fit))) {
         lines(y1[[i]], col = rgb(0, 0, 1, 0.3), lwd = 3)
         # readline(paste(i, "Press [enter] to continue"))
     }
+    dev.off()
 
+    plotpdf(nm = "figs/simplot2.pdf", x = 12, y = 4)
     par(mfrow = c(1, 3))
     plot(fit$c1)
     abline(h = par0[1], col = "red")
@@ -103,6 +114,7 @@ if (param_plots) {
     abline(h = par0[2], col = "red")
     plot(fit$a1)
     abline(h = par0[3], col = "red")
+    dev.off()
 }
 
 ## Individual analysis =========================================================
@@ -161,6 +173,8 @@ if (indiv_analysis) {
 }
 
 ## Parameter landscape =========================================================
+
+if (FALSE) {
 jag_traject <- lapply(paths, function(p) {
     out <- cbind(p$x, p$y)
     ind <- seq(1, nrow(out), obs_interval + 1)
@@ -204,7 +218,7 @@ p <- ggplot(data.frame(ll = ll_test, par_test), aes(x = b1, y = a1, fill = ll)) 
     scale_fill_viridis_c() +
     theme_minimal() +
     labs(title = "Log-likelihood landscape", x = "b1", y = "a1")
-
+}
 
 
 

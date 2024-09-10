@@ -112,6 +112,11 @@ raster_to_df <- function(r) {
     return(outdf)
 }
 
+# Plot to pdf (for SSH)
+plotpdf <- function(nm = "plot1.pdf", x = 4, y = 4) {
+  pdf(nm, width = x, height = y)
+}
+
 # Return 9-cell neighborhood of cell in raster r
 rast9 <- function(r, cell) {
     # cell: cell number in raster
@@ -175,7 +180,7 @@ plot_env <- function(layer, bounds, path, grad = 20, ras = brazil_ras) {
     pal <- viridis(grad)
     path <- as.data.frame(path)
     path$col <- rep(pal, each = ceiling(nrow(path) / grad))[seq_len(nrow(path))]
-    points(x = path$x, y = path$y, pch = 19, cex = 0.8, col = path$col)
+    points(x = path$x, y = path$y, pch = 19, cex = 0.5, col = "red")
     # lines(x = path$x, y = path$y, col = rgb(0, 0, 0, 0.3), lwd = 0.3)
     # for (i in seq_len(nrow(path) - 1)){
     #     segments(path$x[i], path$y[i], path$x[i+1], path$y[i+1], 
@@ -344,10 +349,14 @@ normalize_nbhd <- function(v, nbhd) {
 # traject:   Path of individual, vector of raster cell indices
 # max_dist:  Maximum distance in pixels for one step
 # r:         Raster object
-prep_model_objects <- function(traject, max_dist, rdf, norm_env = TRUE, 
-                               sim = FALSE) {
+prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
     # Extended neighborhoods of each cell in individual's trajectory
-    nbhd_index <- make_nbhd(i = traject, sz = max_dist)
+    # browser()
+    if (sim) {
+      nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = env01)
+    } else {
+      nbhd_index <- make_nbhd(i = traject, sz = max_dist)
+    }
 
     # Each entry in the list is the immediate neighborhood of each cell in the 
     # extended neighborhood, as represented by a cell number of raster r
@@ -367,7 +376,6 @@ prep_model_objects <- function(traject, max_dist, rdf, norm_env = TRUE,
     # the immediate neighbors? Rows are each cell of nbhd_i columns are row #s 
     # from nbhd. All row lengths standardized with missing neighbors as NAs.
     to_dest <- tapply(seq_len(length(nbhd_i)), nbhd_i, function(x) {  
-      if (length(x) > 9) print(x)
       out <- c(x, rep(NA, ncol(nbhd_i) - length(x)))
       return(out)
     })
@@ -391,15 +399,23 @@ prep_model_objects <- function(traject, max_dist, rdf, norm_env = TRUE,
     } 
     message("Observed data prepared.")
 
-    # Normalizing desired environmental variables for extended neighborhood    
-    env_i <- if (sim) scale(rdf$sim1[nbhd_index]) else scale(rdf[nbhd_index, ])
+    # Normalizing desired environmental variables for extended neighborhood 
+    env_i <- if (sim) scale(rdf[nbhd_index]$sim1) else scale(rdf[nbhd_index, ])
     if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
     message("Environmental variables prepared.")
 
     message("Prepared model objects.")
-    out <- list(env_i, nbhd_i, to_dest, dest, obs, max_dist, sim_steps)
-    names(out) <- c("env_i", "nbhd_i", "to_dest", "dest", "obs", "max_dist", 
-                    "sim_steps")
+    if (sim) {
+      mu_env <- attributes(env_i)[[2]]
+      sd_env <- attributes(env_i)[[3]]
+      out <- list(env_i, nbhd_i, to_dest, dest, obs, max_dist, mu_env, sd_env)
+      names(out) <- c("env_i", "nbhd_i", "to_dest", "dest", "obs", "max_dist", 
+                      "mu_env", "sd_env")  
+    } else {
+      out <- list(env_i, nbhd_i, to_dest, dest, obs, max_dist, sim_steps)
+      names(out) <- c("env_i", "nbhd_i", "to_dest", "dest", "obs", "max_dist", 
+                      "sim_steps")
+    }
     return(out)
 }
 
@@ -421,43 +437,49 @@ env_function <- function(env, par, nbhd, sim = FALSE) {
   #                         par[4] * env[, 3] + par[5] * env[, 4] + 
   #                         par[6] * env[, 5] + par[7] * env[, 6]))
   
-  # # First order no intercept
-  attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-                          par[3] * env[, 3] + par[4] * env[, 4] + 
-                          par[5] * env[, 5] + par[6] * env[, 6]))
+  # # First order no intercept -------------------------------------------------
+  # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
+  #                         par[3] * env[, 3] + par[4] * env[, 4] + 
+  #                         par[5] * env[, 5] + par[6] * env[, 6]))
+ 
+  # Simulation -----------------------------------------------------------------
+  attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+
+  #-----------------------------------------------------------------------------
+
   attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
   attract <- attract / rowSums(attract, na.rm = TRUE)
   return(attract)  
 }
 
 log_likelihood0 <- function(par, objects, debug = FALSE) {
-  nbhd     <- objects[[1]]
-  obs      <- objects[[2]]
-  env      <- objects[[3]]
-  max_dist <- objects[[4]]
+  nbhd     <- objects$nbhd_i
+  obs      <- objects$obs
+  env      <- objects$env_i
+  max_dist <- objects$max_dist
 
-  kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[7])) # move par
-  kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
-  center <- max_dist + 1
-  for (i in seq_len(center + max_dist)) {
-    for (j in seq_len(center + max_dist)) {
-      kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
-    }
-  }
-  kernel <- kernel / sum(kernel)
-
-  # env_weight <- exp01(par[length(par)]) # last one is env weighting par
-  attract0 <- env_function(env, par, nbhd)
-  # attract  <- attract0 / rowSums(attract0)
-  attract <- t(apply(attract0, 1, function(env) {
-    p <- env * kernel
-    return(p / sum(p, na.rm = T))
-  }))
+  # 
+  # kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[7])) # move par
+  # kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
+  # center <- max_dist + 1
+  # for (i in seq_len(center + max_dist)) {
+  #   for (j in seq_len(center + max_dist)) {
+  #     kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
+  #   }
+  # }
+  # kernel <- kernel / sum(kernel)
+  # # env_weight <- exp01(par[length(par)]) # last one is env weighting par
+  # attract0 <- env_function(env, par, nbhd)
+  # # attract  <- attract0 / rowSums(attract0)
+  # attract <- t(apply(attract0, 1, function(env) {
+  #   p <- env * kernel
+  #   return(p / sum(p, na.rm = T))
+  # }))
+  attract <- env_function(env, par, nbhd)
 
   like <- sapply(seq_along(obs), function(i) {
     return(attract[i, obs[i]])
   })
-  
   if (any(like == 0)) like[like == 0] <- 1e-4
   out <- -sum(log(like), na.rm = TRUE)
 
@@ -481,23 +503,35 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
 # max_dist   : Maximum distance in pixels for one step
 # sim_steps  : Number of steps to simulate
 log_likelihood <- function(par, objects, debug = FALSE) {
-  env_i       <- objects[[1]]
-  nbhd_i      <- objects[[2]]
-  to_dest    <- objects[[3]]
-  dest       <- objects[[4]]
-  obs        <- objects[[5]]
-  max_dist   <- objects[[6]]
-  sim_steps  <- objects[[7]]
+  env_i       <- objects$env_i
+  nbhd_i      <- objects$nbhd_i
+  to_dest    <- objects$to_dest
+  dest       <- objects$dest
+  obs        <- objects$obs
+  max_dist   <- objects$max_dist
+  sim_steps  <- objects$sim_steps
   n_obs      <- length(obs) + 1
-  
-  attract <- env_function(env_i, par, nbhd = nbhd_i)
-  move_prob <- exp01(par[length(par)]) # last one is move par
-  attract <- t(apply(attract, 1, function(r) {
-    cent <- ceiling(length(r) / 2)
-    r[cent] <- r[cent] * (1 - move_prob)
-    r[-cent] <- r[-cent] * (move_prob / (sum(!is.na(r)) - 1))
-    return(r / sum(r, na.rm = TRUE))
-  })) # multiply environmental kernel and movement kernel
+
+  # Non-simulation -------------------------------------------------------------
+  # kernel0 <- dexp(1:(step_size + 1), rate = exp(par[7])) # move par
+  # kernel <- matrix(0, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
+  # center <- step_size + 1
+  # for (i in seq_len(center + step_size)) {
+  #   for (j in seq_len(center + step_size)) {
+  #     kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
+  #   }
+  # }
+  # kernel <- kernel / sum(kernel)
+  # attract0 <- env_function(env_i, par, nbhd = nbhd_i)
+  # attract <- t(apply(attract0, 1, function(env) {
+  #   p <- env * kernel
+  #   return(p / sum(p, na.rm = T))
+  # }))
+  # Simulation -----------------------------------------------------------------
+  attract <- env_function(env_i, par, nbhd_i)
+
+  # must be a more elegant way of doing this than commenting chunks in and out
+  #-----------------------------------------------------------------------------
 
   # Array for propagating probabilities forward 
   ncell_local <- (2 * max_dist + 1)^2 
@@ -512,7 +546,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
     # Probabilities across entire nbhd_ifor step j
     step_prob <- as.vector(current[, , j]) * attract[]
     #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
-    #   nbhd_iis the 3rd cell of nbhd.
+    #   nbhd_i is the 3rd cell of nbhd.
     dest[] <- step_prob[as.vector(to_dest)]
     # Summing probabilities up to step j to generate step j+1
     current[, , j + 1] <- rowSums(dest, na.rm = TRUE)
@@ -612,7 +646,9 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
           if (is.na(x)) {
             return(NA)
           } else {
-            return(env_function(env01[x], par[2:4], format = FALSE)$sim1)
+            x0 <- env01[x]$sim1
+            return(1 / (1 + exp(par[1] + par[2] * x0 + par[3] * x0^2)))
+            # return(env_function(env01[x], par[2:4], format = FALSE)$sim1)
           }
         })
         if (any(is.na(att))) att[is.na(att)] <- 0
@@ -693,7 +729,7 @@ plot_path <- function(path, int = obs_interval, vgram = FALSE,
 
 ## Load parameters and likelihood
 load_output <- function(name) {
-    dir <- paste0("data/output/", name, "/")
+    dir <- paste0("data/output/sim_", name, "/")
     # ll_files <- list.files(dir)[grep("likelihood_", list.files(dir))]
     # par_files <- list.files(dir)[grep("par_out_", list.files(dir))]
     # ll_files <- paste0("likelihood_", 1:njag, ".rds")
@@ -715,21 +751,22 @@ results_table <- function(s) {
     indiv <- paste0("out_", 1:82, ".rds")
     out <- sapply(indiv, function(j) {
       print(paste(i, j))
-      if (!(j %in% list.files(paste0("data/output/", i, "/")))) {
+      if (!(j %in% list.files(paste0("data/output/sim_", i, "/")))) {
         return(NA)
       } else {
-        out <- readRDS(paste0("data/output/", i, "/", j))
+        out <- readRDS(paste0("data/output/sim_", i, "/", j))
         return(out$out)
       }
     })
   }) %>% data.table()
+  colnames(lldf) <- paste0("ll_", s)
 
   # npar <- sapply(params, function(x) length(x[[1]]))
-  npar <- 7 # fix this later
-  aic <- apply(lldf, 2, function(x) {
-    return(2 * x + 2 * npar)
+  npar <- sapply(s, function(x) {
+    if (x == "ss") return(8) else return(7)
   })
-  colnames(aic) <- gsub("sim", "aic", s)
+  aic <- lldf * 2 + npar[col(lldf)] * 2
+  colnames(aic) <- paste0("aic_", s)
   df <- cbind(lldf, aic)
   
   ## Extra variables

@@ -3,16 +3,17 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s2"
+simname <- "s3"
 
 # Switches for reusing old data
 gen_land   <- F
 gen_path   <- T
 
 # Switches for fitting models
-fit_indiv  <- T
+fit_indiv  <- F
 fit_all    <- F
 debug_fit  <- F
+demo       <- T
 sim_steps  <- 8
 
 # Number of cores to use for path generation and fitting
@@ -22,9 +23,9 @@ ncore_fit  <- 6
 ## Parameters ==================================================================
 
 ### Landscape generation parameters:
-envsize <- 400    # size of landscape in cells
-s1 <- 1           # strength of autocorrelation 
-r1 <- 80          # range of autocorrelation in cells
+envsize <- 300    # size of landscape in cells
+s1 <- 5           # strength of autocorrelation 
+r1 <- 40          # range of autocorrelation in cells
 
 ### Model parameters:
 # Order: par_move, par_env0, par_env1, par_env2
@@ -32,10 +33,10 @@ par0 <- c(NA, 3, -2, 0.3)
 # par0 <- c(NA, 2, -0.2, -0.2)
 
 ### Path generation parameters:
-step_size    <- 1             # Max # pixels for each step
+step_size    <- 6             # Max # pixels for each step
 obs_interval <- 5             # Number of steps to skip between observations
 n_step       <- 500          # Number of steps to simulate
-sim_n        <- 10            # Number of simulations 
+sim_n        <- 1            # Number of simulations 
 n_obs        <- ceiling(n_step / (obs_interval + 1))
 
 ### Write parameters to file
@@ -73,13 +74,13 @@ if (!gen_path) {
     message("Simulating new paths")
     parallel_setup(ncore_path)
     env02 <- terra::wrap(env01) # foreach needs this
-    paths <- foreach(i = 1:sim_n, .packages = "terra") %dopar% {
-    # paths <- for (i in 1:sim_n) { # easier to debug
+    # paths <- foreach(i = 1:sim_n, .packages = "terra") %dopar% {
+    paths <- for (i in 1:sim_n) { # easier to debug
         env01 <- unwrap(env02)
         message(paste0("Path #: ", i, " / ", sim_n))
         x0 <- ceiling(envsize / 2)
         y0 <- ceiling(envsize / 2)
-        jag_path(x0, y0, n_step, par = par0, neighb = step_size)
+        return(jag_path(x0, y0, n_step, par = par0, neighb = step_size))
     }
     # )
     saveRDS(paths, "simulations/paths.rds")
@@ -180,19 +181,32 @@ system(paste0("mv simulations/*.rds simulations/", simname, "/."))
 system(paste0("mv simulations/*.tif simulations/", simname, "/."))
 system(paste0("cp simulations/", simname, "/env* simulations/."))
 
-## Scratch =====================================================================
+## Demo ========================================================================
 
-## Traditional SSF fitting code
-    # message("Fitting parameters for model 2: traditional SSF") #------------ 
-    # obs_points <- as.data.frame(jag_traject[[i]]) 
-    # names(obs_points) <- c("x", "y")
-    # tr <- amt::steps(amt::make_track(obs_points, x, y))
-    # sl_emp <- as.vector(na.exclude(tr$sl_))
-    # ta_emp <- as.vector(na.exclude(tr$ta_))
-    # mk <- make_movement_kernel(sl_emp, ta_emp, n = 10000, 
-    #                            max_dist = max_dist, scale = 1)
-    # objects2 <- list(env, max_dist, mk, obs)
-    # par_out2 <- optim(par_start, log_likelihood0, objects = objects2)
-    # ll <- log_likelihood0(par_out2$par, objects2)
-    # message(paste0("Saving log-likelihood for model 2: ", i))
-    # saveRDS(ll, file = paste0("simulations/ll_fit2", i, ".rds"))
+if (demo) {
+
+    max_dist <- 4
+    size <- 2 * max_dist + 1
+    ek <- matrix(nrow = size, ncol = size, data = runif(size ^ 2))
+    ek <- (ek / sum(ek)) %>% rast()
+    terra::plot(ek)
+
+    kernel0 <- dexp(1:(max_dist + 1), rate = 2) # move par
+    kernel1 <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
+    center <- max_dist + 1
+    for (i in seq_len(center + max_dist)) {
+        for (j in seq_len(center + max_dist)) {
+        kernel1[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
+        }
+    }
+    terra::plot(rast(kernel1))
+    
+    id <- jag_id[47] %>% as.numeric()
+    track <- make_full_track(id)
+    sl_emp <- as.vector(na.exclude(track$sl))
+    ta_emp <- as.vector(na.exclude(track$ta))
+    mk <- make_movement_kernel(sl_emp, ta_emp, n = 6000, max_dist = max_dist)
+    kernel2 <- kernel1
+    kernel2[] <- mk
+    terra::plot(rast(kernel2))
+}

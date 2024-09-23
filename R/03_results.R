@@ -1,13 +1,20 @@
 source("R/00_functions.R")
 
-s <- c("ss3", "pp", "pp3")
+s <- c("ss3", "pp", "emp")
 res <- results_table(s)
 
+files <- paste0("data/output/o_trad/likelihood_", 1:82, ".rds")
+llt <- sapply(files, function(f) {
+    if(file.exists(f)) return(readRDS(f)) else return(NA)
+}) #trad empirical kernel
+names(llt) <- paste0("j", c(1:82))
+
+
 plotpdf()
-plot(res$aic_ss3, res$aic_pp, pch = 19, cex = 0.7, xlab = "AIC for step selection",
-     ylab = "AIC for path propagation")
-abline(0, 1)
-# points(res$aic_ss3, res$aic_pp5, pch = 19, cex = 0.7, col = "#194b19")
+plot(res$aic_emp, res$aic_pp, pch = 19, cex = 0.7, xlab = "AIC for step selection",
+     ylab = "AIC for path propagation", col = "red")
+abline(0, 1, lty = 2)
+points(res$aic_ss3, res$aic_pp, pch = 19, cex = 0.7, col = "black")
 # points(res$aic_ss3, res$aic_pp3, pch = 19, cex = 0.7, col = "#a03a15")
 dev.off()
 

@@ -291,9 +291,8 @@ plot_curve <- function(par, mu = 0, sd = 1, bounds = c(0, 10), values = FALSE) {
     y <- 1 / (1 + exp(par[1] + par[2] * x0 + par[3] * x0^2))
     if (values) return(y)
     plot(x, y, type = "l", xlab = "Environmental variable", 
-         ylab = "Attractiveness")
+         ylab = "Attraction")
     abline(v = 0, lty = 2)
-    abline(h = 0.5, lty = 2)
 }
 
 # 2. Movement model ============================================================
@@ -351,7 +350,6 @@ normalize_nbhd <- function(v, nbhd) {
 # r:         Raster object
 prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
     # Extended neighborhoods of each cell in individual's trajectory
-    # browser()
     if (sim) {
       nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = env01)
     } else {
@@ -438,25 +436,25 @@ env_function <- function(env, par, nbhd, sim = FALSE) {
   #                         par[6] * env[, 5] + par[7] * env[, 6]))
   
   # # First order no intercept -------------------------------------------------
-  # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-  #                         par[3] * env[, 3] + par[4] * env[, 4] + 
-  #                         par[5] * env[, 5] + par[6] * env[, 6]))
+  attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
+                          par[3] * env[, 3] + par[4] * env[, 4] + 
+                          par[5] * env[, 5] + par[6] * env[, 6]))
  
   # Simulation -----------------------------------------------------------------
-  attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+  # attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
 
   #-----------------------------------------------------------------------------
-
   attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
   attract <- attract / rowSums(attract, na.rm = TRUE)
   return(attract)  
 }
 
 log_likelihood0 <- function(par, objects, debug = FALSE) {
-  nbhd     <- objects$nbhd_i
+  nbhd     <- objects$nbhd
   obs      <- objects$obs
-  env      <- objects$env_i
+  env      <- objects$env
   max_dist <- objects$max_dist
+  mk       <- objects$mk # only if empirical kernel
 
   # 
   # kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[7])) # move par
@@ -475,7 +473,8 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   #   p <- env * kernel
   #   return(p / sum(p, na.rm = T))
   # }))
-  attract <- env_function(env, par, nbhd)
+  attract0 <- env_function(env, par, nbhd)
+  attract <- t(apply(attract0, 1, function(r) r * mk))
 
   like <- sapply(seq_along(obs), function(i) {
     return(attract[i, obs[i]])
@@ -513,22 +512,22 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   n_obs      <- length(obs) + 1
 
   # Non-simulation -------------------------------------------------------------
-  # kernel0 <- dexp(1:(step_size + 1), rate = exp(par[7])) # move par
-  # kernel <- matrix(0, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
-  # center <- step_size + 1
-  # for (i in seq_len(center + step_size)) {
-  #   for (j in seq_len(center + step_size)) {
-  #     kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
-  #   }
-  # }
-  # kernel <- kernel / sum(kernel)
-  # attract0 <- env_function(env_i, par, nbhd = nbhd_i)
-  # attract <- t(apply(attract0, 1, function(env) {
-  #   p <- env * kernel
-  #   return(p / sum(p, na.rm = T))
-  # }))
+  kernel0 <- dexp(1:(step_size + 1), rate = exp(par[7])) # move par
+  kernel <- matrix(0, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
+  center <- step_size + 1
+  for (i in seq_len(center + step_size)) {
+    for (j in seq_len(center + step_size)) {
+      kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
+    }
+  }
+  kernel <- kernel / sum(kernel)
+  attract0 <- env_function(env_i, par, nbhd = nbhd_i)
+  attract <- t(apply(attract0, 1, function(env) {
+    p <- env * kernel
+    return(p / sum(p, na.rm = T))
+  }))
   # Simulation -----------------------------------------------------------------
-  attract <- env_function(env_i, par, nbhd_i)
+  # attract <- env_function(env_i, par, nbhd_i)
 
   # must be a more elegant way of doing this than commenting chunks in and out
   #-----------------------------------------------------------------------------
@@ -630,7 +629,7 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
     path <- matrix(NA, nrow = n_step, ncol = 4)
     path[1, ] <- c(x0, y0, NA, NA)
 
-    if (length(par) == 3) par <- c(0, par)
+    # if (length(par) == 3) par <- c(0, par)
 
     # Probability of moving from current grid cell
     move_prob <- exp01(par[1])
@@ -717,7 +716,7 @@ plot_path <- function(path, int = obs_interval, vgram = FALSE,
       }
     } else if (type == 1) {
       # points(path, col = col1, pch = 19, cex = 0.5)
-      points(path, col = "black", pch = 19, cex = 1)
+      points(path, col = "black", pch = 19, cex = 0.5)
       lines(path, col = rgb(0, 0, 0, 0.5), lwd = 2)
     }
     # Plotting variogram

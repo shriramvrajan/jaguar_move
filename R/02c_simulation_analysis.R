@@ -8,7 +8,7 @@ param_plots    <- T
 debug_fit      <- F
 indiv_analysis <- F
 
-simdir         <- "simulations/old/s22/"
+simdir         <- "simulations/s1/"
 
 ## Load data ===================================================================
 message("Loading data")
@@ -22,13 +22,13 @@ paths <- readRDS(paste0(simdir, "paths.rds"))
 env01 <- rast(paste0(simdir, "env01.tif"))
 print(params)
 
-fit <- load_if_exists(paste0("par_out_", 1:sim_n, ".rds"), dir = simdir) %>%
+fit1 <- load_if_exists(paste0("par_out1_", 1:sim_n, ".rds"), dir = simdir) %>%
         do.call(rbind, .) %>% 
         as.data.frame() 
-# fit2 <- load_if_exists(paste0("par_out2_", 1:sim_n, ".rds"), dir = simdir) %>%
-#         do.call(rbind, .) %>% 
-#         as.data.frame() 
-# fit <- cbind(fit1, fit2)
+fit2 <- load_if_exists(paste0("par_out2_", 1:sim_n, ".rds"), dir = simdir) %>%
+        do.call(rbind, .) %>% 
+        as.data.frame() 
+fit <- cbind(fit1, fit2)
 # if (all(is.na(fit))) fit <- readRDS(paste0(simdir, "par_out_all.rds"))
 fit$id <- seq_len(nrow(fit))
 if (ncol(fit) == 9) {
@@ -77,6 +77,12 @@ if (param_plots) {
         return(out)
     })
 
+    y2 <- lapply(seq_len(nrow(fit)), function(i) {
+        mu <- objects_all[[i]]$mu_env
+        sd <- objects_all[[i]]$sd_env
+        out <- plot_curve(unlist(fit[i, 4:6]), mu = mu, sd = sd, values = TRUE)
+        return(out)
+    })
     # # generating parameter values
     # y0 <- 1 / (1 + exp(par0[1] + par0[2] * x1 + par0[3] * x1^2)) 
     # # fitted parameter values
@@ -94,14 +100,21 @@ if (param_plots) {
     #     return(path[, c("move", "env")])
     # })aaa
     # Generated + fitted, all on same plot
-    plotpdf(nm = "figs/simplot1.pdf")
-    par(mfrow = c(1, 1))
+    plotpdf(nm = "figs/simplot1.pdf", x = 8, y = 4)
+    par(mfrow = c(1, 2))
     plot(y0, type = "l", lwd = 3, ylim = c(0, 1), xlab = "Environmental variable",
-         ylab = "Attraction")
+         ylab = "Attraction", main = "Step selection")
     # lines(x1, yhat, lwd = 3, col = "#1a1a9e")
     # lines(x1, yhat2, lwd = 3, col = rgb(1, 0, 0, 0.8))
     for (i in seq_len(nrow(fit))) {
         lines(y1[[i]], col = rgb(0, 0, 1, 0.3), lwd = 3)
+        # readline(paste(i, "Press [enter] to continue"))
+    }
+    
+    plot(y0, type = "l", lwd = 3, ylim = c(0, 1), xlab = "Environmental variable",
+         ylab = "Attraction", main = "Path propagation")
+    for (i in seq_len(nrow(fit))) {
+        lines(y2[[i]], col = rgb(0, 0, 1, 0.3), lwd = 3)
         # readline(paste(i, "Press [enter] to continue"))
     }
     dev.off()

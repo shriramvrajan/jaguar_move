@@ -3,17 +3,17 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s3"
+simname <- "s1"
 
 # Switches for reusing old data
 gen_land   <- F
-gen_path   <- T
+gen_path   <- F
 
 # Switches for fitting models
-fit_indiv  <- F
+fit_indiv  <- T
 fit_all    <- F
 debug_fit  <- F
-demo       <- T
+demo       <- F
 sim_steps  <- 8
 
 # Number of cores to use for path generation and fitting
@@ -23,7 +23,7 @@ ncore_fit  <- 6
 ## Parameters ==================================================================
 
 ### Landscape generation parameters:
-envsize <- 300    # size of landscape in cells
+envsize <- 400    # size of landscape in cells
 s1 <- 5           # strength of autocorrelation 
 r1 <- 40          # range of autocorrelation in cells
 
@@ -33,10 +33,10 @@ par0 <- c(NA, 3, -2, 0.3)
 # par0 <- c(NA, 2, -0.2, -0.2)
 
 ### Path generation parameters:
-step_size    <- 6             # Max # pixels for each step
+step_size    <- 1             # Max # pixels for each step
 obs_interval <- 5             # Number of steps to skip between observations
-n_step       <- 500          # Number of steps to simulate
-sim_n        <- 1            # Number of simulations 
+n_step       <- 1000           # Number of steps to simulate
+sim_n        <- 10            # Number of simulations 
 n_obs        <- ceiling(n_step / (obs_interval + 1))
 
 ### Write parameters to file
@@ -74,8 +74,8 @@ if (!gen_path) {
     message("Simulating new paths")
     parallel_setup(ncore_path)
     env02 <- terra::wrap(env01) # foreach needs this
-    # paths <- foreach(i = 1:sim_n, .packages = "terra") %dopar% {
-    paths <- for (i in 1:sim_n) { # easier to debug
+    paths <- foreach(i = 1:sim_n, .packages = "terra") %dopar% {
+    # paths <- for (i in 1:sim_n) { # easier to debug
         env01 <- unwrap(env02)
         message(paste0("Path #: ", i, " / ", sim_n))
         x0 <- ceiling(envsize / 2)

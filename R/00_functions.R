@@ -349,12 +349,18 @@ normalize_nbhd <- function(v, nbhd) {
 # max_dist:  Maximum distance in pixels for one step
 # r:         Raster object
 prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
-    # Extended neighborhoods of each cell in individual's trajectory
+       # Extended neighborhoods of each cell in individual's trajectory
     if (sim) {
       nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = env01)
     } else {
       nbhd_index <- make_nbhd(i = traject, sz = max_dist)
     }
+
+    # Observed steps, as cell numbers within full neighborhood
+    obs  <- sapply(2:nrow(nbhd_index), function(r) {
+        local <- nbhd_index[(r - 1), ]
+        return(which(local == traject[r]))
+    })
 
     # Each entry in the list is the immediate neighborhood of each cell in the 
     # extended neighborhood, as represented by a cell number of raster r
@@ -366,6 +372,9 @@ prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
       return(out)
     })
     nbhd_i <- do.call(rbind, nbhd_list)
+    nbhd_0 <- matrix(data = seq_len(nbhd_index), nrow = nrow(nbhd_index), 
+                     ncol = ncol(nbhd_index)) # for ss model
+
     # Reindexing allows linkage of row numbers from nbhd_ito raster cells
     nbhd_index <- as.vector(t(nbhd_index))
     message("Extended neighborhoods prepared.")
@@ -388,30 +397,20 @@ prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
       ncol = length(traject)
     )
     
-    # For each step, which cell of the extended nbhd did it go to next?
-    obs <- vector(length = ncol(index_mat) - 1)
-    for (y in 1:(ncol(index_mat) - 1)) {          
-      test <- which(nbhd_index == traject[y + 1])
-      num <- which(index_mat[1, y] <= test & test <= index_mat[nrow(index_mat), y])
-      obs[y] <- which(index_mat[, y] == test[num])
-    } 
-    message("Observed data prepared.")
-
     # Normalizing desired environmental variables for extended neighborhood 
     env_i <- if (sim) scale(rdf[nbhd_index]$sim1) else scale(rdf[nbhd_index, ])
     if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
-    message("Environmental variables prepared.")
-
+    
     message("Prepared model objects.")
     if (sim) {
       mu_env <- attributes(env_i)[[2]]
       sd_env <- attributes(env_i)[[3]]
-      out <- list(env_i, nbhd_i, to_dest, dest, obs, max_dist, mu_env, sd_env)
-      names(out) <- c("env_i", "nbhd_i", "to_dest", "dest", "obs", "max_dist", 
+      out <- list(env_i, nbhd_0, nbhd_i, to_dest, dest, obs, max_dist, mu_env, sd_env)
+      names(out) <- c("env_i", "nbhd_0", "nbhd_i", "to_dest", "dest", "obs", "max_dist", 
                       "mu_env", "sd_env")  
     } else {
-      out <- list(env_i, nbhd_i, to_dest, dest, obs, max_dist, sim_steps)
-      names(out) <- c("env_i", "nbhd_i", "to_dest", "dest", "obs", "max_dist", 
+      out <- list(env_i, nbhd_0, nbhd_i, to_dest, dest, obs, max_dist, sim_steps)
+      names(out) <- c("env_i", "nbhd_0", "nbhd_i", "to_dest", "dest", "obs", "max_dist", 
                       "sim_steps")
     }
     return(out)
@@ -421,7 +420,7 @@ prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
 # env:      Environmental variable values
 # par:      Parameters for functional form
 # format:   TRUE to return as matrix, FALSE to return as vector
-env_function <- function(env, par, nbhd, sim = FALSE) {
+env_function <- function(env, par, nbhd) {
   # Second order
   # attract <- 1 / (1 + exp(par[1] + par[2] * env[, 1] + par[3] * env[, 1]^2 +   # footprint
   #                         par[4] * env[, 2] + par[5] * env[, 2]^2 +            # elevation
@@ -436,12 +435,12 @@ env_function <- function(env, par, nbhd, sim = FALSE) {
   #                         par[6] * env[, 5] + par[7] * env[, 6]))
   
   # # First order no intercept -------------------------------------------------
-  attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-                          par[3] * env[, 3] + par[4] * env[, 4] + 
-                          par[5] * env[, 5] + par[6] * env[, 6]))
+  # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
+  #                         par[3] * env[, 3] + par[4] * env[, 4] + 
+  #                         par[5] * env[, 5] + par[6] * env[, 6]))
  
   # Simulation -----------------------------------------------------------------
-  # attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+  attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
 
   #-----------------------------------------------------------------------------
   attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
@@ -450,35 +449,37 @@ env_function <- function(env, par, nbhd, sim = FALSE) {
 }
 
 log_likelihood0 <- function(par, objects, debug = FALSE) {
-  nbhd     <- objects$nbhd
+  nbhd     <- objects$nbhd_0
   obs      <- objects$obs
   env      <- objects$env
   max_dist <- objects$max_dist
   mk       <- objects$mk # only if empirical kernel
 
-  # 
-  # kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[7])) # move par
-  # kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
-  # center <- max_dist + 1
-  # for (i in seq_len(center + max_dist)) {
-  #   for (j in seq_len(center + max_dist)) {
-  #     kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
-  #   }
-  # }
-  # kernel <- kernel / sum(kernel)
-  # # env_weight <- exp01(par[length(par)]) # last one is env weighting par
-  # attract0 <- env_function(env, par, nbhd)
-  # # attract  <- attract0 / rowSums(attract0)
-  # attract <- t(apply(attract0, 1, function(env) {
-  #   p <- env * kernel
-  #   return(p / sum(p, na.rm = T))
-  # }))
+  # Fitted movement kernel -----------------------------------------------------
+  kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[length(par)])) # move par
+  kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
+  center <- max_dist + 1
+  for (i in seq_len(center + max_dist)) {
+    for (j in seq_len(center + max_dist)) {
+      kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
+    }
+  }
+  kernel <- kernel / sum(kernel)
+  
+  # env_weight <- exp01(par[length(par)]) # last one is env weighting par
   attract0 <- env_function(env, par, nbhd)
-  attract <- t(apply(attract0, 1, function(r) r * mk))
-
+  # attract  <- attract0 / rowSums(attract0)
+  attract <- t(apply(attract0, 1, function(env) {
+    p <- env * as.vector(kernel)
+    return(p / sum(p, na.rm = T))
+  }))
+  # Empirical movement kernel --------------------------------------------------
+  # attract0 <- env_function(env, par, nbhd)
+  # attract <- t(apply(attract0, 1, function(r) r * mk))
   like <- sapply(seq_along(obs), function(i) {
     return(attract[i, obs[i]])
   })
+  
   if (any(like == 0)) like[like == 0] <- 1e-4
   out <- -sum(log(like), na.rm = TRUE)
 
@@ -512,22 +513,23 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   n_obs      <- length(obs) + 1
 
   # Non-simulation -------------------------------------------------------------
-  kernel0 <- dexp(1:(step_size + 1), rate = exp(par[7])) # move par
-  kernel <- matrix(0, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
-  center <- step_size + 1
-  for (i in seq_len(center + step_size)) {
-    for (j in seq_len(center + step_size)) {
-      kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
-    }
-  }
-  kernel <- kernel / sum(kernel)
-  attract0 <- env_function(env_i, par, nbhd = nbhd_i)
-  attract <- t(apply(attract0, 1, function(env) {
-    p <- env * kernel
-    return(p / sum(p, na.rm = T))
-  }))
+  # kernel0 <- dexp(1:(step_size + 1), rate = exp(par[length(par)])) # move par
+  # kernel <- matrix(0, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
+  # center <- step_size + 1
+  # for (i in seq_len(center + step_size)) {
+  #   for (j in seq_len(center + step_size)) {
+  #     kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
+  #   }
+  # }
+  # kernel <- kernel / sum(kernel)
+  # attract0 <- env_function(env_i, par, nbhd = nbhd_i)
+  
+  # attract <- t(apply(attract0, 1, function(env) {
+  #   p <- env * kernel
+  #   return(p / sum(p, na.rm = T))
+  # }))
   # Simulation -----------------------------------------------------------------
-  # attract <- env_function(env_i, par, nbhd_i)
+  attract <- env_function(env_i, par, nbhd_i)
 
   # must be a more elegant way of doing this than commenting chunks in and out
   #-----------------------------------------------------------------------------
@@ -635,7 +637,7 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
     move_prob <- exp01(par[1])
 
     for (i in 2:n_step) {
-        if (i %% 10 == 0) print(i)
+        if (i %% 100 == 0) print(i)
         pos <- path[i - 1, 1:2]
 
         # Attractiveness of each cell in neighborhood

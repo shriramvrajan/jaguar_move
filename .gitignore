@@ -10,7 +10,7 @@ docs/*
 data/*
 figs/*
 gis/*
-simulations/old/*
+simulations/*
 vasco.sh
 R/old
 R/scratch.R

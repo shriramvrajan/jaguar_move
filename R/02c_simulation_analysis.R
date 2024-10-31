@@ -1,5 +1,5 @@
 
-if (!exists("loaded")) source("R/00_functions.R") else print("R/00 already loaded")
+if (!exists("simname")) source("R/00_functions.R") else print("R/00 already loaded")
 loaded <- TRUE
 
 ## Switches ====================================================================
@@ -8,7 +8,7 @@ param_plots    <- T
 debug_fit      <- F
 indiv_analysis <- F
 
-simdir         <- "simulations/s1/"
+simdir         <- ifelse(exists("simname"), paste0("simulations/", simname, "/"), "simulations/s1/")
 
 ## Load data ===================================================================
 message("Loading data")
@@ -83,24 +83,9 @@ if (param_plots) {
         out <- plot_curve(unlist(fit[i, 4:6]), mu = mu, sd = sd, values = TRUE)
         return(out)
     })
-    # # generating parameter values
-    # y0 <- 1 / (1 + exp(par0[1] + par0[2] * x1 + par0[3] * x1^2)) 
-    # # fitted parameter values
-    # yhat <- 1 / (1 + exp(median(fit$c1) + median(fit$b1) * x1 + median(fit$a1) * x1^2))
-    # yhat2 <- 1 / (1 + exp(mean(fit$c1) + mean(fit$b1) * x1 + mean(fit$a1) * x1^2))
-    # y1 <- lapply(seq_len(nrow(fit)), function(i) {
-    #     out <- 1 / (1 + exp(fit$c1[i] + fit$b1[i] * x1 + fit$a1[i] * x1^2))
-    # })
-
-    # points <- lapply(fit$id, function(i) {
-    #     path <- paths[[i]]
-    #     path$move <- c(0, sqrt(diff(path$x)^2 + diff(path$y)^2))
-    #     path$move[path$move > 0] <- 1
-    #     path$env <- env01[cellFromRowCol(env01, path[, 1], path[, 2])]
-    #     return(path[, c("move", "env")])
-    # })aaa
+    
     # Generated + fitted, all on same plot
-    plotpdf(nm = "figs/simplot1.pdf", x = 8, y = 4)
+    plotpdf(nm = paste0("figs/sims/", simname, "plot.pdf"), x = 8, y = 4)
     par(mfrow = c(1, 2))
     plot(y0, type = "l", lwd = 3, ylim = c(0, 1), xlab = "Environmental variable",
          ylab = "Attraction", main = "Step selection")

@@ -3,18 +3,18 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s1"
+simname <- "s9"
 
-# Switches for reusing old data
+# Switches for landscape generation, path generation, fitting, and plotting.
 gen_land   <- F
 gen_path   <- F
+fit_indiv  <- F
+plot_results <- T
 
-# Switches for fitting models
-fit_indiv  <- T
+# Roads once taken
 fit_all    <- F
 debug_fit  <- F
 demo       <- F
-sim_steps  <- 8
 
 # Number of cores to use for path generation and fitting
 ncore_path <- 6
@@ -34,25 +34,29 @@ par0 <- c(NA, 3, -2, 0.3)
 
 ### Path generation parameters:
 step_size    <- 1             # Max # pixels for each step
-obs_interval <- 5             # Number of steps to skip between observations
-n_step       <- 1000           # Number of steps to simulate
+obs_interval <- 1             # Number of steps to skip between observations
+n_step       <- 2000           # Number of steps to simulate
 sim_n        <- 10            # Number of simulations 
 n_obs        <- ceiling(n_step / (obs_interval + 1))
 
+sim_steps  <- obs_interval + 2 # Number of steps to simulate forward in PP model
+
 ### Write parameters to file
-params <- list(envsize, s1, r1, obs_interval, n_step, n_obs, sim_n, step_size, 
-               par0[[1]], par0[[2]], par0[[3]], par0[[4]])
-names(params) <- c("envsize", "s1", "r1", "obs_interval", "n_step", "n_obs", 
-                   "sim_n", "step_size", "par_move", "par_env0", "par_env1", 
-                   "par_env2")
-saveRDS(params, "simulations/params.rds")
-print(params)
+if (gen_land || gen_path || fit_indiv || fit_all) {
+    params <- list(envsize, s1, r1, obs_interval, n_step, n_obs, sim_n, step_size, 
+                par0[[1]], par0[[2]], par0[[3]], par0[[4]])
+    names(params) <- c("envsize", "s1", "r1", "obs_interval", "n_step", "n_obs", 
+                    "sim_n", "step_size", "par_move", "par_env0", "par_env1", 
+                    "par_env2")
+    saveRDS(params, "simulations/params.rds")
+    print(params)
+}
 
 if (any(is.na(par0))) par0 <- par0[!is.na(par0)]
 
 # Value to start fitting from
-par_start <- rep(1, length(par0))
-# par_start <- par0
+# par_start <- rep(0, length(par0))
+par_start <- par0
 # par_start <- c(1.548, -0.993, -1.344)
 
 ## Landscape ===================================================================
@@ -130,8 +134,8 @@ if (fit_indiv || fit_all) {
     
     if (fit_indiv) {
         # Fit individuals one at a time ----------------------------------------
-        fit <- do.call(rbind, lapply(todo, function(i) { # easier to debug
-        # foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
+        # fit <- do.call(rbind, lapply(todo, function(i) { # easier to debug
+        foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
             message(paste0("Fitting individual #: ", i, " / ", length(todo)))            
             message("Fitting parameters for model 1: step-selection")
             objects1 <- objects_all[[i]]
@@ -150,7 +154,7 @@ if (fit_indiv || fit_all) {
                     file = paste0("simulations/par_out2_", i, ".rds"))
             message(paste0("COMPLETED path #: ", i, " / ", sim_n))
         }
-        ))    # easier to debug
+        # ))    # easier to debug
     }
     
     if (fit_all) {
@@ -176,37 +180,17 @@ if (fit_indiv || fit_all) {
 
 ## Cleanup =====================================================================
 
-system(paste0("mkdir simulations/", simname))
-system(paste0("mv simulations/*.rds simulations/", simname, "/."))
-system(paste0("mv simulations/*.tif simulations/", simname, "/."))
-system(paste0("cp simulations/", simname, "/env* simulations/."))
+if (fit_indiv || fit_all) {
+    system(paste0("mkdir simulations/", simname))
+    system(paste0("mv simulations/*.rds simulations/", simname, "/."))
+    system(paste0("mv simulations/*.tif simulations/", simname, "/."))
+    system(paste0("cp simulations/", simname, "/env* simulations/."))
+    system(paste0("cp simulations/", simname, "/paths.rds simulations/."))
+    system(paste0("cp simulations/", simname, "/params.rds simulations/."))
+}
 
 ## Demo ========================================================================
 
-if (demo) {
-
-    max_dist <- 4
-    size <- 2 * max_dist + 1
-    ek <- matrix(nrow = size, ncol = size, data = runif(size ^ 2))
-    ek <- (ek / sum(ek)) %>% rast()
-    terra::plot(ek)
-
-    kernel0 <- dexp(1:(max_dist + 1), rate = 2) # move par
-    kernel1 <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
-    center <- max_dist + 1
-    for (i in seq_len(center + max_dist)) {
-        for (j in seq_len(center + max_dist)) {
-        kernel1[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
-        }
-    }
-    terra::plot(rast(kernel1))
-    
-    id <- jag_id[47] %>% as.numeric()
-    track <- make_full_track(id)
-    sl_emp <- as.vector(na.exclude(track$sl))
-    ta_emp <- as.vector(na.exclude(track$ta))
-    mk <- make_movement_kernel(sl_emp, ta_emp, n = 6000, max_dist = max_dist)
-    kernel2 <- kernel1
-    kernel2[] <- mk
-    terra::plot(rast(kernel2))
+if (plot_results) {
+    source("R/02c_simulation_analysis.R")
 }

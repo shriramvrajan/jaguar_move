@@ -10,6 +10,7 @@ library(gstat)
 library(ctmm)
 library(amt) 
 library(lubridate)
+library(metaRange)
 # library(fitdistrplus)
 library(foreach)
 library(doParallel)
@@ -435,12 +436,12 @@ env_function <- function(env, par, nbhd) {
   #                         par[6] * env[, 5] + par[7] * env[, 6]))
   
   # # First order no intercept -------------------------------------------------
-  # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-  #                         par[3] * env[, 3] + par[4] * env[, 4] + 
-  #                         par[5] * env[, 5] + par[6] * env[, 6]))
+  attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
+                          par[3] * env[, 3] + par[4] * env[, 4] + 
+                          par[5] * env[, 5] + par[6] * env[, 6]))
  
   # Simulation -----------------------------------------------------------------
-  attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+  # attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
 
   #-----------------------------------------------------------------------------
   attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
@@ -449,23 +450,29 @@ env_function <- function(env, par, nbhd) {
 }
 
 log_likelihood0 <- function(par, objects, debug = FALSE) {
-  nbhd     <- objects$nbhd_0
+  nbhd     <- objects$nbhd
   obs      <- objects$obs
   env      <- objects$env
   max_dist <- objects$max_dist
-  mk       <- objects$mk # only if empirical kernel
+  # mk       <- objects$mk # only if empirical kernel
 
   # Fitted movement kernel -----------------------------------------------------
-  kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[length(par)])) # move par
-  kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
-  center <- max_dist + 1
-  for (i in seq_len(center + max_dist)) {
-    for (j in seq_len(center + max_dist)) {
-      kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
-    }
-  }
-  kernel <- kernel / sum(kernel)
+  # square kernel
+  # kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[length(par)])) # move par
+  # kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
+  # center <- max_dist + 1
+  # for (i in seq_len(center + max_dist)) {
+  #   for (j in seq_len(center + max_dist)) {
+  #     kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
+  #   }
+  # }
+  # kernel <- kernel / sum(kernel)
   
+  # circular kernel
+  k_par  <- par[length(par)]
+  kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
+                                       kfun = function(x) dexp(x, k_par))
+
   # env_weight <- exp01(par[length(par)]) # last one is env weighting par
   attract0 <- env_function(env, par, nbhd)
   # attract  <- attract0 / rowSums(attract0)
@@ -512,7 +519,11 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   sim_steps  <- objects$sim_steps
   n_obs      <- length(obs) + 1
 
+  browser()
+
   # Non-simulation -------------------------------------------------------------
+  
+  # square kernel
   # kernel0 <- dexp(1:(step_size + 1), rate = exp(par[length(par)])) # move par
   # kernel <- matrix(0, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
   # center <- step_size + 1
@@ -522,14 +533,21 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   #   }
   # }
   # kernel <- kernel / sum(kernel)
-  # attract0 <- env_function(env_i, par, nbhd = nbhd_i)
+
+  # circular kernel
+  k_par  <- par[length(par)]
+  kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
+                                       kfun = function(x) dexp(x, k_par))
+
+  attract0 <- env_function(env_i, par, nbhd = nbhd_i)
   
-  # attract <- t(apply(attract0, 1, function(env) {
-  #   p <- env * kernel
-  #   return(p / sum(p, na.rm = T))
-  # }))
+  attract <- t(apply(attract0, 1, function(env) {
+    p <- env * kernel
+    return(p / sum(p, na.rm = T))
+  }))
+
   # Simulation -----------------------------------------------------------------
-  attract <- env_function(env_i, par, nbhd_i)
+  # attract <- env_function(env_i, par, nbhd_i)
 
   # must be a more elegant way of doing this than commenting chunks in and out
   #-----------------------------------------------------------------------------

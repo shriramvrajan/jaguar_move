@@ -8,3 +8,4 @@ s6: same paths as 4, par = par0
 s7: step_size = 1, obs_interval = 1, n_step = 1000
 s8: step_size = 1, obs_interval = 1, n_step = 2000
 s9: step_size = 1, obs_interval = 0, n_step = 1000
+s10: step_size = 1, obs_interval = 0, n_step = 2000

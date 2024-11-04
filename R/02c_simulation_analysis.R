@@ -100,7 +100,7 @@ if (param_plots) {
          ylab = "Attraction", main = "Path propagation")
     for (i in seq_len(nrow(fit))) {
         lines(y2[[i]], col = rgb(0, 0, 1, 0.3), lwd = 3)
-        # readline(paste(i, "Press [enter] to continue"))
+        readline(paste(i, "Press [enter] to continue"))
     }
     dev.off()
 

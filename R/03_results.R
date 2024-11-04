@@ -19,14 +19,6 @@ points(res$aic_ss3, res$aic_pp, pch = 19, cex = 0.7, col = "black")
 dev.off()
 
 
-
-plot(res$aic_ss3, res$aic_pp, pch = 19)
-abline(0, 1)
-points(res$aic_ss3, res$aic_pp2, pch = 19, col = "red")
-points(res$ss3, res$ssH, pch = 19, col = "green")
-plot(res$ssH, res$ppH, pch = 19)
-abline(0, 1)
-
 # jaguar
 # hypothesis: model works better (aic_ss>aic_pp) if steps are longer
 aicdiff <- res$aic_ss2 - res$aic_pp

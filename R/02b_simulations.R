@@ -3,12 +3,12 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s9"
+simname <- "s10"
 
 # Switches for landscape generation, path generation, fitting, and plotting.
 gen_land   <- F
-gen_path   <- F
-fit_indiv  <- F
+gen_path   <- T
+fit_indiv  <- T
 plot_results <- T
 
 # Roads once taken
@@ -34,7 +34,7 @@ par0 <- c(NA, 3, -2, 0.3)
 
 ### Path generation parameters:
 step_size    <- 1             # Max # pixels for each step
-obs_interval <- 1             # Number of steps to skip between observations
+obs_interval <- 0             # Number of steps to skip between observations
 n_step       <- 2000           # Number of steps to simulate
 sim_n        <- 10            # Number of simulations 
 n_obs        <- ceiling(n_step / (obs_interval + 1))

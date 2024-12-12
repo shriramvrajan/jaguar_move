@@ -1,23 +1,43 @@
 source("R/00_functions.R")
 
-s <- c("ss3", "pp", "emp")
-res <- results_table(s)
+simnames <- c("ss3", "pp", "circ", "circpp")
+res <- results_table(simnames)
+
+# compare square and circle path propagation kernels
+plotpdf(nm = "aic_pp_circpp.pdf")
+plot(res$aic_pp, res$aic_circpp, pch = 19, cex = 0.7)
+abline(0, 1, lty = 2)
+dev.off()
+
+# compare square and circle SSF kernels
+plotpdf(nm = "figs/aic_ss3_circ.pdf")
+plot(res$aic_ss3, res$aic_circ, pch = 19, cex = 0.7)
+abline(0, 1, lty = 2)
+dev.off()
+
+# male vs female
+plotpdf(nm = "figs/malefemale.pdf", x = 6, y = 4)
+ggplot(data = res) +
+    geom_point(mapping = aes(x = aic_pp, y = aic_circpp, col = bio)) +
+    geom_abline()
+dev.off()
+
+plotpdf()
+plot(res$aic_ss3, res$aic_pp, pch = 19, cex = 0.7, xlab = "AIC for step selection",
+     ylab = "AIC for path propagation", col = "black")
+abline(0, 1, lty = 2)
+points(res$aic_ss3, res$aic_circpp, pch = 19, cex = 0.7, col = "red")
+# points(res$aic_ss3, res$aic_pp3, pch = 19, cex = 0.7, col = "#a03a15")
+dev.off()
+
+
+
 
 files <- paste0("data/output/o_trad/likelihood_", 1:82, ".rds")
 llt <- sapply(files, function(f) {
     if(file.exists(f)) return(readRDS(f)) else return(NA)
 }) #trad empirical kernel
 names(llt) <- paste0("j", c(1:82))
-
-
-plotpdf()
-plot(res$aic_emp, res$aic_pp, pch = 19, cex = 0.7, xlab = "AIC for step selection",
-     ylab = "AIC for path propagation", col = "red")
-abline(0, 1, lty = 2)
-points(res$aic_ss3, res$aic_pp, pch = 19, cex = 0.7, col = "black")
-# points(res$aic_ss3, res$aic_pp3, pch = 19, cex = 0.7, col = "#a03a15")
-dev.off()
-
 
 # jaguar
 # hypothesis: model works better (aic_ss>aic_pp) if steps are longer

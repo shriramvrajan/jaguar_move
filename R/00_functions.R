@@ -202,7 +202,7 @@ plot_xyt <- function(tr) {
 # i: ID number of jaguar
 # grad: number of colors to use for path
 # type: 1 is satellite map using ggmap, 2 is env layers
-map_track <- function(i, grad = 20, type = 2) {
+map_track <- function(i, grad = 20, type = 2, file = FALSE) {
     # type: 1 is satellite map using ggmap, 2 is env layers
     moves <- jag_move[ID == as.numeric(i)]
 
@@ -220,6 +220,7 @@ map_track <- function(i, grad = 20, type = 2) {
     path <- sp::SpatialPoints(coords = moves[, 3:4], sp::CRS("+init=epsg:4326"))
     # path2 <- as.data.frame(sp::spTransform(path, OpenStreetMap::osm()))
 
+    if (file) plotpdf(nm = "track.pdf", x = 8, y = 4)
     if (type == 1) {
         bboxgg <- bbox[c(1, 3, 2, 4)]
         names(bboxgg) <- c("left", "bottom", "right", "top")
@@ -235,6 +236,7 @@ map_track <- function(i, grad = 20, type = 2) {
             plot_env(layer = i, bounds = bbox, path = path, grad = grad)
         }
     }
+    if (file) dev.off()
 }
 
 # Map home range of jaguar across environmental layers
@@ -444,6 +446,7 @@ env_function <- function(env, par, nbhd) {
   # attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
 
   #-----------------------------------------------------------------------------
+  
   attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
   attract <- attract / rowSums(attract, na.rm = TRUE)
   return(attract)  
@@ -510,6 +513,7 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
 # max_dist   : Maximum distance in pixels for one step
 # sim_steps  : Number of steps to simulate
 log_likelihood <- function(par, objects, debug = FALSE) {
+
   env_i       <- objects$env_i
   nbhd_i      <- objects$nbhd_i
   to_dest    <- objects$to_dest
@@ -518,8 +522,6 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   max_dist   <- objects$max_dist
   sim_steps  <- objects$sim_steps
   n_obs      <- length(obs) + 1
-
-  browser()
 
   # Non-simulation -------------------------------------------------------------
   
@@ -536,7 +538,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
 
   # circular kernel
   k_par  <- par[length(par)]
-  kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
+  kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
                                        kfun = function(x) dexp(x, k_par))
 
   attract0 <- env_function(env_i, par, nbhd = nbhd_i)
@@ -580,6 +582,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
 
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
   out            <- -max(log_likelihood, na.rm = TRUE)
+  
   ## DEBUG
   # out          <- -log_likelihood[obs_interval + 2]
   if (is.infinite(out) || is.na(out)) out <- 0

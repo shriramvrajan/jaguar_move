@@ -61,8 +61,8 @@ if (refit_model) {
 
   message("Fitting model parameters")
 
-  # foreach(i = i_todo) %dopar% {
-  for (i in i_todo) {  # easier to debug
+  foreach(i = i_todo) %dopar% {
+  # for (i in i_todo) {  # easier to debug
     message(paste0("Jaguar #: ", i))
     id                <- as.numeric(jag_id[i])
     jag_traject       <- jag_move[ID == id, 3:4]

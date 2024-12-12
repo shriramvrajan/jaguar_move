@@ -30,15 +30,15 @@ if (run_model) {
 
     ## Actual fitting options
     refit_model     <- TRUE             # Refit movement model parameters
-    model_type      <- 1                # 1 = tradSSF, 2 = path propagation
+    model_type      <- 2                # 1 = tradSSF, 2 = path propagation
     holdout_set     <- FALSE             # Hold out a set of points
     # holdout_frac    <- 0.7              # Fraction of points to use for fitting
     model_calcnull  <- FALSE            # Calculate null likelihoods 
                                         # refit_model must be TRUE for this one
     ## Parameters                                    
     npar            <- 7              # Number of parameters in current model 
-    step_size       <- 1              # Jaguars move up to n px (n km) at a time
-    sim_steps       <- 4              # How many steps to simulate forward
+    step_size       <- 2              # Jaguars move up to n px (n km) at a time
+    sim_steps       <- 3              # How many steps to simulate forward
     n_iter          <- nrow(jag_id)   # Number of individuals
     
     ## Set up parallel processing

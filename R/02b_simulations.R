@@ -23,7 +23,7 @@ ncore_fit  <- 6
 ## Parameters ==================================================================
 
 ### Landscape generation parameters:
-envsize <- 400    # size of landscape in cells
+envsize <- 200    # size of landscape in cells
 s1 <- 5           # strength of autocorrelation 
 r1 <- 40          # range of autocorrelation in cells
 
@@ -35,7 +35,7 @@ par0 <- c(NA, 3, -2, 0.3)
 ### Path generation parameters:
 step_size    <- 1             # Max # pixels for each step
 obs_interval <- 0             # Number of steps to skip between observations
-n_step       <- 2000           # Number of steps to simulate
+n_step       <- 1000           # Number of steps to simulate
 sim_n        <- 10            # Number of simulations 
 n_obs        <- ceiling(n_step / (obs_interval + 1))
 
@@ -134,8 +134,8 @@ if (fit_indiv || fit_all) {
     
     if (fit_indiv) {
         # Fit individuals one at a time ----------------------------------------
-        # fit <- do.call(rbind, lapply(todo, function(i) { # easier to debug
-        foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
+        fit <- do.call(rbind, lapply(todo, function(i) { # easier to debug
+        # foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
             message(paste0("Fitting individual #: ", i, " / ", length(todo)))            
             message("Fitting parameters for model 1: step-selection")
             objects1 <- objects_all[[i]]
@@ -154,7 +154,7 @@ if (fit_indiv || fit_all) {
                     file = paste0("simulations/par_out2_", i, ".rds"))
             message(paste0("COMPLETED path #: ", i, " / ", sim_n))
         }
-        # ))    # easier to debug
+        ))    # easier to debug
     }
     
     if (fit_all) {

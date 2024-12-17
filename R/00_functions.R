@@ -461,28 +461,29 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
 
   # Fitted movement kernel -----------------------------------------------------
   # square kernel
-  # kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[length(par)])) # move par
-  # kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
-  # center <- max_dist + 1
-  # for (i in seq_len(center + max_dist)) {
-  #   for (j in seq_len(center + max_dist)) {
-  #     kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
-  #   }
-  # }
-  # kernel <- kernel / sum(kernel)
+  kernel0 <- dexp(1:(max_dist + 1), rate = exp(par[length(par)])) # move par
+  kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
+  center <- max_dist + 1
+  for (i in seq_len(center + max_dist)) {
+    for (j in seq_len(center + max_dist)) {
+      kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
+    }
+  }
+  kernel <- kernel / sum(kernel)
   
   # circular kernel
-  k_par  <- par[length(par)]
-  kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
-                                       kfun = function(x) dexp(x, k_par))
+  # k_par  <- par[length(par)]
+  # kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
+  #                                      kfun = function(x) dexp(x, k_par))
 
-  # env_weight <- exp01(par[length(par)]) # last one is env weighting par
-  attract0 <- env_function(env, par, nbhd)
-  # attract  <- attract0 / rowSums(attract0)
-  attract <- t(apply(attract0, 1, function(env) {
-    p <- env * as.vector(kernel)
-    return(p / sum(p, na.rm = T))
-  }))
+  # # env_weight <- exp01(par[length(par)]) # last one is env weighting par
+  # attract0 <- env_function(env, par, nbhd)
+  # # attract  <- attract0 / rowSums(attract0)
+  # attract <- t(apply(attract0, 1, function(env) {
+  #   p <- env * as.vector(kernel)
+  #   return(p / sum(p, na.rm = T))
+  # }))
+
   # Empirical movement kernel --------------------------------------------------
   # attract0 <- env_function(env, par, nbhd)
   # attract <- t(apply(attract0, 1, function(r) r * mk))

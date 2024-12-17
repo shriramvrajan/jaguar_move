@@ -1,19 +1,26 @@
 source("R/00_functions.R")
 
-simnames <- c("ss3", "pp", "circ", "circpp")
+simnames <- c("ss3", "emp", "circ", "circpp", "circpp2", "pp3", "pp5")
 res <- results_table(simnames)
+res0 <- res
+res <- res0[res0$nmove > 100, ]
 
-# compare square and circle path propagation kernels
-plotpdf(nm = "aic_pp_circpp.pdf")
-plot(res$aic_pp, res$aic_circpp, pch = 19, cex = 0.7)
-abline(0, 1, lty = 2)
-dev.off()
+## 16 dec 2024
+r0 <- res$aic_ss3 - res$aic_circ # -ve means L better, +ve R
+r1 <- res$aic_circpp - res$aic_circ
+r2 <- res$aic_circpp2 - res$aic_circ
 
-# compare square and circle SSF kernels
-plotpdf(nm = "figs/aic_ss3_circ.pdf")
-plot(res$aic_ss3, res$aic_circ, pch = 19, cex = 0.7)
-abline(0, 1, lty = 2)
-dev.off()
+
+select <- sapply(seq_along(res$jag_id), function(x) {
+    options <- c(res$aic_circpp[x], res$aic_circpp2[x])
+    return(min(options))
+})
+
+r4 <- select - res$aic_circ
+r5 <- select - res$aic_ss3
+
+plot(select, pch = 19, col = rgb(1, 0, 0, 0.5))
+points(res$aic_circ, pch = 19, col = rgb(0, 1, 0, 0.5))
 
 # male vs female
 plotpdf(nm = "figs/malefemale.pdf", x = 6, y = 4)
@@ -29,8 +36,6 @@ abline(0, 1, lty = 2)
 points(res$aic_ss3, res$aic_circpp, pch = 19, cex = 0.7, col = "red")
 # points(res$aic_ss3, res$aic_pp3, pch = 19, cex = 0.7, col = "#a03a15")
 dev.off()
-
-
 
 
 files <- paste0("data/output/o_trad/likelihood_", 1:82, ".rds")

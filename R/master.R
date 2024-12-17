@@ -37,13 +37,13 @@ if (run_model) {
                                         # refit_model must be TRUE for this one
     ## Parameters                                    
     npar            <- 7              # Number of parameters in current model 
-    step_size       <- 2              # Jaguars move up to n px (n km) at a time
-    sim_steps       <- 3              # How many steps to simulate forward
+    step_size       <- 1              # Jaguars move up to n px (n km) at a time
+    sim_steps       <- 6              # How many steps to simulate forward
     n_iter          <- nrow(jag_id)   # Number of individuals
     
     ## Set up parallel processing
     parallel        <- TRUE
-    ncore           <- switch(model_type, 6, 6)
+    ncore           <- switch(model_type, 5, 5)
     if (parallel) {
         library(doParallel)
         library(foreach)

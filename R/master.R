@@ -43,7 +43,7 @@ if (run_model) {
     
     ## Set up parallel processing
     parallel        <- TRUE
-    ncore           <- switch(model_type, 5, 5)
+    ncore           <- switch(model_type, 6, 6)
     if (parallel) {
         library(doParallel)
         library(foreach)

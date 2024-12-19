@@ -526,6 +526,13 @@ log_likelihood <- function(par, objects, debug = FALSE) {
 
   # Non-simulation -------------------------------------------------------------
   
+  # stay/move parameter kernel
+  stay_prob <- exp01(par[length(par)])
+  move_prob <- (1 - stay_prob) / ((step_size * 2 + 1)^2 - 1)
+  kernel <- matrix(move_prob, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
+  center <- step_size + 1
+  kernel[center, center] <- stay_prob
+
   # square kernel
   # kernel0 <- dexp(1:(step_size + 1), rate = exp(par[length(par)])) # move par
   # kernel <- matrix(0, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
@@ -538,9 +545,9 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   # kernel <- kernel / sum(kernel)
 
   # circular kernel
-  k_par  <- par[length(par)]
-  kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
-                                       kfun = function(x) dexp(x, k_par))
+  # k_par  <- par[length(par)]
+  # kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
+  #                                      kfun = function(x) dexp(x, k_par))
 
   attract0 <- env_function(env_i, par, nbhd = nbhd_i)
   

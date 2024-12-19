@@ -1,6 +1,6 @@
 source("R/00_functions.R")
 
-simnames <- c("ss3", "emp", "circ", "circpp", "circpp2", "pp3", "pp5")
+simnames <- c("ss", "pp3", "pp", "pp30")
 res <- results_table(simnames)
 res0 <- res
 res <- res0[res0$nmove > 100, ]

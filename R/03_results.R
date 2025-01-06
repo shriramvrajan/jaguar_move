@@ -1,9 +1,17 @@
 source("R/00_functions.R")
 
-simnames <- c("ss", "pp3", "pp", "pp30")
+simnames <- c("ss", "pp", "pp30",  "pp3", "pp3_1", "pp3_2")
 res <- results_table(simnames)
 res0 <- res
 res <- res0[res0$nmove > 100, ]
+
+##==============================================================================
+
+## 6 jan 2025
+plot(res$aic_pp3 - res$aic_ss, res$nmove, pch = 19, col = "black")
+abline(v = 0)
+points(res$aic_pp3_2 - res$aic_ss, res$nmove, pch = 19, col = "red")
+points(res$aic_pp30 - res$aic_ss, res$nmove, pch = 19, col = "green")
 
 ## 16 dec 2024
 r0 <- res$aic_ss3 - res$aic_circ # -ve means L better, +ve R

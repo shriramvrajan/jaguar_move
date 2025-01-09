@@ -527,26 +527,19 @@ log_likelihood <- function(par, objects, debug = FALSE) {
 
   # Non-simulation -------------------------------------------------------------
   
-  # stay/move parameter kernel
-  # stay_prob <- exp01(par[length(par)])
-  # move_prob <- (1 - stay_prob) / ((step_size * 2 + 1)^2 - 1)
-  # kernel <- matrix(move_prob, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
-  # center <- step_size + 1
-  # kernel[center, center] <- stay_prob
-
-  # stay/move kernel #2
-  move_prob <- exp01(par[length(par)])
+  # stay/move kernel 
+  # move_prob <- exp01(par[length(par)])
 
   # square kernel
-  # kernel0 <- dexp(1:(step_size + 1), rate = exp(par[length(par)])) # move par
-  # kernel <- matrix(0, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
-  # center <- step_size + 1
-  # for (i in seq_len(center + step_size)) {
-  #   for (j in seq_len(center + step_size)) {
-  #     kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
-  #   }
-  # }
-  # kernel <- kernel / sum(kernel)
+  kernel0 <- dexp(0:step_size, rate = exp(par[length(par)])) # move par
+  kernel <- matrix(0, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
+  center <- step_size + 1
+  for (i in seq_len(center + step_size)) {
+    for (j in seq_len(center + step_size)) {
+      kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
+    }
+  }
+  kernel <- kernel / sum(kernel)
 
   # circular kernel
   # k_par  <- par[length(par)]
@@ -556,12 +549,12 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   attract0 <- env_function(env_i, par, nbhd = nbhd_i)
   
   attract <- t(apply(attract0, 1, function(env) {
-    # p <- env * kernel
-    # return(p / sum(p, na.rm = T))
-    cent <- ceiling(length(env) / 2)
-    env[cent] <- env[cent] * (1 - move_prob)
-    env[-cent] <- env[-cent] * (move_prob / (sum(!is.na(env)) - 1))
-    return(env / sum(env))
+    p <- env * kernel
+    return(p / sum(p, na.rm = T))
+    # cent <- ceiling(length(env) / 2)
+    # env[cent] <- env[cent] * (1 - move_prob)
+    # env[-cent] <- env[-cent] * (move_prob / (sum(!is.na(env)) - 1))
+    # return(env / sum(env))
   }))
 
   # Simulation -----------------------------------------------------------------

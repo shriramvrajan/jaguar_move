@@ -75,7 +75,7 @@ if (refit_model) {
     max_dist <- ceiling(max(dist) * 1.5)
     # home      <- rast(paste0("data/homeranges/homerange_", id, ".grd"))
     # brdf$home <- as.vector(home)
-    envdf    <- brdf[, c(1:6)] # add 10 for homerange
+    envdf    <- brdf[, c(2:6)] # add 1 for footprint, 10 for homerange
     
     if (holdout_set && nrow(jag_traject) > 100) {
       hold <- seq_len(ceiling(nrow(jag_traject) * holdout_frac))
@@ -84,6 +84,8 @@ if (refit_model) {
     }
 
     param0 <- rep(1, npar)
+    # Pm <- 0.8879928 # jaguar #2 
+    # param0[length(param0)] <- prob_to_kernel(p = Pm, max = max_dist)
 
     # Preparing model objects based on model type; 1 = SSF, 2 = path propagation
     if (model_type == 1) {

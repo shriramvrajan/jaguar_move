@@ -340,6 +340,15 @@ make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist,
   return(out$n)
 }
 
+prob_to_kernel <- function(p, max) {
+  par_test <- function(theta) {
+    kern <- dexp(0:max, rate = theta) / sum(dexp(0:max, rate = theta))
+    return(kern[1] - p)
+  }
+  result <- uniroot(par_test, c(0.001, 10))$root
+  return(result)
+}
+
 # Normalize probabilities across neighbors of each cell
 # v: vector of cell values
 normalize_nbhd <- function(v, nbhd) {
@@ -438,10 +447,13 @@ env_function <- function(env, par, nbhd) {
   #                         par[6] * env[, 5] + par[7] * env[, 6]))
   
   # # First order no intercept -------------------------------------------------
+  # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
+  #                         par[3] * env[, 3] + par[4] * env[, 4] + 
+  #                         par[5] * env[, 5] + par[6] * env[, 6]))
   attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-                          par[3] * env[, 3] + par[4] * env[, 4] + 
-                          par[5] * env[, 5] + par[6] * env[, 6]))
- 
+                           par[3] * env[, 3] + par[4] * env[, 4] + 
+                           par[5] * env[, 5]))
+
   # Simulation -----------------------------------------------------------------
   # attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
 

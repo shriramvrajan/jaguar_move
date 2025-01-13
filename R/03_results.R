@@ -1,6 +1,6 @@
 source("R/00_functions.R")
 
-simnames <- c("emp", "ss", "pp3", "pp3_2", "pp4")
+simnames <- c("emp1", "ss1", "pp1", "pp1_2", "pp1_3")
 res <- results_table(simnames)
 
 res0 <- res
@@ -10,11 +10,17 @@ res <- res0[res0$nmove > 200, ]
 ##
 
 ggplot(data = res) +
-    geom_point(mapping = aes(x = aic_ss, y = aic_pp3, col = bio)) +
+    geom_point(mapping = aes(x = aic_pp1, y = aic_pp1_2, col = bio), size = 3) +
     geom_abline()
 
+res$aic_diff1 <- res$aic_ss1 - res$aic_pp1
+res$aic_diff2 <- res$aic_ss1 - res$aic_pp1_2
+res$aic_diff3 <- res$aic_ss1 - res$aic_pp1_3
+ggplot(data = res) +
+    geom_point(mapping = aes(x = aic_diff1, y = meandist, col = bio), pch = 19, cex = 2) 
+
 ## 6 jan 2025
-plot(res$aic_pp3 - res$aic_ss, res$nmove, pch = 19, col = "black",xlim = c(-500,500))
+plot(res$aic_pp3 - res$aic_ss, res$nmove, pch = 19, col = "black", xlim = c(-500, 500))
 abline(v = 0)
 points(res$aic_pp3_2 - res$aic_ss, res$nmove, pch = 19, col = "red")
 # points(res$aic_pp4 - res$aic_ss, res$nmove, pch = 19, col = "green")

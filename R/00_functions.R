@@ -447,13 +447,10 @@ env_function <- function(env, par, nbhd) {
   #                         par[6] * env[, 5] + par[7] * env[, 6]))
   
   # # First order no intercept -------------------------------------------------
-  # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-  #                         par[3] * env[, 3] + par[4] * env[, 4] + 
-  #                         par[5] * env[, 5] + par[6] * env[, 6]))
   attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-                           par[3] * env[, 3] + par[4] * env[, 4] + 
-                           par[5] * env[, 5]))
-
+                          par[3] * env[, 3] + par[4] * env[, 4] + 
+                          par[5] * env[, 5] + par[6] * env[, 6]))
+                          
   # Simulation -----------------------------------------------------------------
   # attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
 
@@ -489,12 +486,12 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   #                                      kfun = function(x) dexp(x, k_par))
 
   # # env_weight <- exp01(par[length(par)]) # last one is env weighting par
-  # attract0 <- env_function(env, par, nbhd)
-  # # attract  <- attract0 / rowSums(attract0)
-  # attract <- t(apply(attract0, 1, function(env) {
-  #   p <- env * as.vector(kernel)
-  #   return(p / sum(p, na.rm = T))
-  # }))
+  attract0 <- env_function(env, par, nbhd)
+  # attract  <- attract0 / rowSums(attract0)
+  attract <- t(apply(attract0, 1, function(env) {
+    p <- env * as.vector(kernel)
+    return(p / sum(p, na.rm = T))
+  }))
 
   # Empirical movement kernel --------------------------------------------------
   # attract0 <- env_function(env, par, nbhd)

@@ -75,7 +75,7 @@ if (refit_model) {
     max_dist <- ceiling(max(dist) * 1.5)
     # home      <- rast(paste0("data/homeranges/homerange_", id, ".grd"))
     # brdf$home <- as.vector(home)
-    envdf    <- brdf[, c(2:6)] # add 1 for footprint, 10 for homerange
+    envdf    <- brdf[, c(1:6)] # add 1 for footprint, 10 for homerange
     
     if (holdout_set && nrow(jag_traject) > 100) {
       hold <- seq_len(ceiling(nrow(jag_traject) * holdout_frac))
@@ -83,9 +83,15 @@ if (refit_model) {
       jag_traject_cells <- jag_traject_cells[hold]
     }
 
-    param0 <- rep(1, npar)
-    # Pm <- 0.8879928 # jaguar #2 
-    # param0[length(param0)] <- prob_to_kernel(p = Pm, max = max_dist)
+    # Initial parameter values
+    # param0 <- rep(1, npar)
+    p0 <- load_output("pp1")
+    param0 <- p0[[i]]$par
+    ref <- load_output("pp1_2")
+    p_m <- sapply(seq_along(ref), function(i) {
+      return(ref[[i]]$par[7])
+    }) %>% exp01
+    param0[length(param0)] <- prob_to_kernel(p = p_m, max = max_dist)
 
     # Preparing model objects based on model type; 1 = SSF, 2 = path propagation
     if (model_type == 1) {
@@ -120,10 +126,13 @@ if (refit_model) {
     }
 
     # Calculate null likelihoods for each jaguar if not already done
-    if (model_calcnull) {
+    if (model_nofit) {
       message(paste0("Calculating null likelihood for jaguar ", i))
-      null_likelihood <- ll_func(c(rep(0, npar)), objects)
-      saveRDS(null_likelihood, paste0("data/output/null_", i, ".RDS"))
+      likelihood <- ifelse(model_calcnull, 
+                           ll_func(c(rep(0, npar)), objects),
+                           ll_func(param0, objects))
+      name <- ifelse(model_calcnull, "ll_null_", "ll_")
+      saveRDS(likelihood, paste0("data/output/", name, i, ".rds"))
     } else {
       message("Running optim...")
       run_optim(param0, objects, i)

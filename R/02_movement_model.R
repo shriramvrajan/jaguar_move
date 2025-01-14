@@ -61,8 +61,8 @@ if (refit_model) {
 
   message("Fitting model parameters")
 
-  foreach(i = i_todo) %dopar% {
-  # for (i in i_todo) {  # easier to debug
+  # foreach(i = i_todo) %dopar% {
+  for (i in i_todo) {  # easier to debug
     message(paste0("Jaguar #: ", i))
     id                <- as.numeric(jag_id[i])
     jag_traject       <- jag_move[ID == id, 3:4]
@@ -84,14 +84,14 @@ if (refit_model) {
     }
 
     # Initial parameter values
-    # param0 <- rep(1, npar)
-    p0 <- load_output("pp1")
-    param0 <- p0[[i]]$par
-    ref <- load_output("pp1_2")
-    p_m <- sapply(seq_along(ref), function(i) {
-      return(ref[[i]]$par[7])
-    }) %>% exp01
-    param0[length(param0)] <- prob_to_kernel(p = p_m, max = max_dist)
+    
+    param0 <- rep(1, npar)
+
+    # param0 <- load_output("pp1_2", i)$par
+    # p_s <- 1 - exp01(param0[7])
+    # param0[length(param0)] <- -log((1/p_s - 1) / 8) # test, only works for step_size=1
+    
+    # param0 <- load_output("pp1_2")[[i]]$par
 
     # Preparing model objects based on model type; 1 = SSF, 2 = path propagation
     if (model_type == 1) {
@@ -121,6 +121,7 @@ if (refit_model) {
     } else if (model_type == 2) {
       message("Using path propagation model")
       objects <- prep_model_objects(jag_traject_cells, max_dist, envdf)
+      browser()
     } else {
       stop("Invalid model type")
     }

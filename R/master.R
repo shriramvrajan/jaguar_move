@@ -40,11 +40,11 @@ if (run_model) {
     npar            <- 7              # Number of parameters in current model 
     step_size       <- 1              # Jaguars move up to n px (n km) at a time
     sim_steps       <- 6              # How many steps to simulate forward
-    n_iter          <- nrow(jag_id)   # Number of individuals
+    i_override      <- 48             # Which jaguars, set to NULL to fit all
     
     ## Set up parallel processing
-    parallel        <- TRUE
-    ncore           <- switch(model_type, 6, 6)
+    parallel        <- FALSE
+    ncore           <- 10
     if (parallel) {
         library(doParallel)
         library(foreach)
@@ -52,22 +52,26 @@ if (run_model) {
         message(paste0("number of workers: ", getDoParWorkers()))
     }
 
-    message("============================================")
     message("Parameters set")
-    message(paste0("Number of jaguars: ", n_iter))
     message(paste0("Number of parameters: ", npar))
     message(paste0("Number of simulation steps: ", sim_steps))
     message(paste0("Step size: ", step_size))
     if (holdout_set) message(paste0("Holdout fraction: ", holdout_frac))
     message("============================================")
 
-    outfiles <- list.files("data/output")
-    done <- gsub(".rds", "", outfiles) %>% 
-        gsub("out_", "", .) %>% 
-        gsub("NA_", "", .) %>%
-        as.numeric()
-    done <- done[!is.na(done)]
-    i_todo <- setdiff(seq_len(n_iter), done)
+    if (!is.null(i_override)) {
+        i_todo <- i_override
+    } else {
+        outfiles <- list.files("data/output")
+        done <- gsub(".rds", "", outfiles) %>% 
+            gsub("out_", "", .) %>% 
+            gsub("ll_null_", "", .) %>%
+            gsub("ll_", "", .) %>%
+            gsub("NA_", "", .) %>%
+            as.numeric()
+        done <- done[!is.na(done)]
+        i_todo <- setdiff(seq_len(nrow(jag_id)), done)
+    }
     message(paste0("Number of jaguars to process: ", length(i_todo)))
 
     if (!exists("nbhd0")) {

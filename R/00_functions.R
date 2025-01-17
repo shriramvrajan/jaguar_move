@@ -531,9 +531,10 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   # stay/move kernel 
   # stay_prob <- 1 - exp01(par[length(par)])
   # move_prob <- (1 - stay_prob) / ((step_size * 2 + 1)^2 - 1)
-  # kernel <- matrix(move_prob, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
+  # move_prob <- exp01(par[length(par)])
+  # kernel <- matrix(move_prob/8, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
   # center <- step_size + 1
-  # kernel[center, center] <- stay_prob
+  # kernel[center, center] <- 1 - move_prob
 
   # square kernel
   kernel0 <- dexp(0:step_size, rate = par[length(par)]) # move par
@@ -554,10 +555,13 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   attract0 <- env_function(env_i, par, nbhd = nbhd_i)
   
   attract <- t(apply(attract0, 1, function(env) {
+    missing <- which(is.na(env))
+    kernel[missing] <- NA
+    kernel <- kernel / sum(kernel, na.rm = T)
     p <- env * kernel
-    return(p / sum(p, na.rm = T))
+    return(p / sum(p, na.rm = T))    
   }))
-
+  
   # Simulation -----------------------------------------------------------------
   # attract <- env_function(env_i, par, nbhd_i)
 

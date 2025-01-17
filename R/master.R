@@ -14,6 +14,8 @@ analyse_output  <- FALSE
 
 debug_02        <- FALSE
 
+set.seed(12345)
+
 ## Data generation =============================================================
 
 if (generate_data) {
@@ -33,18 +35,19 @@ if (run_model) {
     model_type      <- 2                # 1 = tradSSF, 2 = path propagation
     holdout_set     <- FALSE             # Hold out a set of points
     # holdout_frac    <- 0.7              # Fraction of points to use for fitting
-    model_nofit     <- TRUE
+    model_nofit     <- FALSE            # Don't fit the model, just simulate
         model_calcnull  <- FALSE            # Calculate null likelihoods 
                                         # refit_model must be TRUE for this one
     ## Parameters                                    
     npar            <- 7              # Number of parameters in current model 
     step_size       <- 1              # Jaguars move up to n px (n km) at a time
     sim_steps       <- 6              # How many steps to simulate forward
-    i_override      <- 48             # Which jaguars, set to NULL to fit all
+    i_override      <- NULL           
+    # Which jaguars, set to NULL to fit all
     
     ## Set up parallel processing
-    parallel        <- FALSE
-    ncore           <- 10
+    parallel        <- TRUE
+    ncore           <- switch(model_type, 12, 7)
     if (parallel) {
         library(doParallel)
         library(foreach)

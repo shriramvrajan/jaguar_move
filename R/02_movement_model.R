@@ -84,15 +84,11 @@ if (refit_model) {
     }
 
     # Initial parameter values
+    # param0 <- rep(0, npar)
+    param0 <- load_output("pp1_2", i)$par
+    p_s <- 1 - exp01(param0[7])
+    param0[length(param0)] <- -log((1/p_s - 1) / 8) # test, only works for step_size=1
     
-    param0 <- rep(1, npar)
-
-    # param0 <- load_output("pp1", i)$par
-    # p_s <- 1 - exp01(param0[7])
-    # param0[length(param0)] <- -log((1/p_s - 1) / 8) # test, only works for step_size=1
-    
-    # param0 <- load_output("pp1_2")[[i]]$par
-
     # Preparing model objects based on model type; 1 = SSF, 2 = path propagation
     if (model_type == 1) {
       message("Using traditional step selection function model")
@@ -122,19 +118,23 @@ if (refit_model) {
       message("Using path propagation model")
       objects <- prep_model_objects(jag_traject_cells, max_dist, envdf)
       message(object.size(objects) %>% format(units = "Mb"))
+      if (debug_01) {
+        sizeout <- object.size(objects) %>% format(units = "Mb")
+        saveRDS(sizeout, paste0("data/output/sizeout_", i, ".rds"))
+      }
     } else {
       stop("Invalid model type")
     }
 
     # Calculate null likelihoods for each jaguar if not already done
     if (model_nofit) {
-      message(paste0("Calculating null likelihood for jaguar ", i))
+      message(paste0("Calculating likelihood for jaguar ", i))
       likelihood <- ifelse(model_calcnull, 
                            ll_func(c(rep(0, npar)), objects),
                            ll_func(param0, objects))
       name <- ifelse(model_calcnull, "ll_null_", "ll_")
       saveRDS(likelihood, paste0("data/output/", name, i, ".rds"))
-    } else {
+    } else if (!debug_01) {
       message("Running optim...")
       run_optim(param0, objects, i)
       if (debug_02) {

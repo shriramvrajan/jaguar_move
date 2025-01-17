@@ -8,24 +8,20 @@ loaded <- TRUE
 
 ## Global switches =============================================================
 
+set.seed(12345)
 generate_data   <- FALSE
 run_model       <- TRUE
 analyse_output  <- FALSE
-
-debug_02        <- FALSE
-
-set.seed(12345)
+debug_01        <- FALSE     # object size
+debug_02        <- FALSE    # something about optim
 
 ## Data generation =============================================================
 
-if (generate_data) {
-    source("R/01_generate_data.R")
-}
+if (generate_data) source("R/01_generate_data.R")
 
 ## Movement model ==============================================================
 
 if (run_model) {
-    
     ## Not important right now 
     refit_homes     <- FALSE            # Refit home ranges (AKDE) 
     refit_turns     <- FALSE            # Refit turn distributions (MM)
@@ -42,8 +38,8 @@ if (run_model) {
     npar            <- 7              # Number of parameters in current model 
     step_size       <- 1              # Jaguars move up to n px (n km) at a time
     sim_steps       <- 6              # How many steps to simulate forward
-    i_override      <- NULL           
-    # Which jaguars, set to NULL to fit all
+    i_override      <- NULL     
+    # Which jaguars, set to NULL to iterate through all
     
     ## Set up parallel processing
     parallel        <- TRUE
@@ -62,19 +58,18 @@ if (run_model) {
     if (holdout_set) message(paste0("Holdout fraction: ", holdout_frac))
     message("============================================")
 
-    if (!is.null(i_override)) {
-        i_todo <- i_override
-    } else {
-        outfiles <- list.files("data/output")
-        done <- gsub(".rds", "", outfiles) %>% 
-            gsub("out_", "", .) %>% 
-            gsub("ll_null_", "", .) %>%
-            gsub("ll_", "", .) %>%
-            gsub("NA_", "", .) %>%
-            as.numeric()
-        done <- done[!is.na(done)]
-        i_todo <- setdiff(seq_len(nrow(jag_id)), done)
-    }
+    outfiles <- list.files("data/output")
+    done <- gsub(".rds", "", outfiles) %>% 
+        gsub("sizeout_", "", .) %>%
+        gsub("out_", "", .) %>% 
+        gsub("ll_null_", "", .) %>%
+        gsub("ll_", "", .) %>%
+        gsub("NA_", "", .) %>%
+        as.numeric()
+    done <- done[!is.na(done)]
+    if (!is.null(i_override)) i0 <- i_override else i0 <- 1:nrow(jag_id)
+    i_todo <- setdiff(i0, done)
+    
     message(paste0("Number of jaguars to process: ", length(i_todo)))
 
     if (!exists("nbhd0")) {

@@ -1,17 +1,14 @@
 source("R/00_functions.R")
 
-simnames <- c("emp1", "ss1", "pp", "pp1", "pp1_2", "pp_c")
+simnames <- c("emp1", "ss1", "pp", "pp1", "pp1_2")
 res <- results_table(simnames)
 
-res0 <- res
-res <- res0[res0$nmove > 200, ]
+# res0 <- res
+# res <- res0[res0$nmove > 200, ]
 
-##==============================================================================
-##
-
-ggplot(data = res, aes(x = aic_pp_c, y = aic_pp)) +
+ggplot(data = res, aes(x = aic_pp1, y = aic_pp1_2)) +
     geom_point(mapping = aes(col = bio), size = 3) +
-    geom_text(aes(label = ifelse(bio == "Pantanal", jag_id, ""), size = 2)) +
+    geom_text(aes(label = ifelse(abs(aic_pp1 - aic_pp1_2) > 100, jag_id, ""))) +
     geom_abline() 
 
 res$aic_diff1 <- res$aic_ss1 - res$aic_pp1
@@ -20,8 +17,10 @@ res$aic_diff3 <- res$aic_ss1 - res$aic_pp1_3
 ggplot(data = res) +
     geom_point(mapping = aes(x = aic_diff1, y = meandist, col = bio), pch = 19, cex = 2) 
 
+# Old code ---------------------------------------------------------------------
 ## 6 jan 2025
-# plot(res$aic_pp3 - res$aic_ss, res$nmove, pch = 19, col = "black", xlim = c(-500, 500))
+# plot(res$aic_pp3 - res$aic_ss, res$nmove, pch = 19, col = "black", 
+#      xlim = c(-500, 500))
 # abline(v = 0)
 # points(res$aic_pp3_2 - res$aic_ss, res$nmove, pch = 19, col = "red")
 # points(res$aic_pp4 - res$aic_ss, res$nmove, pch = 19, col = "green")

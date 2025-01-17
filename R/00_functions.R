@@ -33,7 +33,8 @@ epsg5880 <- "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000
 jag_move <- readRDS("data/jag_data_BR.rds")
 jag_id <- readRDS("data/jag_list.rds")
 njag <- nrow(jag_id)
-jag_meta <- data.table(read.csv("data/input/jaguars/jaguar_metadata2.csv"))
+jag_meta0 <- data.table(read.csv("data/input/jaguars/jaguar_metadata2.csv"))
+jag_meta  <- readRDS("data/jag_meta2.rds")
 
 # RasterStack of environmental variables -- see 01_generate_data.R for details
 brazil_ras <- rast("data/env_layers.grd")
@@ -353,12 +354,9 @@ normalize_nbhd <- function(v, nbhd) {
 # max_dist:  Maximum distance in pixels for one step
 # r:         Raster object
 prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
-       # Extended neighborhoods of each cell in individual's trajectory
-    if (sim) {
-      nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = env01)
-    } else {
-      nbhd_index <- make_nbhd(i = traject, sz = max_dist)
-    }
+    # Extended neighborhoods of each cell in individual's trajectory
+    env_ras    <- if (sim) env01 else brazil_ras
+    nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = env_ras)
 
     # Observed steps, as cell numbers within full neighborhood
     obs  <- sapply(2:nrow(nbhd_index), function(r) {
@@ -376,7 +374,7 @@ prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
       return(out)
     })
     nbhd_i <- do.call(rbind, nbhd_list)
-    nbhd_0 <- matrix(data = seq_len(nbhd_index), nrow = nrow(nbhd_index), 
+    nbhd_0 <- matrix(data = seq_along(nbhd_index), nrow = nrow(nbhd_index), 
                      ncol = ncol(nbhd_index)) # for ss model
 
     # Reindexing allows linkage of row numbers from nbhd_ito raster cells
@@ -526,34 +524,32 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   sim_steps  <- objects$sim_steps
   n_obs      <- length(obs) + 1
 
-  # Non-simulation -------------------------------------------------------------
-  
+  # Movement kernel ------------------------------------------------------------
+
   # stay/move kernel 
-  # stay_prob <- 1 - exp01(par[length(par)])
-  # move_prob <- (1 - stay_prob) / ((step_size * 2 + 1)^2 - 1)
   # move_prob <- exp01(par[length(par)])
   # kernel <- matrix(move_prob/8, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
   # center <- step_size + 1
   # kernel[center, center] <- 1 - move_prob
 
   # square kernel
-  kernel0 <- dexp(0:step_size, rate = par[length(par)]) # move par
-  kernel <- matrix(0, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
-  center <- step_size + 1
-  for (i in seq_len(center + step_size)) {
-    for (j in seq_len(center + step_size)) {
-      kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
-    }
-  }
-  kernel <- kernel / sum(kernel)
+  # kernel0 <- dexp(0:step_size, rate = par[length(par)]) # move par
+  # kernel <- matrix(0, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
+  # center <- step_size + 1
+  # for (i in seq_len(center + step_size)) {
+  #   for (j in seq_len(center + step_size)) {
+  #     kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
+  #   }
+  # }
+  # kernel <- kernel / sum(kernel)
 
   # circular kernel
-  # k_par  <- par[length(par)]
-  # kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
-  #                                      kfun = function(x) dexp(x, k_par))
+  k_par  <- par[length(par)]
+  kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
+                                       kfun = function(x) dexp(x, k_par))
 
+  # Attractiveness function ----------------------------------------------------
   attract0 <- env_function(env_i, par, nbhd = nbhd_i)
-  
   attract <- t(apply(attract0, 1, function(env) {
     missing <- which(is.na(env))
     kernel[missing] <- NA
@@ -562,13 +558,10 @@ log_likelihood <- function(par, objects, debug = FALSE) {
     return(p / sum(p, na.rm = T))    
   }))
   
-  # Simulation -----------------------------------------------------------------
+  # Simulation 
   # attract <- env_function(env_i, par, nbhd_i)
 
-  # must be a more elegant way of doing this than commenting chunks in and out
-  #-----------------------------------------------------------------------------
-
-  # Array for propagating probabilities forward 
+  # Propagating probabilities forward ------------------------------------------
   ncell_local <- (2 * max_dist + 1)^2 
   current <- array(0, dim = c(ncell_local, n_obs, sim_steps))
   
@@ -578,10 +571,10 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   current[center, , 1] <- 1
 
   for (j in 1:(sim_steps - 1)) {
-    # Probabilities across entire nbhd_ifor step j
+    # Probabilities across entire nbhd_i for step j
     step_prob <- as.vector(current[, , j]) * attract[]
     #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
-    #   nbhd_i is the 3rd cell of nbhd.
+    #   nbhd_i is the 3rd cell of nbhd_i.
     dest[] <- step_prob[as.vector(to_dest)]
     # Summing probabilities up to step j to generate step j+1
     current[, , j + 1] <- rowSums(dest, na.rm = TRUE)
@@ -597,8 +590,6 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
   out            <- -max(log_likelihood, na.rm = TRUE)
   
-  ## DEBUG
-  # out          <- -log_likelihood[obs_interval + 2]
   if (is.infinite(out) || is.na(out)) out <- 0
   if (debug) {
     return(list(out = out, array = current, predictions = predictions, par = par))

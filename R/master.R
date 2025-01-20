@@ -28,22 +28,22 @@ if (run_model) {
 
     ## Actual fitting options
     refit_model     <- TRUE             # Refit movement model parameters
-    model_type      <- 2                # 1 = tradSSF, 2 = path propagation
+    model_type      <- 1                # 1 = tradSSF, 2 = path propagation
     holdout_set     <- FALSE             # Hold out a set of points
     # holdout_frac    <- 0.7              # Fraction of points to use for fitting
     model_nofit     <- FALSE            # Don't fit the model, just simulate
         model_calcnull  <- FALSE            # Calculate null likelihoods 
                                         # refit_model must be TRUE for this one
     ## Parameters                                    
-    npar            <- 7              # Number of parameters in current model 
+    npar            <- 8              # Number of parameters in current model 
     step_size       <- 1              # Jaguars move up to n px (n km) at a time
-    sim_steps       <- 6              # How many steps to simulate forward
-    i_override      <- NULL     
+    sim_steps       <- 8              # How many steps to simulate forward
+    i_override      <- order(jag_meta$osize)[1:30]     
     # Which jaguars, set to NULL to iterate through all
     
     ## Set up parallel processing
     parallel        <- TRUE
-    ncore           <- switch(model_type, 12, 7)
+    ncore           <- switch(model_type, 8, 7)
     if (parallel) {
         library(doParallel)
         library(foreach)
@@ -67,7 +67,7 @@ if (run_model) {
         gsub("NA_", "", .) %>%
         as.numeric()
     done <- done[!is.na(done)]
-    if (!is.null(i_override)) i0 <- i_override else i0 <- 1:nrow(jag_id)
+    if (!is.null(i_override)) i0 <- i_override else i0 <- seq_len(nrow(jag_id))
     i_todo <- setdiff(i0, done)
     
     message(paste0("Number of jaguars to process: ", length(i_todo)))

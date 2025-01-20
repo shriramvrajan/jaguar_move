@@ -460,25 +460,30 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
 
   # Fitted movement kernel -----------------------------------------------------
   # square kernel
-  kernel0 <- dexp(0:(max_dist), rate = exp(par[length(par)])) # move par
-  kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
-  center <- max_dist + 1
-  for (i in seq_len(center + max_dist)) {
-    for (j in seq_len(center + max_dist)) {
-      kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
-    }
-  }
-  kernel <- kernel / sum(kernel)
+  # kernel0 <- dexp(0:(max_dist), rate = exp(par[length(par)])) # move par
+  # kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
+  # center <- max_dist + 1
+  # for (i in seq_len(center + max_dist)) {
+  #   for (j in seq_len(center + max_dist)) {
+  #     kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
+  #   }
+  # }
+  # kernel <- kernel / sum(kernel)
   
   # circular kernel
-  # k_par  <- par[length(par)]
-  # kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
-  #                                      kfun = function(x) dexp(x, k_par))
+  k_exp   <- par[length(par) - 1]
+  bg_rate <- exp01(par[length(par)])
+  kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
+                                       kfun = function(x) {
+                                        dexp(x, k_exp) + bg_rate
+                                        })
 
   # # env_weight <- exp01(par[length(par)]) # last one is env weighting par
   attract0 <- env_function(env, par, nbhd)
   # attract  <- attract0 / rowSums(attract0)
   attract <- t(apply(attract0, 1, function(env) {
+    missing <- which(is.na(env))
+    kernel[missing] <- NA
     p <- env * as.vector(kernel)
     return(p / sum(p, na.rm = T))
   }))
@@ -544,7 +549,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   # kernel <- kernel / sum(kernel)
 
   # circular kernel
-  k_par  <- par[length(par)]
+  k_par  <- par[length(par) - 1] # second-to-last parameter
   kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
                                        kfun = function(x) dexp(x, k_par))
 
@@ -584,7 +589,8 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   predictions <- matrix(0, nrow = sim_steps, ncol = n_obs)
   for (i in 1:n_obs) {
     prob <- current[obs[i], i, ]
-    predictions[, i] <- ifelse(prob == 0, 1e-4, prob)
+    predictions[, i] <- ifelse(prob == 0, exp01(par[length(par)]), prob)
+    predictions[, i] <- predictions[, i] / sum(predictions[, i], na.rm = TRUE)
   }
 
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
@@ -618,7 +624,7 @@ run_optim <- function(param, objects, i) {
             message(paste("Try #:", ntries))
             if (ntries == 20) {
               message("Skipping, couldn't fit in 20 tries")
-              saveRDS(NA, paste0("NA_", i, ".rds"))
+              saveRDS(NA, paste0("data/output/NA_", i, ".rds"))
             } else {
               message("Retrying")
             }

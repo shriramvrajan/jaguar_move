@@ -84,10 +84,10 @@ if (refit_model) {
     }
 
     # Initial parameter values
-    # param0 <- rep(0, npar)
-    param0 <- load_output("pp1_2", i)$par
-    p_s <- 1 - exp01(param0[7])
-    param0[length(param0)] <- -log((1/p_s - 1) / 8) # test, only works for step_size=1
+    param0 <- rep(0, npar)
+    # param0 <- load_output("pp1_2", i)$par
+    # p_s <- 1 - exp01(param0[7])
+    # param0[length(param0)] <- -log((1/p_s - 1) / 8) # test, only works for step_size=1
     
     # Preparing model objects based on model type; 1 = SSF, 2 = path propagation
     if (model_type == 1) {

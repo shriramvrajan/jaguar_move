@@ -1,5 +1,4 @@
 rm(list = ls())
-
 ## Basic functions and libraries 
 
 # Libraries ====================================================================
@@ -31,8 +30,8 @@ epsg5880 <- "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000
 
 # Jaguar movement data, ID numbers, and metadata
 jag_move <- readRDS("data/jag_data_BR.rds")
-jag_id <- readRDS("data/jag_list.rds")
-njag <- nrow(jag_id)
+jag_id   <- readRDS("data/jag_list.rds")
+njag     <- nrow(jag_id)
 jag_meta0 <- data.table(read.csv("data/input/jaguars/jaguar_metadata2.csv"))
 jag_meta  <- readRDS("data/jag_meta2.rds")
 
@@ -169,6 +168,17 @@ make_full_track <- function(id) {
 }
 
 # 1. Data exploration ----------------------------------------------------------
+
+plot_circle_kernel <- function(max_dist, k_par, bg_rate) {
+    kern <- calculate_dispersal_kernel(max_dispersal_dist = max_dist,
+                                       kfun = function(x) {
+                                        dexp(x, rate = k_par) + bg_rate
+                                       })
+    print(sum(kern))
+    terra::plot(rast(kern))
+    return(kern)
+}
+
 
 # Plot environmental layers for path 
 # layer: layer number of raster
@@ -456,7 +466,7 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   obs      <- objects$obs
   env      <- objects$env
   max_dist <- objects$max_dist
-  # mk       <- objects$mk # only if empirical kernel
+  mk       <- objects$mk # only if empirical kernel
 
   # Fitted movement kernel -----------------------------------------------------
   # square kernel
@@ -471,26 +481,24 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   # kernel <- kernel / sum(kernel)
   
   # circular kernel
-  k_exp   <- par[length(par) - 1]
-  bg_rate <- exp01(par[length(par)]) * 0.001
-  kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
-                                       kfun = function(x) {
-                                        dexp(x, k_exp) + bg_rate
-                                        })
+  # k_exp   <- par[length(par) - 1]
+  # bg_rate <- exp01(par[length(par)]) 
+  # kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
+  #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
 
-  # # env_weight <- exp01(par[length(par)]) # last one is env weighting par
-  attract0 <- env_function(env, par, nbhd)
-  # attract  <- attract0 / rowSums(attract0)
-  attract <- t(apply(attract0, 1, function(env) {
-    missing <- which(is.na(env))
-    kernel[missing] <- NA
-    p <- env * as.vector(kernel)
-    return(p / sum(p, na.rm = T))
-  }))
+  # # # env_weight <- exp01(par[length(par)]) # last one is env weighting par
+  # attract0 <- env_function(env, par, nbhd)
+  # # attract  <- attract0 / rowSums(attract0)
+  # attract <- t(apply(attract0, 1, function(env) {
+  #   missing <- which(is.na(env))
+  #   kernel[missing] <- NA
+  #   p <- env * as.vector(kernel)
+  #   return(p / sum(p, na.rm = T))
+  # }))
 
   # Empirical movement kernel --------------------------------------------------
-  # attract0 <- env_function(env, par, nbhd)
-  # attract <- t(apply(attract0, 1, function(r) r * mk))
+  attract0 <- env_function(env, par, nbhd)
+  attract <- t(apply(attract0, 1, function(r) r * mk))
   
   like <- sapply(seq_along(obs), function(i) {
     return(attract[i, obs[i]])
@@ -529,6 +537,8 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   sim_steps  <- objects$sim_steps
   n_obs      <- length(obs) + 1
 
+  bg_rate <- exp01(par[length(par)]) # background rate
+
   # Movement kernel ------------------------------------------------------------
 
   # stay/move kernel 
@@ -549,10 +559,10 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   # kernel <- kernel / sum(kernel)
 
   # circular kernel
-  k_par  <- par[length(par) - 1] # second-to-last parameter
-  kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
-                                       kfun = function(x) dexp(x, k_par))
-
+  k_par   <- par[length(par) - 1] # second-to-last parameter
+  bg_rate <- exp01(par[length(par)]) # background rate
+  kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
+                                       kfun = function(x) dexp(x, k_exp) + bg_rate)
   # Attractiveness function ----------------------------------------------------
   attract0 <- env_function(env_i, par, nbhd = nbhd_i)
   attract <- t(apply(attract0, 1, function(env) {
@@ -589,7 +599,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   predictions <- matrix(0, nrow = sim_steps, ncol = n_obs)
   for (i in 1:n_obs) {
     prob <- current[obs[i], i, ]
-    predictions[, i] <- ifelse(prob == 0, exp01(par[length(par)]), prob)
+    predictions[, i] <- prob + bg_rate - prob * bg_rate
     predictions[, i] <- predictions[, i] / sum(predictions[, i], na.rm = TRUE)
   }
 
@@ -780,11 +790,11 @@ par_to_df <- function(par) {
     }))
 }
 
-results_table <- function(s, par = TRUE) {
+results_table <- function(s, params = TRUE) {
 
-  npar <- vector()
+ npar <- vector()
   
-  lldf <- sapply(s, function(i) {
+ lldf <- sapply(s, function(i) {
     indiv <- paste0("out_", 1:82, ".rds")
     out <- sapply(indiv, function(j) {
       print(paste(i, j))
@@ -796,34 +806,37 @@ results_table <- function(s, par = TRUE) {
         return(out$out)
       }
     })
-
   }) %>% data.table()
   colnames(lldf) <- paste0("ll_", s)
 
-  aic <- lldf * 2 + npar[col(lldf)] * 2
+  aic <- lldf * 2 + npar[col(lldf)] * 2 
   colnames(aic) <- paste0("aic_", s)
   df <- cbind(lldf, aic)
-  
-  ## Extra variables
-  df$nmove <- sapply(1:njag, function(x) {
-    length(which(jag_move$ID == as.numeric(jag_id[x])))
-  })
-  df$ndays <- sapply(1:njag, function(x) {
-    moves <- jag_move[ID == as.numeric(jag_id[x])]
-    dates <- sort(as.Date(sapply(moves$timestamp, function(dt) {
-            strsplit(as.character(dt), " ")[[1]][1]
-        }), format = "%m/%d/%y"))
-    return(as.numeric(difftime(dates[length(dates)], dates[1])))
-  })
-  df$meandist <- tapply(jag_move$dist, jag_move$ID, function(x) mean(x, na.rm = TRUE))
-  df$totdist <- tapply(jag_move$dist, jag_move$ID, function(x) sum(x, na.rm = TRUE))
 
   df <- cbind(jag_id, sex = as.factor(jag_meta$Sex),
                   age = as.numeric(jag_meta$Estimated.Age),
                   weight = as.numeric(jag_meta$Weight),
-                  bio = as.factor(jag_meta$biome), df)
+                  bio = as.factor(jag_meta$biome), df,
+                  nmove = as.numeric(jag_meta$nmove),
+                  ndays = as.numeric(jag_meta$ndays),
+                  meandist = as.numeric(jag_meta$meandist),
+                  totdist = as.numeric(jag_meta$totdist))
 
   return(df)
 }
 
 # Extra attraction functions in 00a_attraction_functions.R
+
+  # ## Extra variables
+  # df$nmove <- sapply(1:njag, function(x) {
+  #   length(which(jag_move$ID == as.numeric(jag_id[x])))
+  # })
+  # df$ndays <- sapply(1:njag, function(x) {
+  #   moves <- jag_move[ID == as.numeric(jag_id[x])]
+  #   dates <- sort(as.Date(sapply(moves$timestamp, function(dt) {
+  #           strsplit(as.character(dt), " ")[[1]][1]
+  #       }), format = "%m/%d/%y"))
+  #   return(as.numeric(difftime(dates[length(dates)], dates[1])))
+  # })
+  # df$meandist <- tapply(jag_move$dist, jag_move$ID, function(x) mean(x, na.rm = TRUE))
+  # df$totdist <- tapply(jag_move$dist, jag_move$ID, function(x) sum(x, na.rm = TRUE))

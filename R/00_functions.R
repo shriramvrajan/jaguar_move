@@ -472,7 +472,7 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   
   # circular kernel
   k_exp   <- par[length(par) - 1]
-  bg_rate <- exp01(par[length(par)])
+  bg_rate <- exp01(par[length(par)]) * 0.001
   kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
                                        kfun = function(x) {
                                         dexp(x, k_exp) + bg_rate
@@ -495,8 +495,8 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   like <- sapply(seq_along(obs), function(i) {
     return(attract[i, obs[i]])
   })
+  # browser()
   
-  if (any(like == 0)) like[like == 0] <- 1e-4
   out <- -sum(log(like), na.rm = TRUE)
 
   if (is.infinite(out) || is.na(out)) out <- 0
@@ -780,7 +780,9 @@ par_to_df <- function(par) {
     }))
 }
 
-results_table <- function(s) {
+results_table <- function(s, par = TRUE) {
+
+  npar <- vector()
   
   lldf <- sapply(s, function(i) {
     indiv <- paste0("out_", 1:82, ".rds")
@@ -790,16 +792,14 @@ results_table <- function(s) {
         return(NA)
       } else {
         out <- readRDS(paste0("data/output/sim_", i, "/", j))
+        npar[i] <<- length(out$par)
         return(out$out)
       }
     })
+
   }) %>% data.table()
   colnames(lldf) <- paste0("ll_", s)
 
-  # npar <- sapply(params, function(x) length(x[[1]]))
-  npar <- sapply(s, function(x) {
-    if (x == "ss") return(8) else return(7)
-  })
   aic <- lldf * 2 + npar[col(lldf)] * 2
   colnames(aic) <- paste0("aic_", s)
   df <- cbind(lldf, aic)

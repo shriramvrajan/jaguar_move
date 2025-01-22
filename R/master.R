@@ -28,7 +28,7 @@ if (run_model) {
 
     ## Actual fitting options
     refit_model     <- TRUE             # Refit movement model parameters
-    model_type      <- 1                # 1 = tradSSF, 2 = path propagation
+    model_type      <- 2                # 1 = tradSSF, 2 = path propagation
     holdout_set     <- FALSE             # Hold out a set of points
     # holdout_frac    <- 0.7              # Fraction of points to use for fitting
     model_nofit     <- FALSE            # Don't fit the model, just simulate

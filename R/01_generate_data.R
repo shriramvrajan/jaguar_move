@@ -1,17 +1,18 @@
-## Based on work by Kasia Johnson (2021) =======================================
+
 ## Generate data frames for jaguar movement analyses
-## !IMPORTANT!: Run this through master.R
+source("R/00_functions.R")
+
+### Following code chunks only need to be run once, and data saved. All output
+### serves as input for the general model and should not be added to afterwards.
+
+### Producing environmental data for Brazil ====================================
+## Based on work by Kasia Johnson (2021) 
 
 library(gfcanalysis)
-library(sf)
 library(WorldClimTiles)
-library(raster) 
 # All data generation was done using package 'raster', but it is recommended
 # to use 'terra' for all subsequent analyses. 
 
-### Following code chunks only need to be run once, and data saved.
-
-### Producing environmental data for Brazil ====================================
 # brazil_ras <- stack("data/brazil_ras_4.grd")
 # merged <- readRDS("data/input/merged.RDS")
 # m1 <- stack("data/input/bioclim_masked.grd")

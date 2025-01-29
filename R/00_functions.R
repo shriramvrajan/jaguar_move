@@ -144,18 +144,16 @@ make_track0 <- function(id) {
 # Decompose timestamp into year, month, day, hour and add metadata to track
 make_full_track <- function(id) {
     dat <- jag_move[ID == id]
-    dat$year <- as.numeric(format(as.POSIXct(dat$timestamp, 
-                            format = "%m/%d/%Y %H:%M"), "%Y"))
+    dat$timestamp <- as.POSIXct(dat$timestamp, 
+                            format = "%m/%d/%Y %H:%M")
+    dat$year <- as.numeric(format(dat$timestamp, "%Y"))
     dat$year <- ifelse(dat$year > 23, dat$year + 1900, dat$year + 2000)
 
-    dat$mon <- as.numeric(format(as.POSIXct(dat$timestamp, 
-                           format = "%m/%d/%Y %H:%M"), "%m"))
-    dat$day <- as.numeric(format(as.POSIXct(dat$timestamp, 
-                           format = "%m/%d/%Y %H:%M"), "%d"))
-    dat$hr <- format(as.POSIXct(dat$timestamp, 
-                           format = "%m/%d/%Y %H:%M"), "%H:%M")
+    dat$mon <- as.numeric(format(dat$timestamp, "%m"))
+    dat$day <- as.numeric(format(dat$timestamp, "%d"))
+    dat$hr <- format(dat$timestamp, "%H:%M")
     dat$hr <- as.numeric(gsub(":[0-9][0-9]", "", dat$hr))
-    dat <- dat[, timestamp := NULL]
+    
     tr <- make_track0(id)
     st <- steps(tr)
     dat$sl <- c(NA, st$sl_)             # step lengths in m
@@ -163,12 +161,13 @@ make_full_track <- function(id) {
     dat$dir <- c(NA, st$direction_p)    # bearing in radians
     dat$dt <- c(NA, as.numeric(st$dt_)) # time interval in minutes
     dat$spd <- dat$sl / dat$dt
-    return(dat[, c("longitude", "latitude", "ID", "year", "mon", "day", "hr", 
-                   "sl", "ta", "dir", "dt", "spd")])
+    return(dat[, c("timestamp", "longitude", "latitude", "ID", "year", "mon", 
+                   "day", "hr", "sl", "ta", "dir", "dt", "spd")])
 }
 
 # 1. Data exploration ----------------------------------------------------------
 
+# Plot kernel for movement model
 plot_circle_kernel <- function(max_dist, k_par, bg_rate) {
     kern <- calculate_dispersal_kernel(max_dispersal_dist = max_dist,
                                        kfun = function(x) {
@@ -179,13 +178,12 @@ plot_circle_kernel <- function(max_dist, k_par, bg_rate) {
     return(kern)
 }
 
-
 # Plot environmental layers for path 
 # layer: layer number of raster
 # bounds: bounding box of path
 # path: path of jaguar
 # grad: number of colors to use for path
-# ras: raster stack of environmental layers
+# ras: raster stack of environmental layers 
 plot_env <- function(layer, bounds, path, grad = 20, ras = brazil_ras) {
     terra::plot(crop(ras[[layer]], bounds), main = names(ras)[layer], 
                 col = (gray.colors(50)))
@@ -387,7 +385,7 @@ prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
     nbhd_0 <- matrix(data = seq_along(nbhd_index), nrow = nrow(nbhd_index), 
                      ncol = ncol(nbhd_index)) # for ss model
 
-    # Reindexing allows linkage of row numbers from nbhd_ito raster cells
+    # Reindexing allows linkage of row numbers from nbhd_i to raster cells
     nbhd_index <- as.vector(t(nbhd_index))
     message("Extended neighborhoods prepared.")
     
@@ -467,6 +465,7 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   env      <- objects$env
   max_dist <- objects$max_dist
   mk       <- objects$mk # only if empirical kernel
+  outliers <- objects$outlierss
 
   # Fitted movement kernel -----------------------------------------------------
   # square kernel
@@ -500,7 +499,12 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   attract0 <- env_function(env, par, nbhd)
   attract <- t(apply(attract0, 1, function(r) r * mk))
   
-  like <- sapply(seq_along(obs), function(i) {
+  indices <- if (length(outliers) > 0) {
+    setdiff(seq_along(obs), outliers)
+  } else {
+    seq_along(obs)
+  }
+  like <- sapply(indices, function(i) {
     return(attract[i, obs[i]])
   })
   # browser()
@@ -535,6 +539,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   obs        <- objects$obs
   max_dist   <- objects$max_dist
   sim_steps  <- objects$sim_steps
+  outliers   <- objects$outliers
   n_obs      <- length(obs) + 1
 
   bg_rate <- exp01(par[length(par)]) # background rate
@@ -559,7 +564,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   # kernel <- kernel / sum(kernel)
 
   # circular kernel
-  k_par   <- par[length(par) - 1] # second-to-last parameter
+  k_exp   <- par[length(par) - 1] # second-to-last parameter
   bg_rate <- exp01(par[length(par)]) # background rate
   kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
                                        kfun = function(x) dexp(x, k_exp) + bg_rate)
@@ -598,6 +603,10 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   # Calculate log likelihood 
   predictions <- matrix(0, nrow = sim_steps, ncol = n_obs)
   for (i in 1:n_obs) {
+    if (i %in% outliers) {
+      predictions[, i] <- rep(NA, sim_steps)
+      next
+    }
     prob <- current[obs[i], i, ]
     predictions[, i] <- prob + bg_rate - prob * bg_rate
     predictions[, i] <- predictions[, i] / sum(predictions[, i], na.rm = TRUE)
@@ -803,9 +812,11 @@ results_table <- function(s, params = TRUE) {
       } else {
         out <- readRDS(paste0("data/output/sim_", i, "/", j))
         npar[i] <<- length(out$par)
+        # return(c(out$out, out$par))
         return(out$out)
       }
     })
+    return(out)
   }) %>% data.table()
   colnames(lldf) <- paste0("ll_", s)
 

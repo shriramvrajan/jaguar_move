@@ -1,5 +1,33 @@
 source("R/00_functions.R")
 
+
+
+## Jan 29, 2025 ----------------------------------------------------------------
+# Tackling the timestep and max_dist unevenness.
+
+plot1 <- function(i, v = "dt") {
+    moves <- make_full_track(jag_id[i] %>% as.numeric)
+    # print(range(moves$timestamp))
+    # hist(moves$sl, main = i)
+    hist(moves$dt, main = i)
+    thresh <- mean(moves$dt, na.rm = TRUE) + 4 * sd(moves$dt, na.rm = TRUE)
+    abline(v = thresh, col = "red")
+    # ggplot(data = moves) +
+    #     geom_line(mapping = aes(x = timestamp, y = sl), col = "red") +
+    #     geom_line(mapping = aes(x = timestamp, y = dt))
+}
+
+# i1 <- c(26, 41, 43, 44, 49, 64)
+# for (i in i1) plot1(i)
+
+par(mfrow = c(4, 4))
+for (i in 1:82) plot1(i)
+
+
+
+## Jan 2025 --------------------------------------------------------------------
+# Adding extra fields to metadata table
+
 meta <- jag_meta[, c(1, 2, 3, 4, 10, 11, 12)]
 ## Extra variables
 meta$nmove <- sapply(1:njag, function(x) {

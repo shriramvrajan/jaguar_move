@@ -63,43 +63,37 @@ if (refit_model) {
 
   foreach(i = i_todo) %dopar% {
   # for (i in i_todo) {  # easier to debug
-    message(paste0("Jaguar #: ", i))
-    id                <- as.numeric(jag_id[i])
-    jag_traject       <- jag_move[ID == id, 3:4]
-    jag_traject_cells <- cellFromXY(brazil_ras, jag_traject)
-    n_obs             <- length(jag_traject_cells)
-    # Calculating step distances; divide by cell size then take hypotenuse
-    dist     <- (jag_traject[-nrow(jag_traject), ] - jag_traject[-1, ]) /
-                 xres(brazil_ras)
-    dist     <- (rowSums(dist^2))^.5
-    max_dist <- ceiling(max(dist) * 1.5)
+    # Initial parameter values
+    param0 <- rep(0, npar)
+    # param0 <- load_output("pp1_2", i)$par
+    # p_s <- 1 - exp01(param0[7])
+    # param0[length(param0)] <- -log((1/p_s - 1) / 8) # test, only works for step_size=1
+
     # home      <- rast(paste0("data/homeranges/homerange_", id, ".grd"))
     # brdf$home <- as.vector(home)
     envdf    <- brdf[, c(1:6)] # add 1 for footprint, 10 for homerange
+
+    message(paste0("Jaguar #: ", i))
+    jag_traject       <- make_full_track(jag_id[i] %>% as.numeric)
+    jag_traject_cells <- cellFromXY(brazil_ras, jag_traject[, 2:3])
+    n_obs             <- length(jag_traject_cells)
+    threshold         <- mean(na.exclude(jag_traject$dt)) + 3 * sd(na.exclude(jag_traject$dt))
+    outliers         <- which(jag_traject$dt > threshold)
+    sl_emp <- as.vector(na.exclude(jag_traject$sl[!(jag_traject$dt < threshold)]))
+    ta_emp <- as.vector(na.exclude(jag_traject$ta[!(jag_traject$dt < threshold)]))
+    max_dist <- ceiling(1.5 * max(jag_traject$sl[!(jag_traject$dt < threshold)] / 1000, na.rm = TRUE))
     
     if (holdout_set && nrow(jag_traject) > 100) {
       hold <- seq_len(ceiling(nrow(jag_traject) * holdout_frac))
       jag_traject <- jag_traject[hold, ]
       jag_traject_cells <- jag_traject_cells[hold]
     }
-
-    # Initial parameter values
-    param0 <- rep(0, npar)
-    # param0 <- load_output("pp1_2", i)$par
-    # p_s <- 1 - exp01(param0[7])
-    # param0[length(param0)] <- -log((1/p_s - 1) / 8) # test, only works for step_size=1
     
     # Preparing model objects based on model type; 1 = SSF, 2 = path propagation
     if (model_type == 1) {
-      message("Using traditional step selection function model")
 
-      # empirical movement kernel ----------------------------------------------
-      track <- make_full_track(id)
-      sl_emp <- as.vector(na.exclude(track$sl))
-      ta_emp <- as.vector(na.exclude(track$ta))
+      message("Using traditional step selection function model")
       mk <- make_movement_kernel(sl_emp, ta_emp, n = 5000, max_dist = max_dist)
-      #-------------------------------------------------------------------------   
-      
       nbhd <- make_nbhd(i = jag_traject_cells, sz = max_dist)
       obs <- sapply(seq_along(jag_traject_cells), function(i) {
         if (i == length(jag_traject_cells)) {
@@ -112,16 +106,23 @@ if (refit_model) {
       env <- scale(envdf[unique(nbhd), ]) 
       if (any(is.na(env))) env[which(is.na(env))] <- 0
       nbhd_c <- matrix(as.character(nbhd), nrow = nrow(nbhd), ncol = ncol(nbhd)) # needs to be character for this one
-      objects <- list(nbhd_c, obs, env, max_dist, mk)
-      names(objects) <- c("nbhd", "obs", "env", "max_dist", "mk")
+      objects <- list(nbhd_c, obs, env, max_dist, mk, outliers)
+      names(objects) <- c("nbhd", "obs", "env", "max_dist", "mk", "outliers")
+
     } else if (model_type == 2) {
+
       message("Using path propagation model")
       objects <- prep_model_objects(jag_traject_cells, max_dist, envdf)
-      message(object.size(objects) %>% format(units = "Mb"))
+      objects[[length(objects) + 1]] <- outliers
+      names(objects)[length(objects)] <- "outliers"
+      object.size(objects) %>% 
+        format(units = "Mb") %>% 
+        paste0("Size of objects for jaguar ", i, ": ", .)
       if (debug_01) {
         sizeout <- object.size(objects) %>% format(units = "Mb")
         saveRDS(sizeout, paste0("data/output/sizeout_", i, ".rds"))
       }
+
     } else {
       stop("Invalid model type")
     }

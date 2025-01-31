@@ -369,7 +369,8 @@ prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
     # Observed steps, as cell numbers within full neighborhood
     obs  <- sapply(2:nrow(nbhd_index), function(r) {
         local <- nbhd_index[(r - 1), ]
-        return(which(local == traject[r]))
+        nextcell <- which(local == traject[r])
+        if (length(nextcell) == 0) return(NA) else return(nextcell)
     })
 
     # Each entry in the list is the immediate neighborhood of each cell in the 
@@ -507,8 +508,7 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   like <- sapply(indices, function(i) {
     return(attract[i, obs[i]])
   })
-  # browser()
-  
+    
   out <- -sum(log(like), na.rm = TRUE)
 
   if (is.infinite(out) || is.na(out)) out <- 0

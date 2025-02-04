@@ -64,6 +64,7 @@ if (refit_model) {
   refit <- function(parallel) {
     `%myinfix%` <- ifelse(parallel, `%dopar%`, `%do%`)
     foreach(i = i_todo) %myinfix% {
+    # for(i in i_todo) {
       # Initial parameter values
       param0 <- rep(0, npar)
       # param0 <- load_output("pp1_2", i)$par

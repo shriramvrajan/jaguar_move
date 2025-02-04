@@ -10,7 +10,7 @@ library(ctmm)
 library(amt) 
 library(lubridate)
 library(metaRange)
-# library(fitdistrplus)
+library(pryr)
 library(foreach)
 library(doParallel)
 library(viridis)
@@ -67,6 +67,14 @@ message <- function(m, f = "data/output/run_log.txt") {
     m <- paste(format(Sys.time(), "%d.%m.%y  %R"), m)
     print(m)
     cat(m, file = f, append = TRUE, sep = "\n")
+}
+
+# Object size list
+memory <- function() {
+    for(x in ls(envir = .GlobalEnv)) {
+        paste(object.size(get(x)) %>% format(units = "Mb"), x) %>% print()
+    }
+    print(paste("Total:", as.numeric(mem_used()) / 1e9))
 }
 
 # Output last n lines of logfile
@@ -314,8 +322,7 @@ plot_curve <- function(par, mu = 0, sd = 1, bounds = c(0, 10), values = FALSE) {
 # r:    Raster object
 # i:    Index of cell in raster
 # sz:   Size of neighborhood
-make_nbhd <- function(r = brazil_ras, i, sz) {
-  rdf <- raster_to_df(r)
+make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
   mat <- matrix(0, nrow = length(i), ncol = (2 * sz + 1)^2)
   # values to add to central cell's row/col to get neighborhood cells' row/col
   ind1 <- t(rep(-sz:sz, each = 2 * sz + 1))
@@ -460,13 +467,23 @@ env_function <- function(env, par, nbhd) {
   return(attract)  
 }
 
+apply_kernel <- function(attract0, kernel) {
+  kernel <- kernel / sum(kernel, na.rm = T)
+  na_mask <- is.na(attract0)
+  attract0[na_mask] <- 0
+  p <- attract0 * rep(kernel, each = nrow(attract0))
+  p <- p / rowSums(p, na.rm = TRUE)
+  p[na_mask] <- NA
+  return(p)
+}
+
 log_likelihood0 <- function(par, objects, debug = FALSE) {
   nbhd     <- objects$nbhd
   obs      <- objects$obs
   env      <- objects$env
   max_dist <- objects$max_dist
   mk       <- objects$mk # only if empirical kernel
-  outliers <- objects$outlierss
+  outliers <- objects$outliers
 
   # Fitted movement kernel -----------------------------------------------------
   # square kernel
@@ -481,24 +498,14 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   # kernel <- kernel / sum(kernel)
   
   # circular kernel
-  # k_exp   <- par[length(par) - 1]
-  # bg_rate <- exp01(par[length(par)]) 
-  # kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
-  #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
-
-  # # # env_weight <- exp01(par[length(par)]) # last one is env weighting par
-  # attract0 <- env_function(env, par, nbhd)
-  # # attract  <- attract0 / rowSums(attract0)
-  # attract <- t(apply(attract0, 1, function(env) {
-  #   missing <- which(is.na(env))
-  #   kernel[missing] <- NA
-  #   p <- env * as.vector(kernel)
-  #   return(p / sum(p, na.rm = T))
-  # }))
+  k_exp   <- par[length(par) - 1]
+  bg_rate <- exp01(par[length(par)]) 
+  kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
+                                       kfun = function(x) dexp(x, k_exp) + bg_rate)
 
   # Empirical movement kernel --------------------------------------------------
-  attract0 <- env_function(env, par, nbhd)
-  attract <- t(apply(attract0, 1, function(r) r * mk))
+  # attract0 <- env_function(env, par, nbhd)
+  # attract <- t(apply(attract0, 1, function(r) r * mk))
   
   indices <- if (length(outliers) > 0) {
     setdiff(seq_along(obs), outliers)
@@ -566,18 +573,12 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   # circular kernel
   k_exp   <- par[length(par) - 1] # second-to-last parameter
   bg_rate <- exp01(par[length(par)]) # background rate
-  kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
+  kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
                                        kfun = function(x) dexp(x, k_exp) + bg_rate)
   # Attractiveness function ----------------------------------------------------
   attract0 <- env_function(env_i, par, nbhd = nbhd_i)
-  attract <- t(apply(attract0, 1, function(env) {
-    missing <- which(is.na(env))
-    kernel[missing] <- NA
-    kernel <- kernel / sum(kernel, na.rm = T)
-    p <- env * kernel
-    return(p / sum(p, na.rm = T))    
-  }))
-  
+  attract <- apply_kernel(attract0, kernel)
+
   # Simulation 
   # attract <- env_function(env_i, par, nbhd_i)
 
@@ -614,7 +615,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
 
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
   out            <- -max(log_likelihood, na.rm = TRUE)
-  
+
   if (is.infinite(out) || is.na(out)) out <- 0
   if (debug) {
     return(list(out = out, array = current, predictions = predictions, par = par))

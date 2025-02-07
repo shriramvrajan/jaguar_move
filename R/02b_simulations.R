@@ -3,13 +3,13 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s10"
+simname <- "s1"
 
 # Switches for landscape generation, path generation, fitting, and plotting.
 gen_land   <- F
 gen_path   <- T
 fit_indiv  <- T
-plot_results <- T
+plot_results <- F
 
 # Roads once taken
 fit_all    <- F
@@ -17,8 +17,8 @@ debug_fit  <- F
 demo       <- F
 
 # Number of cores to use for path generation and fitting
-ncore_path <- 6
-ncore_fit  <- 6
+ncore_path <- 3
+ncore_fit  <- 3
 
 ## Parameters ==================================================================
 
@@ -28,8 +28,8 @@ s1 <- 5           # strength of autocorrelation
 r1 <- 40          # range of autocorrelation in cells
 
 ### Model parameters:
-# Order: par_move, par_env0, par_env1, par_env2
-par0 <- c(NA, 3, -2, 0.3)        
+# Order: par_env0, par_env1, par_env2, par_kexp, par_bgrate
+par0 <- c(3, -2, 0.3)        
 # par0 <- c(NA, 2, -0.2, -0.2)
 
 ### Path generation parameters:
@@ -44,10 +44,9 @@ sim_steps  <- obs_interval + 2 # Number of steps to simulate forward in PP model
 ### Write parameters to file
 if (gen_land || gen_path || fit_indiv || fit_all) {
     params <- list(envsize, s1, r1, obs_interval, n_step, n_obs, sim_n, step_size, 
-                par0[[1]], par0[[2]], par0[[3]], par0[[4]])
+                par0[[1]], par0[[2]], par0[[3]])
     names(params) <- c("envsize", "s1", "r1", "obs_interval", "n_step", "n_obs", 
-                    "sim_n", "step_size", "par_move", "par_env0", "par_env1", 
-                    "par_env2")
+                    "sim_n", "step_size", "par_env0", "par_env1", "par_env2")
     saveRDS(params, "simulations/params.rds")
     print(params)
 }
@@ -55,8 +54,8 @@ if (gen_land || gen_path || fit_indiv || fit_all) {
 if (any(is.na(par0))) par0 <- par0[!is.na(par0)]
 
 # Value to start fitting from
-# par_start <- rep(0, length(par0))
-par_start <- par0
+par_start <- rep(0, length(par0))
+# par_start <- par0
 # par_start <- c(1.548, -0.993, -1.344)
 
 ## Landscape ===================================================================
@@ -78,7 +77,7 @@ if (!gen_path) {
     message("Simulating new paths")
     parallel_setup(ncore_path)
     env02 <- terra::wrap(env01) # foreach needs this
-    paths <- foreach(i = 1:sim_n, .packages = "terra") %dopar% {
+    paths <- foreach(i = 1:sim_n, .packages = c("metaRange", "terra")) %dopar% {
     # paths <- for (i in 1:sim_n) { # easier to debug
         env01 <- unwrap(env02)
         message(paste0("Path #: ", i, " / ", sim_n))
@@ -105,9 +104,10 @@ if (fit_indiv || fit_all) {
         out <- terra::cellFromRowCol(env01, tr[, 1], tr[, 2])
         return(out)
     })
+    rdf <- raster_to_df(env01)
     # Make global neighborhood from raster
     message("Building global neighborhood")
-    nbhd0 <- make_nbhd(i = seq_len(ncell(env01)), sz = step_size, r = env01) 
+    nbhd0 <- make_nbhd(i = seq_len(ncell(env01)), sz = step_size, r = env01, rdf = rdf) 
 
     max_dist <- step_size * (obs_interval + 1)
     ncell_local <- (2 * max_dist + 1) ^ 2
@@ -127,18 +127,20 @@ if (fit_indiv || fit_all) {
     # Prepare objects for fitting
     objects_all <- lapply(seq_len(sim_n), function(n) {
         paste0("Preparing objects for path: ", n) %>% message()
-        out           <- prep_model_objects(jag_traject_cells[[n]], max_dist, env01, sim = TRUE)
+        out           <- prep_model_objects(jag_traject_cells[[n]], max_dist, 
+                                            rdf = rdf, sim = TRUE)
         out$sim_steps <- sim_steps
         return(out)
     })
     
     if (fit_indiv) {
         # Fit individuals one at a time ----------------------------------------
-        fit <- do.call(rbind, lapply(todo, function(i) { # easier to debug
-        # foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
+        # fit <- do.call(rbind, lapply(todo, function(i) { # easier to debug
+        foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
             message(paste0("Fitting individual #: ", i, " / ", length(todo)))            
             message("Fitting parameters for model 1: step-selection")
             objects1 <- objects_all[[i]]
+
             par_out1 <- optim(par_start, log_likelihood0, objects = objects1)
             ll1 <- log_likelihood0(par_out1$par, objects1)
             message("Fitting parameters for model 2: path-propagation")
@@ -154,7 +156,7 @@ if (fit_indiv || fit_all) {
                     file = paste0("simulations/par_out2_", i, ".rds"))
             message(paste0("COMPLETED path #: ", i, " / ", sim_n))
         }
-        ))    # easier to debug
+        #))    # easier to debug
     }
     
     if (fit_all) {

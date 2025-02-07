@@ -371,7 +371,7 @@ normalize_nbhd <- function(v, nbhd) {
 prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
     # Extended neighborhoods of each cell in individual's trajectory
     env_ras    <- if (sim) env01 else brazil_ras
-    nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = env_ras)
+    nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = env_ras, rdf = rdf)
 
     # Observed steps, as cell numbers within full neighborhood
     obs  <- sapply(2:nrow(nbhd_index), function(r) {
@@ -414,9 +414,9 @@ prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
       nrow = (nrow(nbhd_i) / length(traject)),
       ncol = length(traject)
     )
-    
+
     # Normalizing desired environmental variables for extended neighborhood 
-    env_i <- if (sim) scale(rdf[nbhd_index]$sim1) else scale(rdf[nbhd_index, ])
+    env_i <- if (sim) scale(rdf$sim1[nbhd_index]) else scale(rdf[nbhd_index, ])
     if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
     
     message("Prepared model objects.")
@@ -453,15 +453,14 @@ env_function <- function(env, par, nbhd) {
   #                         par[6] * env[, 5] + par[7] * env[, 6]))
   
   # # First order no intercept -------------------------------------------------
-  attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-                          par[3] * env[, 3] + par[4] * env[, 4] + 
-                          par[5] * env[, 5] + par[6] * env[, 6]))
+  # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
+  #                         par[3] * env[, 3] + par[4] * env[, 4] + 
+  #                         par[5] * env[, 5] + par[6] * env[, 6]))
                           
   # Simulation -----------------------------------------------------------------
-  # attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+  attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
 
   #-----------------------------------------------------------------------------
-  
   attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
   attract <- attract / rowSums(attract, na.rm = TRUE)
   return(attract)  
@@ -478,7 +477,7 @@ apply_kernel <- function(attract0, kernel) {
 }
 
 log_likelihood0 <- function(par, objects, debug = FALSE) {
-  nbhd     <- objects$nbhd
+  nbhd     <- objects$nbhd_i
   obs      <- objects$obs
   env      <- objects$env
   max_dist <- objects$max_dist
@@ -502,10 +501,10 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   bg_rate <- exp01(par[length(par)]) 
   kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
                                        kfun = function(x) dexp(x, k_exp) + bg_rate)
-
   # Empirical movement kernel --------------------------------------------------
-  # attract0 <- env_function(env, par, nbhd)
-  # attract <- t(apply(attract0, 1, function(r) r * mk))
+  attract0 <- env_function(env, par, nbhd)
+  #attract <- t(apply(attract0, 1, function(r) r * mk))
+  attract <- apply_kernel(attract0, kernel)
   
   indices <- if (length(outliers) > 0) {
     setdiff(seq_along(obs), outliers)
@@ -679,49 +678,50 @@ gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {
 # Generate a jaguar path of n steps starting from (x0, y0) with environmental
 # preference parameters par[] and search neighborhood size neighb
 jag_path <- function(x0, y0, n_step, par, neighb) {
-    # Set initial state
-    path <- matrix(NA, nrow = n_step, ncol = 4)
-    path[1, ] <- c(x0, y0, NA, NA)
+  # Set initial state
+  path <- matrix(NA, nrow = n_step, ncol = 4)
+  path[1, ] <- c(x0, y0, NA, NA)
 
-    # if (length(par) == 3) par <- c(0, par)
+  # Movement kernel (circular)
+  # k_exp   <- par[length(par) - 1]
+  # bg_rate <- exp01(par[length(par)]) 
+  # kern_m <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
+  #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
 
-    # Probability of moving from current grid cell
-    move_prob <- exp01(par[1])
+  for (i in 2:n_step) {
+      if (i %% 100 == 0) print(i)
+      pos <- path[i - 1, 1:2]
 
-    for (i in 2:n_step) {
-        if (i %% 100 == 0) print(i)
-        pos <- path[i - 1, 1:2]
+      # Attractiveness of each cell in neighborhood
+      nbhd_i <- as.vector(make_nbhd(r = env01, rdf = raster_to_df(env01),
+                          sz = neighb,
+                          i = terra::cellFromRowCol(env01, pos[1], pos[2])))
+      kern_e <- sapply(nbhd_i, function(x) {
+        if (is.na(x)) {
+          return(NA)
+        } else {
+          x0 <- env01[x]$sim1
+          return(1 / (1 + exp(par[1] + par[2] * x0 + par[3] * x0^2)))
+        }
+      })
+      if (any(is.na(kern_e))) kern_e[is.na(kern_e)] <- 0
+      attract <- kern_e #* kern_m
+      attract <- attract / sum(attract, na.rm = TRUE)
 
-        # Attractiveness of each cell in neighborhood
-        nbhd_i <- as.vector(make_nbhd(r = env01, sz = neighb,
-                            i = terra::cellFromRowCol(env01, pos[1], pos[2])))
-        att <- sapply(nbhd_i, function(x) {
-          if (is.na(x)) {
-            return(NA)
-          } else {
-            x0 <- env01[x]$sim1
-            return(1 / (1 + exp(par[1] + par[2] * x0 + par[3] * x0^2)))
-            # return(env_function(env01[x], par[2:4], format = FALSE)$sim1)
-          }
-        })
-        if (any(is.na(att))) att[is.na(att)] <- 0
-        att <- att / sum(att)
-        attract <- att
+      # Find center cell and scale by move_prob (COMMENT OUT FOR NO MOVEPAR)
+      # cent <- ceiling(length(att) / 2)
+      # att[cent] <- att[cent] * (1 - move_prob)
+      # att[-cent] <- att[-cent] * (move_prob / (sum(!is.na(att)) - 1))
+      # attract <- att / sum(att)
 
-        # Find center cell and scale by move_prob (COMMENT OUT FOR NO MOVEPAR)
-        # cent <- ceiling(length(att) / 2)
-        # att[cent] <- att[cent] * (1 - move_prob)
-        # att[-cent] <- att[-cent] * (move_prob / (sum(!is.na(att)) - 1))
-        # attract <- att / sum(att)
-
-        # Sample next step
-        step <- sample(seq_len(length(attract)), 1, prob = attract)
-        path[i, ] <- c(rowColFromCell(env01, nbhd_i[step]), 
-                       nbhd_i[step], attract[step])
-    }
-    path <- as.data.frame(path)
-    names(path) <- c("x", "y", "cell", "att")
-    return(path)
+      # Sample next step
+      step <- sample(seq_len(length(attract)), 1, prob = attract)
+      path[i, ] <- c(rowColFromCell(env01, nbhd_i[step]), 
+                      nbhd_i[step], attract[step])
+  }
+  path <- as.data.frame(path)
+  names(path) <- c("x", "y", "cell", "att")
+  return(path)
 }
 # (Markov version of jag_path is in scratch file, not used for now)
 

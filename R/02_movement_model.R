@@ -109,7 +109,7 @@ if (refit_model) {
         if (any(is.na(env))) env[which(is.na(env))] <- 0
         nbhd_c <- matrix(as.character(nbhd), nrow = nrow(nbhd), ncol = ncol(nbhd)) # needs to be character for this one
         objects <- list(nbhd_c, obs, env, max_dist, mk, outliers)
-        names(objects) <- c("nbhd", "obs", "env", "max_dist", "mk", "outliers")
+        names(objects) <- c("nbhd_i", "obs", "env", "max_dist", "mk", "outliers")
 
       } else if (model_type == 2) {
 
@@ -117,14 +117,6 @@ if (refit_model) {
         objects <- prep_model_objects(jag_traject_cells, max_dist, envdf)
         objects[[length(objects) + 1]] <- outliers
         names(objects)[length(objects)] <- "outliers"
-        object.size(objects) %>% 
-          format(units = "Mb") %>% 
-          paste0("Size of objects for jaguar ", i, ": ", .) %>%
-          message()
-        if (debug_01) {
-          sizeout <- object.size(objects) %>% format(units = "Mb")
-          saveRDS(sizeout, paste0("data/output/sizeout_", i, ".rds"))
-        }
 
       } else {
         stop("Invalid model type")

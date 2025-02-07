@@ -1,14 +1,13 @@
 source("R/00_functions.R")
 
-simnames <- c("sse0", "ss0", "pp0")
+simnames <- c("ss", "pp3", "pp5")
 res <- results_table(simnames)
-head()
 # res0 <- res
 # res <- res0[res0$nmove > 200, ]
 
-ggplot(data = res, aes(x = aic_pp0, y = aic_sse0)) +
+ggplot(data = res, aes(x = aic_pp5, y = aic_pp3)) +
     geom_point(mapping = aes(col = bio), size = 3) +
-    geom_text(aes(label = ifelse(aic_pp0 < aic_sse0, jag_id, ""))) +
+    geom_text(aes(label = ifelse(aic_pp5 < aic_pp3, jag_id, ""))) +
     geom_abline() 
 
 res$aic_diff1 <- res$aic_ss0 - res$aic_pp0

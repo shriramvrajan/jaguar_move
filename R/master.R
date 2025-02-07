@@ -29,21 +29,21 @@ if (run_model) {
     ## Actual fitting options
     refit_model     <- TRUE             # Refit movement model parameters
     model_type      <- 2                # 1 = tradSSF, 2 = path propagation
-    holdout_set     <- FALSE             # Hold out a set of points
-    # holdout_frac    <- 0.7              # Fraction of points to use for fitting
+    holdout_set     <- TRUE             # Hold out a set of points
+    holdout_frac    <- 0.7              # Fraction of points to use for fitting
     model_nofit     <- FALSE            # Don't fit the model, just simulate
         model_calcnull  <- FALSE            # Calculate null likelihoods 
                                         # refit_model must be TRUE for this one
     ## Parameters                                    
     npar            <- 8              # Number of parameters in current model 
-    step_size       <- 1              # Jaguars move up to n px (n km) at a time
+    step_size       <- 2              # Jaguars move up to n px (n km) at a time
     sim_steps       <- 8              # How many steps to simulate forward
     i_override      <- NULL
     # Which jaguars, set to NULL to iterate through all
     
     ## Set up parallel processing
     parallel        <- TRUE
-    ncore           <- switch(model_type, 7, 15)
+    ncore           <- switch(model_type, 15, 10)
     if (parallel) {
         library(doParallel)
         library(foreach)

@@ -32,15 +32,7 @@ fit2 <- load_if_exists(paste0("par_out2_", 1:sim_n, ".rds"), dir = simdir) %>%
 fit <- cbind(fit1, fit2)
 # if (all(is.na(fit))) fit <- readRDS(paste0(simdir, "par_out_all.rds"))
 fit$id <- seq_len(nrow(fit))
-if (ncol(fit) == 9) {
-    names(fit) <- c("m1", "c1", "b1", "a1", "m2", "c2", "b2", "a2", "id")
-} else if (ncol(fit) == 7) {
-    names(fit) <- c("c1", "b1", "a1", "c2", "b2", "a2", "id")
-} else if (ncol(fit) == 4) {
-    names(fit) <- c("c1", "b1", "a1", "id")
-} else {
-    stop("Unexpected number of columns in fit")
-}
+names(fit) <- c("c1", "b1", "a1", "c2", "b2", "a2", "id")
 
 if (any(is.na(fit$c1))) {
     posna <- which(is.na(fit$c1)) # positions of NA
@@ -63,14 +55,15 @@ if (param_plots) {
     max_dist     <- step_size * (obs_interval + 1)
 
     message("Building global neighborhood")
-    nbhd0 <- make_nbhd(i = seq_len(ncell(env01)), sz = step_size, r = env01) 
+    nbhd0 <- make_nbhd(i = seq_len(ncell(env01)), sz = step_size, r = env01,
+                       rdf = raster_to_df(env01)) 
 
     objects_all <- lapply(jag_traject_cells, function(traject) {
-        return(prep_model_objects(traject, max_dist, env01, sim = TRUE))
+        return(prep_model_objects(traject, max_dist, raster_to_df(env01), sim = TRUE))
     })
 
     par0 <- c(3, -2, 0.3)
-    y0 <- plot_curve(par0, values = TRUE)
+    y0 <- plot_curve(par0, values = TRUE)    
     y1 <- lapply(seq_len(nrow(fit)), function(i) {
         mu <- objects_all[[i]]$mu_env
         sd <- objects_all[[i]]$sd_env
@@ -84,7 +77,7 @@ if (param_plots) {
         out <- plot_curve(unlist(fit[i, 4:6]), mu = mu, sd = sd, values = TRUE)
         return(out)
     })
-    
+
     # Generated + fitted, all on same plot
     plotpdf(nm = paste0("figs/sims/", simname, "plot.pdf"), x = 8, y = 4)
     par(mfrow = c(1, 2))

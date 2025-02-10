@@ -1,22 +1,17 @@
 source("R/00_functions.R")
 
-simnames <- c("ss", "pp3", "pp5")
+simnames <- c("ss", "ssh", "pp3", "pp3h")
 res <- results_table(simnames)
 # res0 <- res
 # res <- res0[res0$nmove > 200, ]
 
-ggplot(data = res, aes(x = aic_pp5, y = aic_pp3)) +
+ggplot(data = res, aes(x = aic_ss, y = aic_pp3)) +
     geom_point(mapping = aes(col = bio), size = 3) +
-    geom_text(aes(label = ifelse(aic_pp5 < aic_pp3, jag_id, ""))) +
+    geom_text(aes(label = ifelse(aic_ss < aic_pp3h, jag_id, ""))) +
     geom_abline() 
 
-res$aic_diff1 <- res$aic_ss0 - res$aic_pp0
-res$aic_diff2 <- res$aic_ss1 - res$aic_pp1_2
-res$aic_diff3 <- res$aic_ss1 - res$aic_pp1_3
-ggplot(data = res) +
-    geom_point(mapping = aes(x = aic_diff1, y = nmove, col = bio), pch = 19, cex = 2) 
 
-# Old code ---------------------------------------------------------------------
+# Old  ---------------------------------------------------------------------
 ## 6 jan 2025
 # plot(res$aic_pp3 - res$aic_ss, res$nmove, pch = 19, col = "black", 
 #      xlim = c(-500, 500))

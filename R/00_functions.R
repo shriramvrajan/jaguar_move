@@ -446,11 +446,6 @@ env_function <- function(env, par, nbhd) {
   #                         par[8] * env[, 4] + par[9] * env[, 4]^2 +            # forest cover
   #                         par[10] * env[, 5] + par[11] * env[, 5]^2 +          # distance to water
   #                         par[12] * env[, 6] + par[13] * env[, 6]^2))          # distance to road
-
-  # First order
-  # attract <- 1 / (1 + exp(par[1] + par[2] * env[, 1] + par[3] * env[, 2] +
-  #                         par[4] * env[, 3] + par[5] * env[, 4] + 
-  #                         par[6] * env[, 5] + par[7] * env[, 6]))
   
   # # First order no intercept -------------------------------------------------
   # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
@@ -497,10 +492,15 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   # kernel <- kernel / sum(kernel)
   
   # circular kernel
-  k_exp   <- par[length(par) - 1]
-  bg_rate <- exp01(par[length(par)]) 
+  # k_exp   <- par[length(par) - 1]
+  # bg_rate <- exp01(par[length(par)]) 
+  # kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
+  #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
+
+  # null kernel
   kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
-                                       kfun = function(x) dexp(x, k_exp) + bg_rate)
+                                       kfun = function(x) x * 0 + 1)
+
   # Empirical movement kernel --------------------------------------------------
   attract0 <- env_function(env, par, nbhd)
   #attract <- t(apply(attract0, 1, function(r) r * mk))
@@ -548,8 +548,6 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   outliers   <- objects$outliers
   n_obs      <- length(obs) + 1
 
-  bg_rate <- exp01(par[length(par)]) # background rate
-
   # Movement kernel ------------------------------------------------------------
 
   # stay/move kernel 
@@ -570,10 +568,15 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   # kernel <- kernel / sum(kernel)
 
   # circular kernel
-  k_exp   <- par[length(par) - 1] # second-to-last parameter
-  bg_rate <- exp01(par[length(par)]) # background rate
+  # k_exp   <- par[length(par) - 1] # second-to-last parameter
+  # bg_rate <- exp01(par[length(par)]) # background rate
+  # kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
+  #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
+
+
+  # null kernel
   kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
-                                       kfun = function(x) dexp(x, k_exp) + bg_rate)
+                                       kfun = function(x) x * 0 + 1)
   # Attractiveness function ----------------------------------------------------
   attract0 <- env_function(env_i, par, nbhd = nbhd_i)
   attract <- apply_kernel(attract0, kernel)

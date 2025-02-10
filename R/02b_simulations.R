@@ -17,8 +17,8 @@ debug_fit  <- F
 demo       <- F
 
 # Number of cores to use for path generation and fitting
-ncore_path <- 3
-ncore_fit  <- 3
+ncore_path <- 5
+ncore_fit  <- 5
 
 ## Parameters ==================================================================
 
@@ -136,7 +136,7 @@ if (fit_indiv || fit_all) {
     if (fit_indiv) {
         # Fit individuals one at a time ----------------------------------------
         # fit <- do.call(rbind, lapply(todo, function(i) { # easier to debug
-        foreach(i = todo, .combine = rbind, .packages = "terra") %dopar% {
+        foreach(i = todo, .combine = rbind, .packages = c("terra", "metaRange")) %dopar% {
             message(paste0("Fitting individual #: ", i, " / ", length(todo)))            
             message("Fitting parameters for model 1: step-selection")
             objects1 <- objects_all[[i]]

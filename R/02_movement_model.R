@@ -114,8 +114,8 @@ if (refit_model) {
       } else if (model_type == 2) {
 
         message("Using path propagation model")
-        objects <- prep_model_objects(jag_traject_cells, max_dist, envdf)
-        objects[[length(objects) + 1]] <- outliers
+        objects <- prep_model_objects(jag_traject_cells, max_dist, brdf)
+        objects[[length(objects) + 1]] <- outliers[outliers <= length(jag_traject_cells)]
         names(objects)[length(objects)] <- "outliers"
 
       } else {

@@ -7,10 +7,10 @@ res <- results_table(simnames)
 
 ggplot(data = res, aes(x = aic_ss, y = aic_pp3)) +
     geom_point(mapping = aes(col = bio), size = 3) +
-    geom_text(aes(label = ifelse(aic_ss < aic_pp3h, jag_id, ""))) +
+    geom_text(aes(label = ifelse(aic_ss < aic_pp3, jag_id, ""))) +
     geom_abline() 
-
-
+hist(res$aic_ss - res$aic_pp3, breaks = 50)
+abline(v = 0)
 # Old  ---------------------------------------------------------------------
 ## 6 jan 2025
 # plot(res$aic_pp3 - res$aic_ss, res$nmove, pch = 19, col = "black", 

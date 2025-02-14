@@ -79,7 +79,7 @@ if (param_plots) {
     })
 
     # Generated + fitted, all on same plot
-    plotpdf(nm = paste0("figs/sims/", simname, "plot.pdf"), x = 8, y = 4)
+    # plotpdf(nm = paste0("figs/sims/", simname, "plot.pdf"), x = 8, y = 4)
     par(mfrow = c(1, 2))
     plot(y0, type = "l", lwd = 3, ylim = c(0, 1), xlab = "Environmental variable",
          ylab = "Attraction", main = "Step selection")
@@ -96,17 +96,21 @@ if (param_plots) {
         lines(y2[[i]], col = rgb(0, 0, 1, 0.3), lwd = 3)
         # readline(paste(i, "Press [enter] to continue"))
     }
-    dev.off()
+    # dev.off()
 
-    plotpdf(nm = "figs/simplot2.pdf", x = 12, y = 4)
+    # plotpdf(nm = "figs/simplot2.pdf", x = 12, y = 4)
     par(mfrow = c(1, 3))
-    plot(fit$c1)
-    abline(h = par0[1], col = "red")
-    plot(fit$b1)
-    abline(h = par0[2], col = "red")
-    plot(fit$a1)
-    abline(h = par0[3], col = "red")
-    dev.off()
+    plot(fit$c2, pch = 19, col = 'blue')
+    points(fit$c1, pch = 19, col = 'red')
+    abline(h = par0[1], lty = 2)
+    plot(fit$b2, pch = 19, col = 'blue')
+    points(fit$b1, pch = 19, col = 'red')
+    
+    abline(h = par0[2], lty = 2)
+    plot(fit$a2, pch = 19, col = 'blue')
+    points(fit$a1, pch = 19, col = 'red')
+    abline(h = par0[3], lty = 2)
+     # dev.off()
 }
 
 ## Individual analysis =========================================================

@@ -472,7 +472,7 @@ apply_kernel <- function(attract0, kernel) {
 }
 
 log_likelihood0 <- function(par, objects, debug = FALSE) {
-  nbhd     <- objects$nbhd_i
+  nbhd     <- objects$nbhd_0
   obs      <- objects$obs
   env      <- objects$env
   max_dist <- objects$max_dist
@@ -497,14 +497,10 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   # kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
   #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
 
-  # null kernel
-  kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
-                                       kfun = function(x) x * 0 + 1)
-
   # Empirical movement kernel --------------------------------------------------
   attract0 <- env_function(env, par, nbhd)
-  #attract <- t(apply(attract0, 1, function(r) r * mk))
-  attract <- apply_kernel(attract0, kernel)
+  # attract <- apply_kernel(attract0, kernel)
+  attract <- attract0 # no movement kernel
   
   indices <- if (length(outliers) > 0) {
     setdiff(seq_along(obs), outliers)
@@ -574,12 +570,10 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
 
 
-  # null kernel
-  kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
-                                       kfun = function(x) x * 0 + 1)
   # Attractiveness function ----------------------------------------------------
-  attract0 <- env_function(env_i, par, nbhd = nbhd_i)
-  attract <- apply_kernel(attract0, kernel)
+  attract0 <- env_function(env_i, par, nbhd = nbhd_i) 
+  attract  <- attract0   # no movement kernel
+  # attract <- apply_kernel(attract0, kernel)
 
   # Simulation 
   # attract <- env_function(env_i, par, nbhd_i)
@@ -611,7 +605,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
       next
     }
     prob <- current[obs[i], i, ]
-    predictions[, i] <- prob + bg_rate - prob * bg_rate
+    predictions[, i] <- prob #+ bg_rate - prob * bg_rate
     predictions[, i] <- predictions[, i] / sum(predictions[, i], na.rm = TRUE)
   }
 

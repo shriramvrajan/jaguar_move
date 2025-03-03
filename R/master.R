@@ -27,13 +27,13 @@ if (run_model) {
     refit_turns     <- FALSE            # Refit turn distributions (MM)
 
     ## Actual fitting options
-    refit_model     <- TRUE             # Refit movement model parameters
+    prep_model      <- TRUE             # Refit movement model parameters
     model_type      <- 1                # 1 = tradSSF, 2 = path propagation
     holdout_set     <- TRUE             # Hold out a set of points
     holdout_frac    <- 0.7              # Fraction of points to use for fitting
-    model_nofit     <- FALSE            # Don't fit the model, just simulate
-        model_calcnull  <- FALSE            # Calculate null likelihoods 
-                                        # refit_model must be TRUE for this one
+    fit_model       <- FALSE            # Fit the model, FALSE just simulates
+        model_calcnull  <- TRUE          # fit_model has to be FALSE
+
     ## Parameters                                    
     npar            <- 8              # Number of parameters in current model 
     step_size       <- 1              # Jaguars move up to n px (n km) at a time

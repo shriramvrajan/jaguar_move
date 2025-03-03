@@ -19,6 +19,7 @@ sim_n        <- params$sim_n
 step_size    <- params$step_size
 
 paths <- readRDS(paste0(simdir, "paths.rds"))
+par0 <- c(3, -1.5, .2)
 
 env01 <- rast(paste0(simdir, "env01.tif"))
 print(params)
@@ -62,7 +63,6 @@ if (param_plots) {
         return(prep_model_objects(traject, max_dist, raster_to_df(env01), sim = TRUE))
     })
 
-    par0 <- c(3, -2, 0.3)
     y0 <- plot_curve(par0, values = TRUE)    
     y1 <- lapply(seq_len(nrow(fit)), function(i) {
         mu <- objects_all[[i]]$mu_env

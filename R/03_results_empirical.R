@@ -11,7 +11,11 @@ ggplot(data = res, aes(x = aic_ss, y = aic_pp3)) +
     geom_abline() 
 hist(res$aic_ss - res$aic_pp3, breaks = 50)
 abline(v = 0)
-# Old  ---------------------------------------------------------------------
+
+# Holdout set fitting ----------------------------------------------------------
+
+
+# Old  -------------------------------------------------------------------------
 ## 6 jan 2025
 # plot(res$aic_pp3 - res$aic_ss, res$nmove, pch = 19, col = "black", 
 #      xlim = c(-500, 500))

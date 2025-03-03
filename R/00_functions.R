@@ -569,7 +569,6 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   # kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
   #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
 
-
   # Attractiveness function ----------------------------------------------------
   attract0 <- env_function(env_i, par, nbhd = nbhd_i) 
   attract  <- attract0   # no movement kernel

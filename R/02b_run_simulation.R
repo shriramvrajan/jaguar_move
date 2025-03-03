@@ -29,13 +29,14 @@ r1 <- 15          # range of autocorrelation in cells
 
 ### Model parameters:
 # Order: par_env0, par_env1, par_env2, par_kexp, par_bgrate
-par0 <- c(3, -2, 0.3)        
+par0 <- c(3, -1.5, .2)
+# par0 <- c(5, -1, 0)
 # par0 <- c(NA, 2, -0.2, -0.2)
 
 ### Path generation parameters:
 step_size    <- 1             # Max # pixels for each step
 obs_interval <- 0             # Number of steps to skip between observations
-n_step       <- 1000          # Number of steps to simulate
+n_step       <- 2000          # Number of steps to simulate
 sim_n        <- 20            # Number of simulations 
 n_obs        <- ceiling(n_step / (obs_interval + 1))
 
@@ -54,8 +55,8 @@ if (gen_land || gen_path || fit_indiv || fit_all) {
 if (any(is.na(par0))) par0 <- par0[!is.na(par0)]
 
 # Value to start fitting from
-# par_start <- rep(0, length(par0))
-par_start <- par0
+par_start <- rep(0, length(par0))
+# par_start <- par0
 
 ## Landscape ===================================================================
 if (!gen_land) {

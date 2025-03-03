@@ -55,7 +55,7 @@ if (refit_turns) {
 }
 
 ### Fitting environmental parameters -------------------------------------------
-if (refit_model) {
+if (prep_model) {
   
   ll_func <- switch(model_type, log_likelihood0, log_likelihood)
 
@@ -88,7 +88,11 @@ if (refit_model) {
       if (holdout_set && nrow(jag_traject) > 100) {
         hold <- seq_len(ceiling(nrow(jag_traject) * holdout_frac))
         jag_traject <- jag_traject[hold, ]
-        jag_traject_cells <- jag_traject_cells[hold]
+        if (fit_model) {
+          jag_traject_cells <- jag_traject_cells[hold]
+        } else {
+          jag_traject_cells <- jag_traject_cells[-hold]
+        }
       }
       
       # Preparing model objects based on model type; 1 = SSF, 2 = path propagation
@@ -123,22 +127,23 @@ if (refit_model) {
       }
 
       # Calculate null likelihoods for each jaguar if not already done
-      if (model_nofit) {
+      if (!fit_model) {
         message(paste0("Calculating likelihood for jaguar ", i))
+        par1 <- readRDS(paste0("data/output/par_out_", i, ".rds"))$par
         likelihood <- ifelse(model_calcnull, 
                             ll_func(c(rep(0, npar)), objects),
-                            ll_func(param0, objects))
+                            ll_func(par1, objects))
         name <- ifelse(model_calcnull, "ll_null_", "ll_")
         saveRDS(likelihood, paste0("data/output/", name, i, ".rds"))
       } else if (!debug_01) {
         message("Running optim...")
         run_optim(param0, objects, i)
-        if (debug_02) {
-          message("Debugging 02_movement_model.R")
-          par1 <- readRDS(paste0("data/output/par_out_", i, ".rds"))$par
-          fname <- paste0("data/output/debug_", i, ".rds")
-          ll_func(par1, objects, debug = TRUE) %>% saveRDS(fname)
-        }
+        # if (debug_02) {
+        #   message("Debugging 02_movement_model.R")
+        #   par1 <- readRDS(paste0("data/output/par_out_", i, ".rds"))$par
+        #   fname <- paste0("data/output/hold_", i, ".rds")
+        #   ll_func(par1, objects, debug = TRUE) %>% saveRDS(fname)
+        # }
       } 
     }
   }

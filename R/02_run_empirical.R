@@ -92,6 +92,8 @@ if (prep_model) {
           jag_traject_cells <- jag_traject_cells[hold]
         } else {
           jag_traject_cells <- jag_traject_cells[-hold]
+          outliers <- outliers[outliers > max(hold)]
+          if (length(outliers) > 0) outliers <- outliers - length(hold)
         }
       }
       
@@ -113,7 +115,7 @@ if (prep_model) {
         if (any(is.na(env))) env[which(is.na(env))] <- 0
         nbhd_c <- matrix(as.character(nbhd), nrow = nrow(nbhd), ncol = ncol(nbhd)) # needs to be character for this one
         objects <- list(nbhd_c, obs, env, max_dist, mk, outliers)
-        names(objects) <- c("nbhd_i", "obs", "env", "max_dist", "mk", "outliers")
+        names(objects) <- c("nbhd", "obs", "env", "max_dist", "mk", "outliers")
 
       } else if (model_type == 2) {
 
@@ -129,7 +131,7 @@ if (prep_model) {
       # Calculate null likelihoods for each jaguar if not already done
       if (!fit_model) {
         message(paste0("Calculating likelihood for jaguar ", i))
-        par1 <- readRDS(paste0("data/output/par_out_", i, ".rds"))$par
+        par1 <- readRDS(paste0("data/output/sim_", param_model, "/out_", i, ".rds"))$par
         likelihood <- ifelse(model_calcnull, 
                             ll_func(c(rep(0, npar)), objects),
                             ll_func(par1, objects))

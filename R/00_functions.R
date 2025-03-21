@@ -16,17 +16,12 @@ library(doParallel)
 library(viridis)
 # library(plotly)
 
-# Global parameters ============================================================
+# Data =========================================================================
 
 # CRS definitions
 wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
 epsg5880 <- "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000 
 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs"
-
-# Simulation parameters
-# sim_n <- 1000
-
-# Data =========================================================================
 
 # Jaguar movement data, ID numbers, and metadata
 jag_move <- readRDS("data/jag_data_BR.rds")
@@ -448,12 +443,12 @@ env_function <- function(env, par, nbhd) {
   #                         par[12] * env[, 6] + par[13] * env[, 6]^2))          # distance to road
   
   # # First order no intercept -------------------------------------------------
-  # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-  #                         par[3] * env[, 3] + par[4] * env[, 4] + 
-  #                         par[5] * env[, 5] + par[6] * env[, 6]))
-                          
+  attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
+                          par[3] * env[, 3] + par[4] * env[, 4] + 
+                          par[5] * env[, 5] + par[6] * env[, 6]))
+  
   # Simulation -----------------------------------------------------------------
-  attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+  # attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
 
   #-----------------------------------------------------------------------------
   attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
@@ -472,7 +467,7 @@ apply_kernel <- function(attract0, kernel) {
 }
 
 log_likelihood0 <- function(par, objects, debug = FALSE) {
-  nbhd     <- objects$nbhd_0
+  nbhd     <- objects$nbhd
   obs      <- objects$obs
   env      <- objects$env
   max_dist <- objects$max_dist
@@ -510,7 +505,6 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   like <- sapply(indices, function(i) {
     return(attract[i, obs[i]])
   })
-    
   out <- -sum(log(like), na.rm = TRUE)
 
   if (is.infinite(out) || is.na(out)) out <- 0
@@ -796,7 +790,7 @@ par_to_df <- function(par) {
     }))
 }
 
-results_table <- function(s, params = TRUE) {
+results_table <- function(s, params = TRUE, holdout = TRUE) {
 
  npar <- vector()
   
@@ -832,19 +826,3 @@ results_table <- function(s, params = TRUE) {
 
   return(df)
 }
-
-# Extra attraction functions in 00a_attraction_functions.R
-
-  # ## Extra variables
-  # df$nmove <- sapply(1:njag, function(x) {
-  #   length(which(jag_move$ID == as.numeric(jag_id[x])))
-  # })
-  # df$ndays <- sapply(1:njag, function(x) {
-  #   moves <- jag_move[ID == as.numeric(jag_id[x])]
-  #   dates <- sort(as.Date(sapply(moves$timestamp, function(dt) {
-  #           strsplit(as.character(dt), " ")[[1]][1]
-  #       }), format = "%m/%d/%y"))
-  #   return(as.numeric(difftime(dates[length(dates)], dates[1])))
-  # })
-  # df$meandist <- tapply(jag_move$dist, jag_move$ID, function(x) mean(x, na.rm = TRUE))
-  # df$totdist <- tapply(jag_move$dist, jag_move$ID, function(x) sum(x, na.rm = TRUE))

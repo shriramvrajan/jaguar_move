@@ -11,7 +11,6 @@ loaded <- TRUE
 set.seed(12345)
 generate_data   <- FALSE
 run_model       <- TRUE
-analyse_output  <- FALSE
 debug_01        <- FALSE     # object size
 debug_02        <- FALSE    # something about optim
 
@@ -28,16 +27,17 @@ if (run_model) {
 
     ## Actual fitting options
     prep_model      <- TRUE             # Refit movement model parameters
-    model_type      <- 1                # 1 = tradSSF, 2 = path propagation
+    model_type      <- 2                # 1 = tradSSF, 2 = path propagation
     holdout_set     <- TRUE             # Hold out a set of points
-    holdout_frac    <- 0.7              # Fraction of points to use for fitting
+    holdout_frac    <- 0.5              # Fraction of points to use for fitting
     fit_model       <- FALSE            # Fit the model, FALSE just simulates
-        model_calcnull  <- TRUE          # fit_model has to be FALSE
+        model_calcnull  <- FALSE          # fit_model has to be FALSE
+        param_model     <- "pp3h"         # if not fitting, what params to use?
 
     ## Parameters                                    
     npar            <- 8              # Number of parameters in current model 
     step_size       <- 1              # Jaguars move up to n px (n km) at a time
-    sim_steps       <- 8              # How many steps to simulate forward
+    sim_steps       <- 10              # How many steps to simulate forward
     i_override      <- NULL
     # Which jaguars, set to NULL to iterate through all
     
@@ -60,7 +60,6 @@ if (run_model) {
 
     outfiles <- list.files("data/output")
     done <- gsub(".rds", "", outfiles) %>% 
-        gsub("sizeout_", "", .) %>%
         gsub("out_", "", .) %>% 
         gsub("ll_null_", "", .) %>%
         gsub("ll_", "", .) %>%
@@ -80,11 +79,5 @@ if (run_model) {
         message("Global neighborhood matrix already generated")
     }
 
-    source("R/02_movement_model.R")
-}
-
-## Output analysis =============================================================
-
-if (analyse_output) {
-    source("R/03_output_analysis.R")
+    source("R/02_run_empirical.R")
 }

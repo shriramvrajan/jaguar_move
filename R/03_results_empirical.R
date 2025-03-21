@@ -1,16 +1,25 @@
 source("R/00_functions.R")
 
-simnames <- c("ss", "ssh", "pp3", "pp3h")
+simnames <- c("ss", "pp3")
 res <- results_table(simnames)
 # res0 <- res
 # res <- res0[res0$nmove > 200, ]
+h1 <- load_if_exists(paste0("ll_", 1:82, ".rds"), dir = paste0("data/output/sim_", simnames[1])) %>% unlist()
+h2 <- load_if_exists(paste0("ll_", 1:82, ".rds"), dir = paste0("data/output/sim_", simnames[2])) %>% unlist()
 
+plotpdf()
+plot(h1, h2, pch = 19, col = "black")
+abline(0, 1, lty = 2)
+dev.off()
+
+plotpdf()
 ggplot(data = res, aes(x = aic_ss, y = aic_pp3)) +
     geom_point(mapping = aes(col = bio), size = 3) +
     geom_text(aes(label = ifelse(aic_ss < aic_pp3, jag_id, ""))) +
     geom_abline() 
 hist(res$aic_ss - res$aic_pp3, breaks = 50)
 abline(v = 0)
+dev.off()
 
 # Holdout set fitting ----------------------------------------------------------
 

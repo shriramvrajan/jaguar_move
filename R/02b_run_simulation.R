@@ -3,13 +3,13 @@ source("R/00_functions.R")
 
 ## Switches ====================================================================
 
-simname <- "s1"
+simname <- "s2c"
 
 # Switches for landscape generation, path generation, fitting, and plotting.
 gen_land   <- F
-gen_path   <- T
+gen_path   <- F
 fit_indiv  <- T
-plot_results <- F
+plot_results <- T
 
 # Roads once taken
 fit_all    <- F
@@ -25,19 +25,19 @@ ncore_fit  <- 5
 ### Landscape generation parameters:
 envsize <- 200    # size of landscape in cells
 s1 <- 5           # strength of autocorrelation 
-r1 <- 15          # range of autocorrelation in cells
+r1 <- 20           # range of autocorrelation in cells
 
 ### Model parameters:
 # Order: par_env0, par_env1, par_env2, par_kexp, par_bgrate
-par0 <- c(3, -1.5, .2)
-# par0 <- c(5, -1, 0)
+# par0 <- c(2, -0.2, -0.2)
+par0 <- c(-1.5, 1.5, -0.2)
 # par0 <- c(NA, 2, -0.2, -0.2)
 
 ### Path generation parameters:
 step_size    <- 1             # Max # pixels for each step
-obs_interval <- 0             # Number of steps to skip between observations
-n_step       <- 2000          # Number of steps to simulate
-sim_n        <- 20            # Number of simulations 
+obs_interval <- 10            # Number of steps to skip between observations
+n_step       <- 5000          # Number of steps to simulate
+sim_n        <- 10            # Number of simulations 
 n_obs        <- ceiling(n_step / (obs_interval + 1))
 
 sim_steps  <- obs_interval + 2 # Number of steps to simulate forward in PP model
@@ -55,8 +55,8 @@ if (gen_land || gen_path || fit_indiv || fit_all) {
 if (any(is.na(par0))) par0 <- par0[!is.na(par0)]
 
 # Value to start fitting from
-par_start <- rep(0, length(par0))
-# par_start <- par0
+# par_start <- rep(0, length(par0))
+par_start <- par0
 
 ## Landscape ===================================================================
 if (!gen_land) {
@@ -68,6 +68,9 @@ if (!gen_land) {
     terra::plot(env01)
     writeRaster(env01, "simulations/env01.tif", overwrite = TRUE)
 }
+plotpdf(nm = paste0("figs/sims/", simname, "env.pdf"), x = 8, y = 8)
+terra::plot(env01)
+dev.off()
 
 ## Paths =======================================================================
 if (!gen_path) {
@@ -135,17 +138,25 @@ if (fit_indiv || fit_all) {
     
     if (fit_indiv) {
         # Fit individuals one at a time ----------------------------------------
-        # fit <- do.call(rbind, lapply(todo, function(i) { # easier to debug
-        foreach(i = todo, .combine = rbind, .packages = c("terra", "metaRange")) %dopar% {
+        fit <- do.call(rbind, lapply(todo, function(i) { # easier to debug
+        # foreach(i = todo, .combine = rbind, .packages = c("terra", "metaRange")) %dopar% {
             message(paste0("Fitting individual #: ", i, " / ", length(todo)))            
             message("Fitting parameters for model 1: step-selection")
             objects1 <- objects_all[[i]]
             
-            par_out1 <- optim(par_start, log_likelihood0, objects = objects1)
-            ll1 <- log_likelihood0(par_out1$par, objects1)
+            tryCatch({
+                par_out1 <- optim(par_start, log_likelihood0, objects = objects1)
+                ll1 <- log_likelihood0(par_out1$par, objects1)
+            }, error = function(e) {
+                message(paste("Error on path", i, ":", e$message))
+            })
             message("Fitting parameters for model 2: path-propagation")
-            par_out2 <- optim(par_start, log_likelihood, objects = objects1)
-            ll2 <- log_likelihood(par_out2$par, objects1)
+            tryCatch({
+                par_out2 <- optim(par_start, log_likelihood, objects = objects1)
+                ll2 <- log_likelihood(par_out2$par, objects1)
+            }, error = function(e) {
+                message(paste("Error on path", i, ":", e$message))
+            })
 
             message(paste0("Saving log-likelihoods: ", i))
             saveRDS(ll1, file = paste0("simulations/ll_fit1", i, ".rds"))
@@ -156,7 +167,7 @@ if (fit_indiv || fit_all) {
                     file = paste0("simulations/par_out2_", i, ".rds"))
             message(paste0("COMPLETED path #: ", i, " / ", sim_n))
         }
-        # ))    # easier to debug
+        ))    # easier to debug
     }
     
     if (fit_all) {
@@ -194,5 +205,5 @@ if (fit_indiv || fit_all) {
 ## Demo ========================================================================
 
 if (plot_results) {
-    source("R/02c_simulation_analysis.R")
+    source("R/03b_results_simulation.R")
 }

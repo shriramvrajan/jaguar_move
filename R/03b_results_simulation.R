@@ -8,7 +8,9 @@ param_plots    <- T
 debug_fit      <- F
 indiv_analysis <- F
 
-simname        <- "s1"
+# simname        <- "s6"
+# par0 <- c(3, -1.5, .2)
+# ideally inherit simname, par0 from 02b somehow. 
 simdir         <- paste0("simulations/", simname, "/")
 
 ## Load data ===================================================================
@@ -19,7 +21,6 @@ sim_n        <- params$sim_n
 step_size    <- params$step_size
 
 paths <- readRDS(paste0(simdir, "paths.rds"))
-par0 <- c(3, -1.5, .2)
 
 env01 <- rast(paste0(simdir, "env01.tif"))
 print(params)
@@ -79,7 +80,7 @@ if (param_plots) {
     })
 
     # Generated + fitted, all on same plot
-    # plotpdf(nm = paste0("figs/sims/", simname, "plot.pdf"), x = 8, y = 4)
+    plotpdf(nm = paste0("figs/sims/", simname, "plot.pdf"), x = 8, y = 4)
     par(mfrow = c(1, 2))
     plot(y0, type = "l", lwd = 3, ylim = c(0, 1), xlab = "Environmental variable",
          ylab = "Attraction", main = "Step selection")
@@ -96,9 +97,9 @@ if (param_plots) {
         lines(y2[[i]], col = rgb(0, 0, 1, 0.3), lwd = 3)
         # readline(paste(i, "Press [enter] to continue"))
     }
-    # dev.off()
+    dev.off()
 
-    # plotpdf(nm = "figs/simplot2.pdf", x = 12, y = 4)
+    plotpdf(nm = "figs/simplot2.pdf", x = 12, y = 4)
     par(mfrow = c(1, 3))
     plot(fit$c2, pch = 19, col = 'blue')
     points(fit$c1, pch = 19, col = 'red')
@@ -110,7 +111,7 @@ if (param_plots) {
     plot(fit$a2, pch = 19, col = 'blue')
     points(fit$a1, pch = 19, col = 'red')
     abline(h = par0[3], lty = 2)
-     # dev.off()
+     dev.off()
 }
 
 ## Individual analysis =========================================================

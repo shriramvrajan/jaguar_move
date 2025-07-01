@@ -364,6 +364,7 @@ normalize_nbhd <- function(v, nbhd) {
 # max_dist:  Maximum distance in pixels for one step
 # r:         Raster object
 prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
+
     # Extended neighborhoods of each cell in individual's trajectory
     env_ras    <- if (sim) env01 else brazil_ras
     nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = env_ras, rdf = rdf)
@@ -395,10 +396,22 @@ prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
     # For each cell of the extended neighborhood of the path, what are
     # the immediate neighbors? Rows are each cell of nbhd_i columns are row #s 
     # from nbhd. All row lengths standardized with missing neighbors as NAs.
+
     to_dest <- tapply(seq_len(length(nbhd_i)), nbhd_i, function(x) {  
-      out <- c(x, rep(NA, ncol(nbhd_i) - length(x)))
+      if (length(x) <= ncol(nbhd_i)) {
+        # Normal case - pad with NAs
+        out <- c(x, rep(NA, ncol(nbhd_i) - length(x)))
+      } else {
+        # Edge case - truncate to fit
+        out <- x[seq_len(ncol(nbhd_i))]
+      }
       return(out)
     })
+    # to_dest <- tapply(valid_indices, nbhd_i[valid_indices], function(x) {  
+    #   print(x)
+    #   out <- c(x, rep(NA, ncol(nbhd_i) - length(x)))
+    #   return(out)
+    # })
     to_dest <- t(matrix(unlist(to_dest), nrow = ncol(nbhd_i), ncol = nrow(nbhd_i)))
     dest <- matrix(0, nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
     message("Immediate neighbors prepared.")
@@ -443,12 +456,12 @@ env_function <- function(env, par, nbhd) {
   #                         par[12] * env[, 6] + par[13] * env[, 6]^2))          # distance to road
   
   # # First order no intercept -------------------------------------------------
-  attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-                          par[3] * env[, 3] + par[4] * env[, 4] + 
-                          par[5] * env[, 5] + par[6] * env[, 6]))
+  # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
+  #                         par[3] * env[, 3] + par[4] * env[, 4] + 
+  #                         par[5] * env[, 5] + par[6] * env[, 6]))
   
   # Simulation -----------------------------------------------------------------
-  # attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+  attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
 
   #-----------------------------------------------------------------------------
   attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
@@ -467,7 +480,7 @@ apply_kernel <- function(attract0, kernel) {
 }
 
 log_likelihood0 <- function(par, objects, debug = FALSE) {
-  nbhd     <- objects$nbhd
+  nbhd     <- objects$nbhd_0
   obs      <- objects$obs
   env      <- objects$env
   max_dist <- objects$max_dist

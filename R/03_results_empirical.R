@@ -1,24 +1,30 @@
 source("R/00_functions.R")
 
-simnames <- c("ss", "pp3")
+simnames <- c("ssh", "pp3h")
 res <- results_table(simnames)
 # res0 <- res
 # res <- res0[res0$nmove > 200, ]
 h1 <- load_if_exists(paste0("ll_", 1:82, ".rds"), dir = paste0("data/output/sim_", simnames[1])) %>% unlist()
 h2 <- load_if_exists(paste0("ll_", 1:82, ".rds"), dir = paste0("data/output/sim_", simnames[2])) %>% unlist()
+h <- data.frame(h1, h2)
 
 plotpdf()
-plot(h1, h2, pch = 19, col = "black")
-abline(0, 1, lty = 2)
+ggplot(data = h, aes(x = h1, y = h2)) +
+    geom_point(size = 1) +
+    labs(x = "Log-likelihood step selection", y = "Log-likelihood path propagation") +
+    geom_abline(linetype = "dashed")
 dev.off()
 
-plotpdf()
-ggplot(data = res, aes(x = aic_ss, y = aic_pp3)) +
+res2 <- res[-which(res$ll_ss == 0), ]
+
+plotpdf(x = 5, y = 4, nm = "figs/empirical_aic.pdf")
+ggplot(data = res2, aes(x = aic_ss, y = aic_pp3)) +
     geom_point(mapping = aes(col = bio), size = 3) +
     geom_text(aes(label = ifelse(aic_ss < aic_pp3, jag_id, ""))) +
-    geom_abline() 
-hist(res$aic_ss - res$aic_pp3, breaks = 50)
-abline(v = 0)
+    labs(x = "AIC step selection", y = "AIC path propagation") +
+    geom_abline(linetype = "dashed") 
+#hist(res$aic_ss - res$aic_pp3, breaks = 50)
+#abline(v = 0)
 dev.off()
 
 # Holdout set fitting ----------------------------------------------------------

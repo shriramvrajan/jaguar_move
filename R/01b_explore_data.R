@@ -3,8 +3,32 @@ source("R/00_functions.R")
 ## Mar 21, 2025 ----------------------------------------------------------------
 # Diel and seasonal rhythms
 
-tr <- make_full_track(jag_id[1] %>% as.numeric)
+jag_id2 <- jag_id[which(jag_meta$nmove > 200)]
 
+plot_speed <- function(i) {
+    tr <- make_full_track(jag_id2[i] %>% as.numeric)
+    plot(tapply(tr$sl, tr$mon, function(x) mean(x, na.rm = TRUE)), type = "l",
+         main = i)
+}
+
+# Speed by hour through the day
+# plotpdf(x = 8, y = 8)
+par(mfrow = c(4, 4))
+for (i in 17:32) plot_speed(i)
+# dev.off()
+
+# try ggplotting all on the same plot
+plot_speed2 <- function(i) {
+    tr <- make_full_track(jag_id2[i] %>% as.numeric)
+    ggplot(data = tr, aes(x = hr, y = sl / dt)) +
+        geom_line() +
+        ggtitle(i)
+}
+
+plotpdf(x = 8, y = 8)
+par(mfrow = c(4, 4))
+for (i in 1:16) print(plot_speed2(i))
+dev.off()
 
 ## Jan 29, 2025 ----------------------------------------------------------------
 # Tackling the timestep and max_dist unevenness.

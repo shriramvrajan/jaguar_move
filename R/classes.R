@@ -1,66 +1,7 @@
 # Attempt to refactor into object-oriented idiom
-
 library(R6)
 
-# Simulations ==================================================================
-
-# Configuration parameters
-simulation_config <- R6Class("simulation_config",
-    public <- list(
-        # Landscape parameters
-        env_size = 200,
-        autocorr_strength = 5,
-        autocorr_range = 50,
-
-        # Model parameters
-        env_response = c(-1.5, 1.5, -0.2),
-        step_size = 1,
-        obs_interval = 5,
-
-        # Simulation parameters
-        n_steps = 1000,
-        n_individuals = 10,
-
-        # Output parameters
-        name = "default", 
-
-        initialize = function(name = "default", autocorr_range = 50, 
-                            n_individuals = 10, env_size = 200, 
-                            autocorr_strength = 5, 
-                            env_response = c(-1.5, 1.5, -0.2),
-                            step_size = 1, obs_interval = 5, n_steps = 1000) {
-            self$name <- name
-            self$autocorr_range <- autocorr_range
-            self$n_individuals <- n_individuals
-            self$env_size <- env_size
-            self$autocorr_strength <- autocorr_strength
-            self$env_response <- env_response
-            self$step_size <- step_size
-            self$obs_interval <- obs_interval
-            self$n_steps <- n_steps
-        },
-
-        # Derived properties
-        max_dist = function() self$step_size * (self$obs_interval + 1),
-        sim_steps = function() self$obs_interval + 2,
-
-        save = function(filepath) {
-            params <- list(
-                name              = self$name,
-                env_size          = self$env_size,
-                autocorr_range    = self$autocorr_range,
-                autocorr_strength = self$autocorr_strength,
-                n_individuals     = self$n_individuals,
-                n_steps           = self$n_steps,
-                env_response      = self$env_response,
-                step_size         = self$step_size,
-                obs_interval      = self$obs_interval
-            )
-            saveRDS(params, filepath)            
-        }
-    ))
-
-# Landscape object for environmental raster
+## Landscape object for environmental raster
 landscape <- R6Class("landscape", 
     public = list(
         raster = NULL,
@@ -82,7 +23,169 @@ landscape <- R6Class("landscape",
     )
 )
 
-# Movement simulator for path generation and model fitting
+# Step Selection Model Class
+step_selection_model <- R6Class("step_selection_model",
+  public = list(
+    
+    prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE, env_raster = NULL) {
+      message("Preparing step selection objects")
+      
+      # Get environment data
+      if (sim) {
+        env_0 <- scale(rdf$sim1[])
+        env_ras <- env_raster
+      } else {
+        env_0 <- scale(rdf[, 1])  # First column of brdf
+        env_ras <- brazil_ras
+      }
+      if (any(is.na(env_0))) env_0[which(is.na(env_0))] <- 0
+      
+      # Extended neighborhoods for step selection
+      nbhd_0 <- make_nbhd(i = trajectory, sz = max_dist, r = env_ras, rdf = rdf)
+      
+      # Build observations for step selection
+      obs_0 <- sapply(seq_along(trajectory), function(i) {
+        if (i == length(trajectory)) return(NULL)
+        step <- trajectory[i + 1]
+        return(which(nbhd_0[i, ] == step))
+      }) %>% unlist()
+      
+      # Return step selection specific objects
+      list(
+        env_0 = env_0,
+        nbhd_0 = nbhd_0, 
+        obs_0 = obs_0,
+        max_dist = max_dist,
+        outliers = integer(0)  # Will be set externally if needed
+      )
+    },
+    
+    fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, env_raster = NULL, outliers = integer(0)) {
+      # Prepare objects
+      objects <- self$prepare_objects(trajectory, max_dist, rdf, sim, env_raster)
+      objects$outliers <- outliers
+      
+      # Fit model
+      tryCatch({
+        par_out <- optim(par_start, log_likelihood0, objects = objects)
+        ll <- log_likelihood0(par_out$par, objects)
+        
+        return(list(
+          par = par_out$par,
+          ll = ll,
+          convergence = par_out$convergence,
+          objects = objects
+        ))
+      }, error = function(e) {
+        message(paste("Step selection fitting error:", e$message))
+        return(NA)
+      })
+    }
+  )
+)
+
+# Path Propagation Model Class  
+path_propagation_model <- R6Class("path_propagation_model",
+  public = list(
+    
+    prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE, env_raster = NULL, sim_steps = NULL) {
+      message("Preparing path propagation objects")
+      
+      # Get environment data
+      if (sim) {
+        env_0 <- scale(rdf$sim1[])
+        env_ras <- env_raster
+      } else {
+        env_0 <- scale(rdf[, 1])
+        env_ras <- brazil_ras
+      }
+      if (any(is.na(env_0))) env_0[which(is.na(env_0))] <- 0
+      
+      # Extended neighborhoods
+      nbhd_index <- make_nbhd(i = trajectory, sz = max_dist, r = env_ras, rdf = rdf)
+      
+      # Build observations for path propagation
+      obs_i <- sapply(2:nrow(nbhd_index), function(r) {
+        local <- nbhd_index[(r - 1), ]
+        nextcell <- which(local == trajectory[r])
+        if (length(nextcell) == 0) return(NA) else return(nextcell)
+      })
+      
+      # Build complex nested neighborhood structure
+      nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                
+        row_inds <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
+        names(row_inds) <- nbhd_index[i, ]
+        out <- matrix(row_inds[as.character(nbhd0[nbhd_index[i, ], ])], 
+                      nrow = length(row_inds), ncol = ncol(nbhd0))
+        return(out)
+      })
+      nbhd_i <- do.call(rbind, nbhd_list)
+      
+      # Flatten nbhd_index for environment indexing
+      nbhd_index <- as.vector(t(nbhd_index))
+      env_i <- env_0[nbhd_index]
+      if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
+      
+      # Build connectivity matrix
+      to_dest <- tapply(seq_len(length(nbhd_i)), nbhd_i, function(x) {  
+        if (length(x) <= ncol(nbhd_i)) {
+          out <- c(x, rep(NA, ncol(nbhd_i) - length(x)))
+        } else {
+          out <- x[seq_len(ncol(nbhd_i))]
+        }
+        return(out)
+      })
+      to_dest <- t(matrix(unlist(to_dest), nrow = ncol(nbhd_i), ncol = nrow(nbhd_i)))
+      dest <- matrix(0, nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
+      
+      # Return path propagation specific objects
+      result <- list(
+        env_i = env_i,
+        nbhd_i = nbhd_i,
+        to_dest = to_dest,
+        dest = dest,
+        obs_i = obs_i,
+        max_dist = max_dist,
+        outliers = integer(0)  # Will be set externally if needed
+      )
+      
+      if (!is.null(sim_steps)) {
+        result$sim_steps <- sim_steps
+      }
+      
+      if (sim) {
+        result$mu_env <- attributes(env_i)[[2]]
+        result$sd_env <- attributes(env_i)[[3]]
+      }
+      
+      return(result)
+    },
+    
+    fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, env_raster = NULL, sim_steps = NULL, outliers = integer(0)) {
+      # Prepare objects
+      objects <- self$prepare_objects(trajectory, max_dist, rdf, sim, env_raster, sim_steps)
+      objects$outliers <- outliers
+      
+      # Fit model
+      tryCatch({
+        par_out <- optim(par_start, log_likelihood, objects = objects)
+        ll <- log_likelihood(par_out$par, objects)
+        
+        return(list(
+          par = par_out$par,
+          ll = ll,
+          convergence = par_out$convergence,
+          objects = objects
+        ))
+      }, error = function(e) {
+        message(paste("Path propagation fitting error:", e$message))
+        return(NA)
+      })
+    }
+  )
+)
+
+## Movement simulator for path generation and model fitting 
 movement_simulator <- R6Class("movement_simulator",
     public = list(
         config = NULL,
@@ -130,88 +233,127 @@ movement_simulator <- R6Class("movement_simulator",
     },
     
     fit_models = function(paths, landscape, parallel = TRUE, n_cores = 5) {
-      message(paste("Fitting models for", self$config$name))
-      
-        # Debug: check if landscape$raster exists
-        message(paste("Landscape raster class:", class(landscape$raster)))
-        message(paste("Landscape raster is NULL:", is.null(landscape$raster)))
+        message(paste("Fitting models for", self$config$name))
 
-      # Prepare trajectories (like your current code)
-      jag_traject <- lapply(paths, function(p) {
-        out <- cbind(p$x, p$y)
-        ind <- seq(1, nrow(out), self$config$obs_interval + 1)
-        out <- out[ind, ]
-        return(out)
-      })
-      
-      jag_traject_cells <- lapply(jag_traject, function(tr) {
-        out <- terra::cellFromRowCol(landscape$raster, tr[, 1], tr[, 2])
-        return(out)
-      })
-      
-      rdf <- raster_to_df(landscape$raster)
-      
-      # Build global neighborhood
-      message("Building global neighborhood")
-      nbhd0 <<- make_nbhd(i = seq_len(ncell(landscape$raster)), 
-                         sz = self$config$step_size, 
-                         r = landscape$raster, rdf = rdf) 
-      
-      max_dist <- self$config$max_dist()
-      sim_steps <- self$config$sim_steps()
-      
-      # Prepare objects for all individuals
-      objects_all <- lapply(seq_len(self$config$n_individuals), function(n) {
-        message(paste0("Preparing objects for path: ", n))
-
-        out <- prep_model_objects(traject = jag_traject_cells[[n]], 
-                                  max_dist = max_dist, rdf = rdf, sim = TRUE, 
-                                  env_raster = landscape$raster)
-        out$sim_steps <- sim_steps
-        return(out)
-      })
-      
-      # Fit models
-      par_start <- rep(0, length(self$config$env_response))
-      
-      results <- list()
-      for (i in 1:self$config$n_individuals) {
-        message(paste0("Fitting individual #: ", i))
-        objects1 <- objects_all[[i]]
-        
-        tryCatch({
-          # Fit step selection model
-          par_out1 <- optim(par_start, log_likelihood0, objects = objects1)
-          ll1 <- log_likelihood0(par_out1$par, objects1)
-          
-          # Fit path propagation model  
-          par_out2 <- optim(par_start, log_likelihood, objects = objects1)
-          ll2 <- log_likelihood(par_out2$par, objects1)
-          
-          results[[i]] <- list(
-            step_selection = list(par = par_out1$par, ll = ll1),
-            path_propagation = list(par = par_out2$par, ll = ll2)
-          )
-          
-        }, error = function(e) {
-          message(paste("Error on individual", i, ":", e$message))
-          results[[i]] <- NA
+        # Prepare trajectories
+        jag_traject <- lapply(paths, function(p) {
+            out <- cbind(p$x, p$y)
+            ind <- seq(1, nrow(out), self$config$obs_interval + 1)
+            out <- out[ind, ]
+            return(out)
         })
-      }
+        
+        jag_traject_cells <- lapply(jag_traject, function(tr) {
+            out <- terra::cellFromRowCol(landscape$raster, tr[, 1], tr[, 2])
+            return(out)
+        })
+        
+        rdf <- raster_to_df(landscape$raster)
+        
+        # Build global neighborhood
+        message("Building global neighborhood")
+        nbhd0 <<- make_nbhd(i = seq_len(ncell(landscape$raster)), 
+                            sz = self$config$step_size, 
+                            r = landscape$raster, rdf = rdf) 
+        
+        max_dist <- self$config$max_dist()
+        sim_steps <- self$config$sim_steps()
+        
+        # Fit models
+        par_start <- c(-1.5, 1.5, -0.2) # true value
+
+        # Create model instances
+        ss_model <- step_selection_model$new()
+        pp_model <- path_propagation_model$new()
+        
+        results <- list()
+        for (i in 1:self$config$n_individuals) {
+            message(paste0("Fitting individual #: ", i))
+            
+            trajectory <- jag_traject_cells[[i]]
+            
+            # Fit both models
+            ss_result <- ss_model$fit(trajectory, max_dist, rdf, par_start, 
+                                    sim = TRUE, env_raster = landscape$raster)
+            pp_result <- pp_model$fit(trajectory, max_dist, rdf, par_start,
+                                    sim = TRUE, env_raster = landscape$raster, 
+                                    sim_steps = sim_steps)
+            
+            results[[i]] <- list(
+            step_selection = ss_result,
+            path_propagation = pp_result
+            )
+        }
       
       return(results)
     }
   )
 )
 
-# Batch runner to coordinate multiple simulations
+## Configuration parameters
+simulation_config <- R6Class("simulation_config",
+    public <- list(
+        # Landscape parameters
+        env_size = 200,
+        autocorr_strength = 5,
+        autocorr_range = 50,
+
+        # Model parameters
+        env_response = c(-1.5, 1.5, -0.2),
+        step_size = 1,
+        obs_interval = 5,
+
+        # Simulation parameters
+        n_steps = 1000,
+        n_individuals = 10,
+
+        # Output parameters
+        name = "default", 
+
+        initialize = function(name = "default", autocorr_range = 50, 
+                            n_individuals = 10, env_size = 200, 
+                            autocorr_strength = 5, 
+                            env_response = c(-1.5, 1.5, -0.2),
+                            step_size = 1, obs_interval = 5, n_steps = 1000) {
+            self$name <- name
+            self$autocorr_range <- autocorr_range
+            self$n_individuals <- n_individuals
+            self$env_size <- env_size
+            self$autocorr_strength <- autocorr_strength
+            self$env_response <- env_response
+            self$step_size <- step_size
+            self$obs_interval <- obs_interval
+            self$n_steps <- n_steps
+        },
+
+        # Derived properties
+        max_dist = function() max(2, self$step_size * (self$obs_interval + 1)),
+        sim_steps = function() self$obs_interval + 2,
+
+        save = function(filepath) {
+            params <- list(
+                name              = self$name,
+                env_size          = self$env_size,
+                autocorr_range    = self$autocorr_range,
+                autocorr_strength = self$autocorr_strength,
+                n_individuals     = self$n_individuals,
+                n_steps           = self$n_steps,
+                env_response      = self$env_response,
+                step_size         = self$step_size,
+                obs_interval      = self$obs_interval
+            )
+            saveRDS(params, filepath)            
+        }
+    ))
+
+## Batch runner to coordinate multiple simulations
 simulation_batch <- R6Class("simulation_batch",
   public = list(
     configs = list(),
     results = list(),
     
     # Create batch for fragmentation study
-    create_fragmentation_study = function(r1_values = c(10, 25, 50, 80), 
+    autocorr_range_study = function(r1_values = c(10, 25, 50, 80), 
                                          n_individuals = 10) {
       self$configs <- lapply(r1_values, function(r1) {
         simulation_config$new(

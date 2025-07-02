@@ -364,13 +364,23 @@ normalize_nbhd <- function(v, nbhd) {
 # max_dist:  Maximum distance in pixels for one step
 # r:         Raster object
 prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE, env_raster = NULL) {
-
     # Extended neighborhoods of each cell in individual's trajectory
     env_ras    <- if (sim) env_raster else brazil_ras
     nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = env_ras, rdf = rdf)
 
-    # Observed steps, as cell numbers within full neighborhood
-    obs  <- sapply(2:nrow(nbhd_index), function(r) {
+    env_0 <- if (sim) scale(rdf$sim1[]) else scale(rdf[, 1])
+    if (any(is.na(env_0))) env_0[which(is.na(env_0))] <- 0
+    nbhd_0 <- nbhd_index
+
+    # Build obs for step selection
+    obs_0 <- sapply(seq_along(traject), function(i) {
+        if (i == length(traject)) return(NULL)
+        step <- traject[i + 1]
+        return(which(nbhd_0[i, ] == step))
+    }) %>% unlist()
+
+    # Build obs for path propagation
+    obs_i  <- sapply(2:nrow(nbhd_index), function(r) {
         local <- nbhd_index[(r - 1), ]
         nextcell <- which(local == traject[r])
         if (length(nextcell) == 0) return(NA) else return(nextcell)
@@ -386,12 +396,14 @@ prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE, env_raster =
       return(out)
     })
     nbhd_i <- do.call(rbind, nbhd_list)
-    nbhd_0 <- matrix(data = seq_along(nbhd_index), nrow = nrow(nbhd_index), 
-                     ncol = ncol(nbhd_index)) # for ss model
 
     # Reindexing allows linkage of row numbers from nbhd_i to raster cells
     nbhd_index <- as.vector(t(nbhd_index))
     message("Extended neighborhoods prepared.")
+    
+    # Normalizing desired environmental variables for extended neighborhood 
+    env_i <- env_0[nbhd_index]
+    if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
     
     # For each cell of the extended neighborhood of the path, what are
     # the immediate neighbors? Rows are each cell of nbhd_i columns are row #s 
@@ -423,20 +435,16 @@ prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE, env_raster =
       ncol = length(traject)
     )
 
-    # Normalizing desired environmental variables for extended neighborhood 
-    env_i <- if (sim) scale(rdf$sim1[nbhd_index]) else scale(rdf[nbhd_index, ])
-    if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
-    
     message("Prepared model objects.")
     if (sim) {
       mu_env <- attributes(env_i)[[2]]
       sd_env <- attributes(env_i)[[3]]
-      out <- list(env_i, nbhd_0, nbhd_i, to_dest, dest, obs, max_dist, mu_env, sd_env)
-      names(out) <- c("env_i", "nbhd_0", "nbhd_i", "to_dest", "dest", "obs", "max_dist", 
+      out <- list(env_0, env_i, nbhd_0, nbhd_i, to_dest, dest, obs_0, obs_i, max_dist, mu_env, sd_env)
+      names(out) <- c("env_0", "env_i", "nbhd_0", "nbhd_i", "to_dest", "dest", "obs_0", "obs_i", "max_dist", 
                       "mu_env", "sd_env")  
     } else {
-      out <- list(env_i, nbhd_0, nbhd_i, to_dest, dest, obs, max_dist, sim_steps)
-      names(out) <- c("env_i", "nbhd_0", "nbhd_i", "to_dest", "dest", "obs", "max_dist", 
+      out <- list(env_0, env_i, nbhd_0, nbhd_i, to_dest, dest, obs_0, obs_i, max_dist, sim_steps)
+      names(out) <- c("env_0", "env_i", "nbhd_0", "nbhd_i", "to_dest", "dest", "obs_0", "obs_i", "max_dist", 
                       "sim_steps")
     }
     return(out)
@@ -480,9 +488,9 @@ apply_kernel <- function(attract0, kernel) {
 }
 
 log_likelihood0 <- function(par, objects, debug = FALSE) {
-  nbhd     <- objects$nbhd_0
-  obs      <- objects$obs
-  env      <- objects$env
+  nbhd_0   <- objects$nbhd_0
+  obs      <- objects$obs_0
+  env_0    <- objects$env_0
   max_dist <- objects$max_dist
   mk       <- objects$mk # only if empirical kernel
   outliers <- objects$outliers
@@ -506,7 +514,7 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
 
   # Empirical movement kernel --------------------------------------------------
-  attract0 <- env_function(env, par, nbhd)
+  attract0 <- env_function(env_0, par, nbhd_0)
   # attract <- apply_kernel(attract0, kernel)
   attract <- attract0 # no movement kernel
   
@@ -518,6 +526,7 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
   like <- sapply(indices, function(i) {
     return(attract[i, obs[i]])
   })
+
   out <- -sum(log(like), na.rm = TRUE)
 
   if (is.infinite(out) || is.na(out)) out <- 0
@@ -541,11 +550,11 @@ log_likelihood0 <- function(par, objects, debug = FALSE) {
 # sim_steps  : Number of steps to simulate
 log_likelihood <- function(par, objects, debug = FALSE) {
 
-  env_i       <- objects$env_i
-  nbhd_i      <- objects$nbhd_i
+  env_i      <- objects$env_i
+  nbhd_i     <- objects$nbhd_i
   to_dest    <- objects$to_dest
   dest       <- objects$dest
-  obs        <- objects$obs
+  obs        <- objects$obs_i
   max_dist   <- objects$max_dist
   sim_steps  <- objects$sim_steps
   outliers   <- objects$outliers
@@ -581,9 +590,6 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   attract  <- attract0   # no movement kernel
   # attract <- apply_kernel(attract0, kernel)
 
-  # Simulation 
-  # attract <- env_function(env_i, par, nbhd_i)
-
   # Propagating probabilities forward ------------------------------------------
   ncell_local <- (2 * max_dist + 1)^2 
   current <- array(0, dim = c(ncell_local, n_obs, sim_steps))
@@ -616,8 +622,9 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   }
 
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
-  out            <- -max(log_likelihood, na.rm = TRUE)
-
+  # out            <- -max(log_likelihood, na.rm = TRUE)
+  out <- -log_likelihood[sim_steps]
+  
   if (is.infinite(out) || is.na(out)) out <- 0
   if (debug) {
     return(list(out = out, array = current, predictions = predictions, par = par))
@@ -692,7 +699,7 @@ jag_path <- function(x0, y0, n_step, par, neighb, env_raster) {
   #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
 
   for (i in 2:n_step) {
-      if (i %% 112 == 0) print(i)
+      if (i %% 250 == 0) print(i)
       pos <- path[i - 1, 1:2]
 
       # Attractiveness of each cell in neighborhood

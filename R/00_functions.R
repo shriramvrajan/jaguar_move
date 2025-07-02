@@ -363,10 +363,10 @@ normalize_nbhd <- function(v, nbhd) {
 # traject:   Path of individual, vector of raster cell indices
 # max_dist:  Maximum distance in pixels for one step
 # r:         Raster object
-prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE) {
+prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE, env_raster = NULL) {
 
     # Extended neighborhoods of each cell in individual's trajectory
-    env_ras    <- if (sim) env01 else brazil_ras
+    env_ras    <- if (sim) env_raster else brazil_ras
     nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = env_ras, rdf = rdf)
 
     # Observed steps, as cell numbers within full neighborhood
@@ -680,7 +680,7 @@ gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {
 
 # Generate a jaguar path of n steps starting from (x0, y0) with environmental
 # preference parameters par[] and search neighborhood size neighb
-jag_path <- function(x0, y0, n_step, par, neighb) {
+jag_path <- function(x0, y0, n_step, par, neighb, env_raster) {
   # Set initial state
   path <- matrix(NA, nrow = n_step, ncol = 4)
   path[1, ] <- c(x0, y0, NA, NA)
@@ -692,18 +692,18 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
   #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
 
   for (i in 2:n_step) {
-      if (i %% 100 == 0) print(i)
+      if (i %% 112 == 0) print(i)
       pos <- path[i - 1, 1:2]
 
       # Attractiveness of each cell in neighborhood
-      nbhd_i <- as.vector(make_nbhd(r = env01, rdf = raster_to_df(env01),
+      nbhd_i <- as.vector(make_nbhd(r = env_raster, rdf = raster_to_df(env_raster),
                           sz = neighb,
-                          i = terra::cellFromRowCol(env01, pos[1], pos[2])))
+                          i = terra::cellFromRowCol(env_raster, pos[1], pos[2])))
       kern_e <- sapply(nbhd_i, function(x) {
         if (is.na(x)) {
           return(NA)
         } else {
-          x0 <- env01[x]$sim1
+          x0 <- env_raster[x]$sim1
           return(1 / (1 + exp(par[1] + par[2] * x0 + par[3] * x0^2)))
         }
       })
@@ -719,7 +719,7 @@ jag_path <- function(x0, y0, n_step, par, neighb) {
 
       # Sample next step
       step <- sample(seq_len(length(attract)), 1, prob = attract)
-      path[i, ] <- c(rowColFromCell(env01, nbhd_i[step]), 
+      path[i, ] <- c(rowColFromCell(env_raster, nbhd_i[step]), 
                       nbhd_i[step], attract[step])
   }
   path <- as.data.frame(path)
@@ -757,7 +757,7 @@ plot_path <- function(path, int = obs_interval, vgram = FALSE,
     col1 <- magma(nrow(path))
 
     # Plotting environmental variables + path
-    if (new) terra::plot(env01)
+    if (new) terra::plot(env_raster)
 
     if (type == 2) {
       points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)

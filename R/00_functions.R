@@ -489,7 +489,7 @@ apply_kernel <- function(attract0, kernel) {
 
 log_likelihood0 <- function(par, objects, debug = FALSE) {
   nbhd_0   <- objects$nbhd_0
-  obs      <- objects$obs_0
+  obs      <- objects$obs
   env_0    <- objects$env_0
   max_dist <- objects$max_dist
   mk       <- objects$mk # only if empirical kernel
@@ -554,7 +554,7 @@ log_likelihood <- function(par, objects, debug = FALSE) {
   nbhd_i     <- objects$nbhd_i
   to_dest    <- objects$to_dest
   dest       <- objects$dest
-  obs        <- objects$obs_i
+  obs        <- objects$obs
   max_dist   <- objects$max_dist
   sim_steps  <- objects$sim_steps
   outliers   <- objects$outliers
@@ -618,7 +618,6 @@ log_likelihood <- function(par, objects, debug = FALSE) {
     }
     prob <- current[obs[i], i, ]
     predictions[, i] <- prob #+ bg_rate - prob * bg_rate
-    predictions[, i] <- predictions[, i] / sum(predictions[, i], na.rm = TRUE)
   }
 
   log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 

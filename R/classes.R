@@ -27,9 +27,10 @@ landscape <- R6Class("landscape",
 step_selection_model <- R6Class("step_selection_model",
   public = list(
     
-    prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE, env_raster = NULL) {
+    prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE,
+                               env_raster = NULL) {
       message("Preparing step selection objects")
-      
+
       # Get environment data
       if (sim) {
         env_0 <- scale(rdf$sim1[])
@@ -44,25 +45,27 @@ step_selection_model <- R6Class("step_selection_model",
       nbhd_0 <- make_nbhd(i = trajectory, sz = max_dist, r = env_ras, rdf = rdf)
       
       # Build observations for step selection
-      obs_0 <- sapply(seq_along(trajectory), function(i) {
-        if (i == length(trajectory)) return(NULL)
-        step <- trajectory[i + 1]
-        return(which(nbhd_0[i, ] == step))
-      }) %>% unlist()
+      obs <- sapply(2:nrow(nbhd_0), function(r) {
+        local <- nbhd_0[(r - 1), ]
+        nextcell <- which(local == trajectory[r])
+        if (length(nextcell) == 0) return(NA) else return(nextcell)
+      })
       
       # Return step selection specific objects
       list(
         env_0 = env_0,
         nbhd_0 = nbhd_0, 
-        obs_0 = obs_0,
+        obs = obs,
         max_dist = max_dist,
         outliers = integer(0)  # Will be set externally if needed
       )
     },
     
-    fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, env_raster = NULL, outliers = integer(0)) {
+    fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, 
+                   env_raster = NULL, outliers = integer(0)) {
       # Prepare objects
-      objects <- self$prepare_objects(trajectory, max_dist, rdf, sim, env_raster)
+      objects <- self$prepare_objects(trajectory, max_dist, rdf, 
+                                      sim, env_raster)
       objects$outliers <- outliers
       
       # Fit model
@@ -88,7 +91,8 @@ step_selection_model <- R6Class("step_selection_model",
 path_propagation_model <- R6Class("path_propagation_model",
   public = list(
     
-    prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE, env_raster = NULL, sim_steps = NULL) {
+    prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE,
+                               env_raster = NULL, sim_steps = NULL) {
       message("Preparing path propagation objects")
       
       # Get environment data
@@ -102,28 +106,27 @@ path_propagation_model <- R6Class("path_propagation_model",
       if (any(is.na(env_0))) env_0[which(is.na(env_0))] <- 0
       
       # Extended neighborhoods
-      nbhd_index <- make_nbhd(i = trajectory, sz = max_dist, r = env_ras, rdf = rdf)
+      nbhd_0 <- make_nbhd(i = trajectory, sz = max_dist, r = env_ras, rdf = rdf)
       
       # Build observations for path propagation
-      obs_i <- sapply(2:nrow(nbhd_index), function(r) {
-        local <- nbhd_index[(r - 1), ]
+      obs <- sapply(2:nrow(nbhd_0), function(r) {
+        local <- nbhd_0[(r - 1), ]
         nextcell <- which(local == trajectory[r])
         if (length(nextcell) == 0) return(NA) else return(nextcell)
       })
       
       # Build complex nested neighborhood structure
-      nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                
-        row_inds <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
-        names(row_inds) <- nbhd_index[i, ]
-        out <- matrix(row_inds[as.character(nbhd0[nbhd_index[i, ], ])], 
-                      nrow = length(row_inds), ncol = ncol(nbhd0))
+      nbhd_list <- lapply(seq_len(nrow(nbhd_0)), function(i) {                
+        row_inds <- seq_len(ncol(nbhd_0)) + (i - 1) * ncol(nbhd_0)
+        names(row_inds) <- nbhd_0[i, ]
+        out <- matrix(row_inds[as.character(nbhd_full[nbhd_0[i, ], ])], 
+                      nrow = length(row_inds), ncol = ncol(nbhd_full))
         return(out)
       })
       nbhd_i <- do.call(rbind, nbhd_list)
       
-      # Flatten nbhd_index for environment indexing
-      nbhd_index <- as.vector(t(nbhd_index))
-      env_i <- env_0[nbhd_index]
+      # Flatten nbhd_0 for environment indexing
+      env_i <- env_0[as.vector(t(nbhd_0))]
       if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
       
       # Build connectivity matrix
@@ -135,7 +138,8 @@ path_propagation_model <- R6Class("path_propagation_model",
         }
         return(out)
       })
-      to_dest <- t(matrix(unlist(to_dest), nrow = ncol(nbhd_i), ncol = nrow(nbhd_i)))
+      to_dest <- t(matrix(unlist(to_dest), 
+                   nrow = ncol(nbhd_i), ncol = nrow(nbhd_i)))
       dest <- matrix(0, nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
       
       # Return path propagation specific objects
@@ -144,7 +148,7 @@ path_propagation_model <- R6Class("path_propagation_model",
         nbhd_i = nbhd_i,
         to_dest = to_dest,
         dest = dest,
-        obs_i = obs_i,
+        obs = obs,
         max_dist = max_dist,
         outliers = integer(0)  # Will be set externally if needed
       )
@@ -161,9 +165,11 @@ path_propagation_model <- R6Class("path_propagation_model",
       return(result)
     },
     
-    fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, env_raster = NULL, sim_steps = NULL, outliers = integer(0)) {
+    fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, 
+                   env_raster = NULL, sim_steps = NULL, outliers = integer(0)) {
       # Prepare objects
-      objects <- self$prepare_objects(trajectory, max_dist, rdf, sim, env_raster, sim_steps)
+      objects <- self$prepare_objects(trajectory, max_dist, rdf, sim, 
+                                      env_raster, sim_steps)
       objects$outliers <- outliers
       
       # Fit model
@@ -204,7 +210,8 @@ movement_simulator <- R6Class("movement_simulator",
                 
                 paths <- foreach(i = 1:self$config$n_individuals, 
                                 .packages = c("metaRange", "terra"),
-                                .export = c("jag_path", "make_nbhd", "raster_to_df")) %dopar% {
+                                .export = c("jag_path", "make_nbhd", 
+                                            "raster_to_df")) %dopar% {
                     env_unwrapped <- unwrap(env_wrapped)
                     message(paste0("Path #: ", i, " / ", 
                                    self$config$n_individuals))
@@ -252,7 +259,7 @@ movement_simulator <- R6Class("movement_simulator",
         
         # Build global neighborhood
         message("Building global neighborhood")
-        nbhd0 <<- make_nbhd(i = seq_len(ncell(landscape$raster)), 
+        nbhd_full <<- make_nbhd(i = seq_len(ncell(landscape$raster)), 
                             sz = self$config$step_size, 
                             r = landscape$raster, rdf = rdf) 
         
@@ -301,7 +308,7 @@ simulation_config <- R6Class("simulation_config",
         # Model parameters
         env_response = c(-1.5, 1.5, -0.2),
         step_size = 1,
-        obs_interval = 5,
+        obs_interval = 1,
 
         # Simulation parameters
         n_steps = 1000,
@@ -314,7 +321,7 @@ simulation_config <- R6Class("simulation_config",
                             n_individuals = 10, env_size = 200, 
                             autocorr_strength = 5, 
                             env_response = c(-1.5, 1.5, -0.2),
-                            step_size = 1, obs_interval = 5, n_steps = 1000) {
+                            step_size = 1, obs_interval = 1, n_steps = 1000) {
             self$name <- name
             self$autocorr_range <- autocorr_range
             self$n_individuals <- n_individuals
@@ -327,7 +334,8 @@ simulation_config <- R6Class("simulation_config",
         },
 
         # Derived properties
-        max_dist = function() max(2, self$step_size * (self$obs_interval + 1)),
+        # max_dist = function() max(2, self$step_size * (self$obs_interval + 1)),
+        max_dist = function() self$step_size * (self$obs_interval + 1),
         sim_steps = function() self$obs_interval + 2,
 
         save = function(filepath) {
@@ -353,8 +361,8 @@ simulation_batch <- R6Class("simulation_batch",
     results = list(),
     
     # Create batch for fragmentation study
-    autocorr_range_study = function(r1_values = c(10, 25, 50, 80), 
-                                         n_individuals = 10) {
+    autocorr_range_study = function(r1_values = 1:30 * 5, 
+                                         n_individuals = 30) {
       self$configs <- lapply(r1_values, function(r1) {
         simulation_config$new(
           name = paste0("r1_", r1),
@@ -410,8 +418,10 @@ simulation_batch <- R6Class("simulation_batch",
         config <- self$results[[name]]$config
         
         # Extract log-likelihoods for each individual
-        ll_step <- sapply(fits, function(x) if(is.na(x[1])) NA else x$step_selection$ll)
-        ll_pp <- sapply(fits, function(x) if(is.na(x[1])) NA else x$path_propagation$ll)
+        ll_step <- sapply(fits, 
+                        function(x) if(is.na(x[1])) NA else x$step_selection$ll)
+        ll_pp <- sapply(fits, 
+                      function(x) if(is.na(x[1])) NA else x$path_propagation$ll)
         
         # Calculate AIC difference (positive means path propagation better)
         aic_diff <- 2 * (ll_step - ll_pp)

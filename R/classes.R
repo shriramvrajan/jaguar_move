@@ -201,127 +201,155 @@ movement_simulator <- R6Class("movement_simulator",
             self$config <- config
         },
 
-        simulate_paths = function(parallel = TRUE, n_cores = 15) {
+        simulate_paths = function() {  # terra not working well with parallel
             message(paste("Simulating", self$config$n_individuals, 
                             "paths for", self$config$name))
             
-            if (parallel) {
-                registerDoParallel(n_cores)
-                
-                results <- foreach(i = 1:self$config$n_individuals, 
-                                .packages = c("metaRange", "terra", "gstat"),
-                                .export = c("jag_path", "make_nbhd", 
-                                            "raster_to_df", "gen_landscape")) %dopar% {
-                    # Generate individual landscape
-                    land_i <- gen_landscape(
-                        size = self$config$env_size,
-                        s = self$config$autocorr_strength,
-                        r = self$config$autocorr_range
-                    )
-                    
-                    message(paste0("Path #: ", i, " / ", 
-                                   self$config$n_individuals))
-                    x0 <- ceiling(self$config$env_size / 2)
-                    y0 <- ceiling(self$config$env_size / 2)
-                    path_i <- jag_path(x0, y0, self$config$n_steps, 
-                                    par = self$config$env_response, 
-                                    neighb = self$config$step_size,
-                                    env_raster = land_i)
-
-                    # Raster serialization, terra needs it for parallel
-                    land_data <- as.matrix(land_i, wide = TRUE)
-                    land_ext <- ext(land_i)
-                    land_crs <- crs(land_i)
-                    
-                    return(list(
-                        path = path_i, 
-                        landscape_data = land_data,
-                        landscape_ext = land_ext,
-                        landscape_crs = land_crs
-                    ))
-                }
-                registerDoSEQ()
-
-                for (i in 1:length(results)) {
-                  land_reconstructed <- rast(results[[i]]$landscape_data)
-                  ext(land_reconstructed) <- results[[i]]$landscape_ext
-                  crs(land_reconstructed) <- results[[i]]$landscape_crs
-                  names(land_reconstructed) <- "sim1"
-                  
-                  results[[i]]$landscape <- land_reconstructed
-                  # Clean up temporary data
-                  results[[i]]$landscape_data <- NULL
-                  results[[i]]$landscape_ext <- NULL
-                  results[[i]]$landscape_crs <- NULL
-                }
-
-            } else {
-                results <- list()
-                for (i in 1:self$config$n_individuals) {
-                  land_i <- gen_landscape(
-                      size = self$config$env_size,
-                      s = self$config$autocorr_strength,
-                      r = self$config$autocorr_range
-                  )
-                  
-                  message(paste0("Path #: ", i, " / ", self$config$n_individuals))
-                  x0 <- ceiling(self$config$env_size / 2)
-                  y0 <- ceiling(self$config$env_size / 2)
-                  
-                  path_i <- jag_path(x0, y0, self$config$n_steps, 
-                                    par = self$config$env_response, 
-                                    neighb = self$config$step_size,
-                                    env_raster = land_i)
-                  
-                  results[[i]] <- list(path = path_i, landscape = land_i)
-                }
-            }
-            
+            # Extract config values
+            n_individuals <- self$config$n_individuals
+            env_size <- self$config$env_size
+            n_steps <- self$config$n_steps
+            env_response <- self$config$env_response
+            step_size <- self$config$step_size
+            autocorr_strength <- self$config$autocorr_strength
+            autocorr_range <- self$config$autocorr_range
+        
+            results <- list()
+            for (i in 1:self$config$n_individuals) {
+              set.seed(i + 5001)
+              land_i <- gen_landscape(
+                  size = self$config$env_size,
+                  s = self$config$autocorr_strength,
+                  r = self$config$autocorr_range
+              )
+              
+              message(paste0("Path #: ", i, " / ", self$config$n_individuals))
+              x0 <- ceiling(self$config$env_size / 2)
+              y0 <- ceiling(self$config$env_size / 2)
+              
+              path_i <- jag_path(x0, y0, self$config$n_steps, 
+                                par = self$config$env_response, 
+                                neighb = self$config$step_size,
+                                env_raster = land_i)
+              
+              results[[i]] <- list(path = path_i)
+            }            
             return(results)
     },
     
-    fit_models = function(path_landscape_list, parallel = TRUE, n_cores = 15) {
+    fit_models = function(paths, parallel = TRUE, n_cores = NULL) {
         message(paste("Fitting models for", self$config$name))
         
+        # Extract config information
+        n_cores <- n_cores %||% self$config$n_cores
         max_dist <- self$config$max_dist()
         sim_steps <- self$config$sim_steps()
-        par_start <- c(-1.5, 1.5, -0.2) # true value
+        par_start <- c(-1.5, 1.5, -0.2)
 
-        # Create model instances
-        ss_model <- step_selection_model$new()
-        pp_model <- path_propagation_model$new()
-        
-        results <- list()
-        for (i in 1:self$config$n_individuals) {
-            message(paste0("Fitting individual #: ", i))
-            
-            path_i <- path_landscape_list[[i]]$path
-            land_i <- path_landscape_list[[i]]$landscape
-            
-            rdf <- raster_to_df(land_i)
-            # Prepare trajectory
-            trajectory_df <- cbind(path_i$x, path_i$y)
-            ind <- seq(1, nrow(trajectory_df), self$config$obs_interval + 1)
-            trajectory_df <- trajectory_df[ind, ]
-            trajectory <- terra::cellFromRowCol(land_i, trajectory_df[, 1], trajectory_df[, 2])
-            
-            # Build individual neighborhood
-            nbhd_full <<- make_nbhd(i = seq_len(ncell(land_i)), 
-                                  sz = self$config$step_size, 
-                                  r = land_i, rdf = rdf)
-            # Fit both models
-            ss_result <- ss_model$fit(trajectory, max_dist, rdf, par_start, 
-                                    sim = TRUE, env_raster = land_i)
-            message("3")
-            pp_result <- pp_model$fit(trajectory, max_dist, rdf, par_start,
-                                    sim = TRUE, env_raster = land_i, 
-                                    sim_steps = sim_steps)
-            message("4")
-            results[[i]] <- list(
-              step_selection = ss_result,
-              path_propagation = pp_result,
-              landscape = land_i
-            )
+        obs_interval <- self$config$obs_interval
+        step_size <- self$config$step_size
+        n_individuals <- self$config$n_individuals
+        env_size <- self$config$env_size
+        autocorr_strength <- self$config$autocorr_strength
+        autocorr_range <- self$config$autocorr_range
+
+        if (parallel) {
+          registerDoParallel(n_cores) 
+          # Get ALL functions from global environment
+          all_functions <- ls(globalenv())[sapply(ls(globalenv()), function(x) is.function(get(x)))]
+          
+          results <- foreach(i = seq_len(n_individuals),
+              .packages = c("terra", "gstat"),
+              .export = c(  # Model classes
+                            "step_selection_model", "path_propagation_model",
+                            # All functions
+                            all_functions,
+                            # Data
+                            "paths",
+                            # Parameters
+                            "max_dist", "sim_steps", "par_start", "obs_interval", 
+                            "step_size", "env_size", "autocorr_strength", 
+                            "autocorr_range")) %dopar% {                        
+                    message(paste0("Fitting individual #: ", i))
+      
+                    path_i <- paths[[i]]$path
+                    # Regenerate landscape deterministically
+                    set.seed(i + 5001)
+                    land_i <- gen_landscape(
+                        size = env_size,
+                        s = autocorr_strength,
+                        r = autocorr_range
+                    )                  
+
+                    rdf <- raster_to_df(land_i)
+                    trajectory_df <- cbind(path_i$x, path_i$y)
+                    ind <- seq(1, nrow(trajectory_df), obs_interval + 1)
+                    trajectory_df <- trajectory_df[ind, ]
+                    trajectory <- terra::cellFromRowCol(land_i, 
+                                    trajectory_df[, 1], trajectory_df[, 2])
+                    
+                    # Build individual neighborhood
+                    nbhd_full <<- make_nbhd(i = seq_len(ncell(land_i)), 
+                                      sz = step_size, r = land_i, rdf = rdf)
+                    
+                    ss_model <- step_selection_model$new()
+                    pp_model <- path_propagation_model$new()
+                    
+                    # Fit both models
+                    ss_result <- ss_model$fit(trajectory, max_dist, rdf, 
+                                par_start, sim = TRUE, env_raster = land_i)
+                    pp_result <- pp_model$fit(trajectory, max_dist, rdf,
+                                par_start, sim = TRUE, env_raster = land_i, 
+                                sim_steps = sim_steps)
+                    
+                    return(list(
+                      step_selection = ss_result,
+                      path_propagation = pp_result,
+                      landscape = land_i
+                    ))
+                }
+        } else {
+          # Create model instances
+          ss_model <- step_selection_model$new()
+          pp_model <- path_propagation_model$new()
+          
+          results <- list()
+          for (i in 1:self$config$n_individuals) {
+              message(paste0("Fitting individual #: ", i))
+              
+              path_i <- paths[[i]]$path
+              # Regenerate landscape deterministically
+              set.seed(i + 5001)
+              land_i <- gen_landscape(
+                  size = env_size,
+                  s = autocorr_strength,
+                  r = autocorr_range
+              )   
+              
+              rdf <- raster_to_df(land_i)
+              # Prepare trajectory
+              trajectory_df <- cbind(path_i$x, path_i$y)
+              ind <- seq(1, nrow(trajectory_df), self$config$obs_interval + 1)
+              trajectory_df <- trajectory_df[ind, ]
+              trajectory <- terra::cellFromRowCol(land_i, 
+                                    trajectory_df[, 1], trajectory_df[, 2])
+              
+              # Build individual neighborhood
+              nbhd_full <<- make_nbhd(i = seq_len(ncell(land_i)), 
+                                    sz = self$config$step_size, 
+                                    r = land_i, rdf = rdf)
+              # Fit both models
+              ss_result <- ss_model$fit(trajectory, max_dist, rdf, par_start, 
+                                      sim = TRUE, env_raster = land_i)
+              pp_result <- pp_model$fit(trajectory, max_dist, rdf, par_start,
+                                      sim = TRUE, env_raster = land_i, 
+                                      sim_steps = sim_steps)
+              results[[i]] <- list(
+                step_selection = ss_result,
+                path_propagation = pp_result,
+                landscape = land_i
+              )
+          }
         }
       
       return(results)
@@ -345,24 +373,26 @@ simulation_config <- R6Class("simulation_config",
         # Simulation parameters
         n_steps = 1000,
         n_individuals = 10,
+        n_cores = 15,
 
         # Output parameters
         name = "default", 
 
         initialize = function(name = "default", autocorr_range = 50, 
                             n_individuals = 10, env_size = 200, 
-                            autocorr_strength = 5, 
+                            autocorr_strength = 5, n_cores = 15,
                             env_response = c(-1.5, 1.5, -0.2),
                             step_size = 1, obs_interval = 1, n_steps = 1000) {
             self$name <- name
-            self$autocorr_range <- autocorr_range
-            self$n_individuals <- n_individuals
             self$env_size <- env_size
+            self$autocorr_range <- autocorr_range
             self$autocorr_strength <- autocorr_strength
             self$env_response <- env_response
             self$step_size <- step_size
             self$obs_interval <- obs_interval
+            self$n_individuals <- n_individuals
             self$n_steps <- n_steps
+            self$n_cores <- n_cores
         },
 
         # Derived properties
@@ -393,7 +423,7 @@ simulation_batch <- R6Class("simulation_batch",
     results = list(),
     
     # Create batch for fragmentation study
-    autocorr_range_study = function(r1_values = 1:100, 
+    autocorr_range_study = function(r1_values = c(1, 2, 4, 6, 8, 10, 15, 20, 30, 40, 50, 60, 70), 
                                          n_individuals = 30) {
       self$configs <- lapply(r1_values, function(r1) {
         simulation_config$new(
@@ -407,7 +437,7 @@ simulation_batch <- R6Class("simulation_batch",
     },
     
     # Run all simulations in the batch
-    run_all = function(parallel = TRUE, n_cores = 15) {
+    run_all = function(parallel = TRUE, n_cores = NULL) {
       self$results <- list()
       
       for (config in self$configs) {
@@ -417,17 +447,18 @@ simulation_batch <- R6Class("simulation_batch",
         
         # Create simulator
         sim <- movement_simulator$new(config)
-        
+        n_cores <- n_cores %||% config$n_cores
+
         # Generate paths
-        path_landscape_results <- sim$simulate_paths(parallel, n_cores)
+        paths <- sim$simulate_paths()
         
         # Fit models
-        fit_results <- sim$fit_models(path_landscape_results, parallel, n_cores)
+        fit_results <- sim$fit_models(paths, parallel, n_cores)
         
         # Store results
         self$results[[config$name]] <- list(
             config = config,
-            path_landscape_results = path_landscape_results,
+            paths = paths,
             fits = fit_results
         )
         
@@ -447,9 +478,9 @@ simulation_batch <- R6Class("simulation_batch",
 
         # Extract log-likelihoods for each individual
         ll_step <- sapply(fits, 
-                        function(x) if(is.na(x[1])) NA else x$step_selection$ll)
+                        function(x) if (is.na(x[1])) NA else x$step_selection$ll)
         ll_pp <- sapply(fits, 
-                      function(x) if(is.na(x[1])) NA else x$path_propagation$ll)
+                      function(x) if (is.na(x[1])) NA else x$path_propagation$ll)
         
         # Calculate AIC difference (positive means path propagation better)
         aic_diff <- 2 * (ll_step - ll_pp)
@@ -459,6 +490,7 @@ simulation_batch <- R6Class("simulation_batch",
           autocorr_range = config$autocorr_range,
           mean_aic_diff = mean(aic_diff, na.rm = TRUE),
           median_aic_diff = median(aic_diff, na.rm = TRUE),
+          aic_diff = list(aic_diff),
           prop_pp_better = mean(aic_diff > 0, na.rm = TRUE),
           n_successful = sum(!is.na(aic_diff))
         )
@@ -476,13 +508,13 @@ simulation_batch <- R6Class("simulation_batch",
       par(mfrow = c(1, 1))
       
       # Plot 1: AIC difference vs fragmentation
-      plot(summary_df$autocorr_range, summary_df$mean_aic_diff,
+      plot(summary_df$autocorr_range, summary_df$median_aic_diff,
            xlab = "Autocorrelation Range (r1)", 
-           ylab = "Mean AIC Difference (PP - SS)",
+           ylab = "Median AIC Difference (PP - SS)",
            main = "Path Propagation Advantage vs Fragmentation",
            pch = 19, cex = 1.5)
       abline(h = 0, lty = 2)
-      text(summary_df$autocorr_range, summary_df$mean_aic_diff,
+      text(summary_df$autocorr_range, summary_df$median_aic_diff,
            labels = summary_df$config_name, pos = 3)
       
       dev.off()

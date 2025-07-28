@@ -687,9 +687,16 @@ gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {
 # Generate a jaguar path of n steps starting from (x0, y0) with environmental
 # preference parameters par[] and search neighborhood size neighb
 jag_path <- function(x0, y0, n_step, par, neighb, env_raster) {
-  # Set initial state
+  
+  # Pre-compute neighborhood lookup for entire raster
+  rdf <- raster_to_df(env_raster)
+  env_values <- rdf$sim1
+  all_cells <- seq_len(nrow(rdf))
+  nbhd_lookup <- make_nbhd(i =  all_cells, sz = neighb, r = env_raster, rdf = rdf)
+
   path <- matrix(NA, nrow = n_step, ncol = 4)
-  path[1, ] <- c(x0, y0, NA, NA)
+  current_cell <- cellFromRowCol(env_raster, x0, y0)
+  path[1, ] <- c(x0, y0, current_cell, NA)
 
   # Movement kernel (circular)
   # k_exp   <- par[length(par) - 1]
@@ -698,35 +705,18 @@ jag_path <- function(x0, y0, n_step, par, neighb, env_raster) {
   #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
 
   for (i in 2:n_step) {
-      if (i %% 250 == 0) print(i)
-      pos <- path[i - 1, 1:2]
+      nbhd_cells <- nbhd_lookup[current_cell, ]
 
-      # Attractiveness of each cell in neighborhood
-      nbhd_i <- as.vector(make_nbhd(r = env_raster, rdf = raster_to_df(env_raster),
-                          sz = neighb,
-                          i = terra::cellFromRowCol(env_raster, pos[1], pos[2])))
-      kern_e <- sapply(nbhd_i, function(x) {
-        if (is.na(x)) {
-          return(NA)
-        } else {
-          x0 <- env_raster[x]$sim1
-          return(1 / (1 + exp(par[1] + par[2] * x0 + par[3] * x0^2)))
-        }
-      })
-      if (any(is.na(kern_e))) kern_e[is.na(kern_e)] <- 0
-      attract <- kern_e #* kern_m
-      attract <- attract / sum(attract, na.rm = TRUE)
+      env_vals <- env_values[nbhd_cells]
+      attract <- 1 / (1 + exp(par[1] + par[2] * env_vals + par[3] * env_vals^2))
+      attract[is.na(attract)] <- 0
+      attract <- attract / sum(attract)
 
-      # Find center cell and scale by move_prob (COMMENT OUT FOR NO MOVEPAR)
-      # cent <- ceiling(length(att) / 2)
-      # att[cent] <- att[cent] * (1 - move_prob)
-      # att[-cent] <- att[-cent] * (move_prob / (sum(!is.na(att)) - 1))
-      # attract <- att / sum(att)
-
-      # Sample next step
-      step <- sample(seq_len(length(attract)), 1, prob = attract)
-      path[i, ] <- c(rowColFromCell(env_raster, nbhd_i[step]), 
-                      nbhd_i[step], attract[step])
+      # Sample and update
+      step_idx <- sample(length(attract), 1, prob = attract)
+      current_cell <- nbhd_cells[step_idx]
+      pos <- rowColFromCell(env_raster, current_cell)
+      path[i, ] <- c(pos[1], pos[2], current_cell, attract[step_idx])
   }
   path <- as.data.frame(path)
   names(path) <- c("x", "y", "cell", "att")
@@ -779,8 +769,8 @@ plot_path <- function(path, int = obs_interval, vgram = FALSE,
       }
     } else if (type == 1) {
       # points(path, col = col1, pch = 19, cex = 0.5)
-      points(path, col = "black", pch = 19, cex = 0.5)
-      lines(path, col = rgb(0, 0, 0, 0.5), lwd = 2)
+      points(path, col = rgb(1, 1, 1, 0.3), pch = 19, cex = 0.5)
+      lines(path, col = rgb(1, 1, 1, 0.3), lwd = 2)
     }
     # Plotting variogram
     # if (!vgram) return(NULL)

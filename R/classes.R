@@ -216,7 +216,7 @@ movement_simulator <- R6Class("movement_simulator",
         
             results <- list()
             for (i in 1:self$config$n_individuals) {
-              set.seed(i + 5001)
+              set.seed(i + 4001)
               land_i <- gen_landscape(
                   size = self$config$env_size,
                   s = self$config$autocorr_strength,
@@ -274,7 +274,7 @@ movement_simulator <- R6Class("movement_simulator",
       
                     path_i <- paths[[i]]$path
                     # Regenerate landscape deterministically
-                    set.seed(i + 5001)
+                    set.seed(i + 4001)
                     land_i <- gen_landscape(
                         size = env_size,
                         s = autocorr_strength,
@@ -319,7 +319,7 @@ movement_simulator <- R6Class("movement_simulator",
               
               path_i <- paths[[i]]$path
               # Regenerate landscape deterministically
-              set.seed(i + 5001)
+              set.seed(i + 4001)
               land_i <- gen_landscape(
                   size = env_size,
                   s = autocorr_strength,
@@ -423,7 +423,7 @@ simulation_batch <- R6Class("simulation_batch",
     results = list(),
     
     # Create batch for fragmentation study
-    autocorr_range_study = function(r1_values = c(1, 2, 4, 6, 8, 10, 15, 20, 30, 40, 50, 60, 70), 
+    autocorr_range_study = function(r1_values = c(10, 20, 30, 40, 50), 
                                          n_individuals = 30) {
       self$configs <- lapply(r1_values, function(r1) {
         simulation_config$new(

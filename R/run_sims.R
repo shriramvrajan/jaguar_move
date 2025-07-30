@@ -12,7 +12,7 @@ batch$configs <- sapply(batch$configs, function(conf) {
 })
 
 results <- batch$run_all(parallel =  FALSE)
-# saveRDS(results, paste0("simulations/results_", Sys.time(), ".rds"))
+saveRDS(results, paste0("simulations/results_", Sys.time(), ".rds"))
 
 
 summary <- batch$get_performance_summary()

@@ -662,7 +662,7 @@ run_optim <- function(param, objects, i) {
           }
         )
     }
-}
+} 
 
 # 2b. Simulation ---------------------------------------------------------------
 
@@ -834,4 +834,45 @@ results_table <- function(s, params = TRUE, holdout = TRUE) {
                   totdist = as.numeric(jag_meta$totdist))
 
   return(df)
+}
+
+# Given fitted parameter values and individual id, plot local environment transformed
+# by environmental function.
+
+plot_attraction <- function(id, results, model = 2) {
+  id <- as.numeric(id)
+  pars <- switch(model, results[results$id == id, 1:6], results[results$id == id, 9:14])
+  # make neighborhood for individual (extended)
+  path <- jag_move[ID == id]
+  # get bounding box of path and crop brazil_ras
+  gps <- vect(path[, 3:4], geom = c("longitude", "latitude"))
+  # add small buffer to bbox
+  bbox <- ext(gps) #+ c(-0.1, 0.1, -0.1, 0.1) # 0.1 degrees buffer
+  # get raster of local environment
+  local_ras <- crop(brazil_ras, bbox)
+  # normalize each layer of local_ras to [-1, 1]
+  local_ras <- scale(local_ras, center = TRUE, scale = TRUE)
+
+  attract <- 1 / (1 + exp(pars[[1]] * local_ras[[1]] +
+                     pars[[2]] * local_ras[[2]] + 
+                     pars[[3]] * local_ras[[3]] + 
+                     pars[[4]] * local_ras[[4]] + 
+                     pars[[5]] * local_ras[[5]] + 
+                     pars[[6]] * local_ras[[6]]))
+                     
+  # plot local environment in terms of attraction
+  terra::plot(attract, main = paste("Local environment for jaguar", id))
+  # plot jaguar path points as arrows between points
+  
+  n <- nrow(path)
+  
+  colors <- colorRampPalette(c("gold", "darkorange", "darkred"))(n-1)
+
+  arrows(x0 = path$longitude[-n],
+        y0 = path$latitude[-n],
+        x1 = path$longitude[-1], 
+        y1 = path$latitude[-1],
+        length = 0.08,
+        col = colors,
+        lwd = 1.5)
 }

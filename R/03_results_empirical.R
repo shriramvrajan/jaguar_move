@@ -14,9 +14,18 @@ p2 <- load_if_exists(paste0("out_", 1:82, ".rds"), dir = paste0("data/output/sim
 ## Extract [[i]]$par from each of p1 and p2 and build data frame
 par1 <- t(sapply(p1, function(x) x$par))
 par2 <- t(sapply(p2, function(x) x$par))
-pars <- data.frame(par1, par2)
-colnames(pars) <- c("fprint1", "elev1", "slope1", "forest1", "dwater1", "droad1", "k_exp1", "bg_rate1",
+pars0 <- data.frame(par1, par2)
+colnames(pars0) <- c("fprint1", "elev1", "slope1", "forest1", "dwater1", "droad1", "k_exp1", "bg_rate1",
                     "fprint2", "elev2", "slope2", "forest2", "dwater2", "droad2", "k_exp2", "bg_rate2")
+pars0$id <- unlist(jag_id)
+
+bad <- which(jag_meta$nmove < 200)
+pars <- pars0[-bad, ]
+
+par(mfrow = c(1, 2))
+id1 <- 57
+plot_attraction(id = id1, results = pars0, model = 1)
+plot_attraction(id = id1, results = pars0, model = 2)
 
 
 plotpdf()

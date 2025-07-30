@@ -423,7 +423,7 @@ simulation_batch <- R6Class("simulation_batch",
     results = list(),
     
     # Create batch for fragmentation study
-    autocorr_range_study = function(r1_values = c(10, 20, 30, 40, 50), 
+    autocorr_range_study = function(r1_values = c(30), 
                                          n_individuals = 30) {
       self$configs <- lapply(r1_values, function(r1) {
         simulation_config$new(

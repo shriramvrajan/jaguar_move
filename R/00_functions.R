@@ -359,97 +359,6 @@ normalize_nbhd <- function(v, nbhd) {
   out <- out / rowSums(out, na.rm = TRUE)
 }
 
-# Prepare input objects for movement model
-# traject:   Path of individual, vector of raster cell indices
-# max_dist:  Maximum distance in pixels for one step
-# r:         Raster object
-prep_model_objects <- function(traject, max_dist, rdf, sim = FALSE, env_raster = NULL) {
-    # Extended neighborhoods of each cell in individual's trajectory
-    env_ras    <- if (sim) env_raster else brazil_ras
-    nbhd_index <- make_nbhd(i = traject, sz = max_dist, r = env_ras, rdf = rdf)
-
-    env_0 <- if (sim) scale(rdf$sim1[]) else scale(rdf[, 1])
-    if (any(is.na(env_0))) env_0[which(is.na(env_0))] <- 0
-    nbhd_0 <- nbhd_index
-
-    # Build obs for step selection
-    obs_0 <- sapply(seq_along(traject), function(i) {
-        if (i == length(traject)) return(NULL)
-        step <- traject[i + 1]
-        return(which(nbhd_0[i, ] == step))
-    }) %>% unlist()
-
-    # Build obs for path propagation
-    obs_i  <- sapply(2:nrow(nbhd_index), function(r) {
-        local <- nbhd_index[(r - 1), ]
-        nextcell <- which(local == traject[r])
-        if (length(nextcell) == 0) return(NA) else return(nextcell)
-    })
-
-    # Each entry in the list is the immediate neighborhood of each cell in the 
-    # extended neighborhood, as represented by a cell number of raster r
-    nbhd_list <- lapply(seq_len(nrow(nbhd_index)), function(i) {                
-      row_inds <- seq_len(ncol(nbhd_index)) + (i - 1) * ncol(nbhd_index)
-      names(row_inds) <- nbhd_index[i, ] # cell numbers as names for indexing
-      out <- matrix(row_inds[as.character(nbhd0[nbhd_index[i, ], ])], 
-                    nrow = length(row_inds), ncol = ncol(nbhd0))
-      return(out)
-    })
-    nbhd_i <- do.call(rbind, nbhd_list)
-
-    # Reindexing allows linkage of row numbers from nbhd_i to raster cells
-    nbhd_index <- as.vector(t(nbhd_index))
-    message("Extended neighborhoods prepared.")
-    
-    # Normalizing desired environmental variables for extended neighborhood 
-    env_i <- env_0[nbhd_index]
-    if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
-    
-    # For each cell of the extended neighborhood of the path, what are
-    # the immediate neighbors? Rows are each cell of nbhd_i columns are row #s 
-    # from nbhd. All row lengths standardized with missing neighbors as NAs.
-
-    to_dest <- tapply(seq_len(length(nbhd_i)), nbhd_i, function(x) {  
-      if (length(x) <= ncol(nbhd_i)) {
-        # Normal case - pad with NAs
-        out <- c(x, rep(NA, ncol(nbhd_i) - length(x)))
-      } else {
-        # Edge case - truncate to fit
-        out <- x[seq_len(ncol(nbhd_i))]
-      }
-      return(out)
-    })
-    # to_dest <- tapply(valid_indices, nbhd_i[valid_indices], function(x) {  
-    #   print(x)
-    #   out <- c(x, rep(NA, ncol(nbhd_i) - length(x)))
-    #   return(out)
-    # })
-    to_dest <- t(matrix(unlist(to_dest), nrow = ncol(nbhd_i), ncol = nrow(nbhd_i)))
-    dest <- matrix(0, nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
-    message("Immediate neighbors prepared.")
-
-    # Building observed data to test against
-    index_mat <- matrix(
-      data = seq_len(length(nbhd_index)),
-      nrow = (nrow(nbhd_i) / length(traject)),
-      ncol = length(traject)
-    )
-
-    message("Prepared model objects.")
-    if (sim) {
-      mu_env <- attributes(env_i)[[2]]
-      sd_env <- attributes(env_i)[[3]]
-      out <- list(env_0, env_i, nbhd_0, nbhd_i, to_dest, dest, obs_0, obs_i, max_dist, mu_env, sd_env)
-      names(out) <- c("env_0", "env_i", "nbhd_0", "nbhd_i", "to_dest", "dest", "obs_0", "obs_i", "max_dist", 
-                      "mu_env", "sd_env")  
-    } else {
-      out <- list(env_0, env_i, nbhd_0, nbhd_i, to_dest, dest, obs_0, obs_i, max_dist, sim_steps)
-      names(out) <- c("env_0", "env_i", "nbhd_0", "nbhd_i", "to_dest", "dest", "obs_0", "obs_i", "max_dist", 
-                      "sim_steps")
-    }
-    return(out)
-}
-
 # Attractiveness function for movement model
 # env:      Environmental variable values
 # par:      Parameters for functional form
@@ -631,38 +540,6 @@ log_likelihood <- function(par, objects, debug = FALSE) {
     return(out)
   }
 }
-
-run_optim <- function(param, objects, i) {
-    ntries <- 0
-    llfunc <- switch(model_type, log_likelihood0, log_likelihood)
-      ## Main fitting loop, tries each individual 20x and moves on if no fit
-    while (ntries <= 20) {
-        tryCatch({
-            par_out <- optim(param, llfunc, objects = objects)
-
-            message("Running loglike_fun...")
-            out <- llfunc(par_out[[1]], objects = objects, debug = TRUE)  
-            saveRDS(out, paste0("data/output/out_", i, ".rds"))
-
-            message(paste0("jaguar ", i, " fitted ", date()))
-            ntries <- 21 # End while loop
-          },
-          error = function(e) {
-            message(e)
-            message(paste("Try #:", ntries))
-            if (ntries == 20) {
-              message("Skipping, couldn't fit in 20 tries")
-              saveRDS(NA, paste0("data/output/NA_", i, ".rds"))
-            } else {
-              message("Retrying")
-            }
-          },
-          finally = {
-            ntries <- ntries + 1
-          }
-        )
-    }
-} 
 
 # 2b. Simulation ---------------------------------------------------------------
 

@@ -155,24 +155,6 @@ path_propagation_model <- R6Class("path_propagation_model",
   )
 )
 
-# Landscape class for environmental raster
-# ## is this doing anything??
-# landscape <- R6Class("landscape", 
-#     public = list(
-#         raster = NULL,
-#         config = NULL,
-#         initialize = function(config) {
-#             self$config <- config
-#             message(paste("Generating landscape for", config$name))
-#             self$raster <- gen_landscape(
-#                 size = config$env_size,
-#                 s = config$autocorr_strength,
-#                 r = config$autocorr_range
-#             )},
-#         save_raster = function(filepath) {
-#             writeRaster(self$raster, filepath, overwrite = TRUE)
-#         }))
-
 ## Movement simulator for path generation and model fitting 
 movement_simulator <- R6Class("movement_simulator",
     public = list(
@@ -409,8 +391,7 @@ simulation_batch <- R6Class("simulation_batch",
       self$configs <- lapply(r1_values, function(r1) {
         simulation_config$new(
           name = paste0("r1_", r1),
-          autocorr_range = r1,
-          n_individuals = n_individuals
+          autocorr_range = r1
         )
       })
       names(self$configs) <- sapply(self$configs, function(x) x$name)
@@ -517,3 +498,200 @@ simulation_batch <- R6Class("simulation_batch",
     }
   )
 )
+
+jaguar <- R6Class("jaguar",
+  public = list(
+    id = NULL,
+
+    initialize = function(id) {
+      self$id <- as.numeric(id)
+    },
+
+    get_track = function() {
+      # Placeholder for jaguar track data retrieval
+      dat <- jag_move[ID == id]
+      dat$timestamp <- as.POSIXct(dat$timestamp, 
+                              format = "%m/%d/%Y %H:%M")
+      dat$year <- as.numeric(format(dat$timestamp, "%Y"))
+      dat$year <- ifelse(dat$year > 23, dat$year + 1900, dat$year + 2000)
+
+      dat$mon <- as.numeric(format(dat$timestamp, "%m"))
+      dat$day <- as.numeric(format(dat$timestamp, "%d"))
+      dat$hr <- format(dat$timestamp, "%H:%M")
+      dat$hr <- as.numeric(gsub(":[0-9][0-9]", "", dat$hr))
+      
+      tr <- make_track0(id)
+      st <- steps(tr)
+      dat$sl <- c(NA, st$sl_)             # step lengths in m
+      dat$ta <- c(NA, st$ta_)             # turn angles in radians
+      dat$dir <- c(NA, st$direction_p)    # bearing in radians
+      dat$dt <- c(NA, as.numeric(st$dt_)) # time interval in minutes
+      dat$spd <- dat$sl / dat$dt
+      return(dat[, c("timestamp", "longitude", "latitude", "ID", "year", "mon", 
+                    "day", "hr", "sl", "ta", "dir", "dt", "spd")])
+    },
+
+    get_trajectory_cells = function() {
+      track <- self$get_track()
+      return(cellFromXY(brazil_ras, 
+                         track[, c("longitude", "latitude")]))
+    },
+
+    get_landscape = function() {
+      # Placeholder for jaguar landscape data retrieval
+      return(list(raster = brazil_ras, dataframe = brdf))
+    }
+
+  ))
+
+empirical_config <- R6Class("empirical_config",
+  public = list(
+    model_type = 2, # 1 for step selection, 2 for path propagation
+    npar = 8,       # Number of parameters, SHOULD BE SOMEWHERE ELSE
+    step_size = 1,  # Minimum step size (inner neighborhood) in pixels
+    sim_steps = 10, # Number of steps to simulate for path propagation
+
+    holdout_set = TRUE,
+    holdout_frac = 0.3,
+
+    parallel = TRUE,
+    n_cores = 10,
+
+    individuals = NULL, # NULL = all, or vector of IDs
+
+    fit_model = TRUE,
+    model_calcnull = FALSE,
+    param_model = "pp3h",
+
+    initialize = function(model_type = 2, npar = 8, step_size = 1, sim_steps = 10,
+                         holdout_set = TRUE, holdout_frac = 0.5, parallel = TRUE, 
+                         n_cores = 10, individuals = NULL, fit_model = TRUE,
+                         model_calcnull = FALSE, param_model = "pp3h") {
+      self$model_type <- model_type
+      self$npar <- npar
+      self$step_size <- step_size
+      self$sim_steps <- sim_steps
+      self$holdout_set <- holdout_set
+      self$holdout_frac <- holdout_frac
+      self$parallel <- parallel
+      self$n_cores <- n_cores
+      self$individuals <- individuals
+      self$fit_model <- fit_model
+      self$model_calcnull <- model_calcnull
+      self$param_model <- param_model
+    }
+  )
+)
+
+empirical_batch <- R6Class("empirical_batch",
+  public = list(
+    config = NULL,
+    results = list(),
+
+    initialize = function(config) {
+      self$config <- config
+    },
+
+    run_all = function() {
+       # Determine which individuals to process
+      if (is.null(self$config$individuals)) {
+        individuals_to_process <- jag_id$jag_id
+      } else {
+        individuals_to_process <- self$config$individuals
+      }
+      
+      # Check for already completed results
+      outfiles <- list.files("data/output")
+      done <- gsub(".rds", "", outfiles) %>% 
+        gsub("out_", "", .) %>% 
+        gsub("ll_null_", "", .) %>%
+        gsub("ll_", "", .) %>% 
+        as.numeric()
+      done <- done[!is.na(done)]
+      i_todo <- setdiff(individuals_to_process, done)
+      
+      message(paste0("Processing ", length(i_todo), " individuals"))
+      
+      # Set up global neighborhood if needed
+      if (!exists("nbhd0")) {
+        message("Generating global neighborhood matrix")
+        nbhd0 <<- make_nbhd(i = seq_len(nrow(brdf)), sz = self$config$step_size)
+      }
+      
+      # Set up parallel processing
+      if (self$config$parallel) {
+        registerDoParallel(self$config$n_cores)
+        message(paste0("Using ", self$config$n_cores, " cores"))
+      }
+      
+      # Create model instances
+      ss_model <- step_selection_model$new()
+      pp_model <- path_propagation_model$new()
+      
+      # Main processing loop
+      if (self$config$parallel) {
+        results <- foreach(i = i_todo, .packages = c("terra", "ctmm", "amt")) %dopar% {
+          self$process_individual(i, ss_model, pp_model)
+        }
+      } else {
+        results <- list()
+        for (i in i_todo) {
+          results[[length(results) + 1]] <- self$process_individual(i, ss_model, pp_model)
+        }
+      }
+      
+      self$results <- results
+      return(results)
+    },
+    
+    process_individual = function(i, ss_model, pp_model) {
+      message(paste0("Processing jaguar #", i))
+      
+      # Create jaguar instance and get data
+      jag <- jaguar$new(i)
+      trajectory_cells <- jag$get_trajectory_cells()
+      track <- jag$get_track()
+      landscape <- jag$get_landscape()
+      
+      # Handle outliers and holdout
+      n_obs <- length(trajectory_cells)
+      threshold <- mean(na.exclude(track$dt)) + 3 * sd(na.exclude(track$dt))
+      outliers <- which(track$dt > threshold) - 1
+      
+      if (self$config$holdout_set && nrow(track) > 100) {
+        hold <- seq_len(ceiling(nrow(track) * self$config$holdout_frac))
+        if (self$config$fit_model) {
+          trajectory_cells <- trajectory_cells[hold]
+        } else {
+          trajectory_cells <- trajectory_cells[-hold]
+          outliers <- outliers[outliers > max(hold)]
+          if (length(outliers) > 0) outliers <- outliers - length(hold)
+        }
+      }
+      
+      # Calculate max distance for this individual
+      sl_emp <- as.vector(na.exclude(track$sl[track$dt < threshold]))
+      max_dist <- ceiling(1.5 * max(sl_emp / 1000, na.rm = TRUE))
+      
+      # Fit models based on config
+      if (self$config$model_type == 1) {
+        # Step selection
+        result <- ss_model$fit(trajectory_cells, max_dist, landscape$dataframe, 
+                              rep(0, self$config$npar), outliers = outliers)
+      } else if (self$config$model_type == 2) {
+        # Path propagation  
+        result <- pp_model$fit(trajectory_cells, max_dist, landscape$dataframe,
+                              rep(0, self$config$npar), sim_steps = self$config$sim_steps,
+                              outliers = outliers)
+      }
+      
+      # Save individual result
+      if (!is.na(result[1])) {
+        saveRDS(result, paste0("data/output/out_", i, ".rds"))
+      } else {
+        saveRDS(NA, paste0("data/output/NA_", i, ".rds"))
+      }
+      
+      return(result)
+    }
+  ))

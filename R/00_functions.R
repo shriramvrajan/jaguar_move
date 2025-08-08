@@ -838,7 +838,6 @@ results_table <- function(s, params = TRUE, holdout = TRUE) {
 
 # Given fitted parameter values and individual id, plot local environment transformed
 # by environmental function.
-
 plot_attraction <- function(id, results, model = 2) {
   id <- as.numeric(id)
   pars <- switch(model, results[results$id == id, 1:6], results[results$id == id, 9:14])
@@ -868,11 +867,25 @@ plot_attraction <- function(id, results, model = 2) {
   
   colors <- colorRampPalette(c("gold", "darkorange", "darkred"))(n-1)
 
-  arrows(x0 = path$longitude[-n],
-        y0 = path$latitude[-n],
-        x1 = path$longitude[-1], 
-        y1 = path$latitude[-1],
-        length = 0.08,
-        col = colors,
-        lwd = 1.5)
+  points(path$longitude, path$latitude, pch = 19, cex = 0.5, col = rgb(1, 0, 0, 0.5))
+  # arrows(x0 = path$longitude[-n],
+  #       y0 = path$latitude[-n],
+  #       x1 = path$longitude[-1], 
+  #       y1 = path$latitude[-1],
+  #       length = 0.08,
+  #       col = colors,
+  #       lwd = 1.5)
 }
+  # plot local environment in terms of attraction
+  # terra::plot(attract, main = paste("Local environment for jaguar", id))
+  # plot jaguar path points as arrows between points
+  
+  # n <- nrow(path)
+  # colors <- colorRampPalette(c("gold", "darkorange", "darkred"))(n-1)
+  # arrows(x0 = path$longitude[-n],
+  #       y0 = path$latitude[-n],
+  #       x1 = path$longitude[-1], 
+  #       y1 = path$latitude[-1],
+  #       length = 0.08,
+  #       col = colors,
+  #       lwd = 1.5)

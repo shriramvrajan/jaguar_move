@@ -1,47 +1,23 @@
 # Attempt to refactor into object-oriented idiom
 library(R6)
 
-## Landscape object for environmental raster
-landscape <- R6Class("landscape", 
-    public = list(
-        raster = NULL,
-        config = NULL,
-
-        initialize = function(config) {
-            self$config <- config
-            message(paste("Generating landscape for", config$name))
-            self$raster <- gen_landscape(
-                size = config$env_size,
-                s = config$autocorr_strength,
-                r = config$autocorr_range
-            )
-        },
-
-        save_raster = function(filepath) {
-            writeRaster(self$raster, filepath, overwrite = TRUE)
-        }
-    )
-)
-
-# Step Selection Model Class
+# Step selection model class
 step_selection_model <- R6Class("step_selection_model",
-  public = list(
-    
+  public = list(  
     prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE,
                                env_raster = NULL) {
       message("Preparing step selection objects")
-
       # Get environment data
       if (sim) {
         env_0 <- scale(rdf$sim1[])
         env_ras <- env_raster
       } else {
-        env_0 <- scale(rdf[, 1])  # First column of brdf
+        env_0 <- scale(rdf[, 1:6])
         env_ras <- brazil_ras
       }
       if (any(is.na(env_0))) env_0[which(is.na(env_0))] <- 0
       
-      # Extended neighborhoods for step selection
+      # Neighborhoods for step selection
       nbhd_0 <- make_nbhd(i = trajectory, sz = max_dist, r = env_ras, rdf = rdf)
       
       # Build observations for step selection
@@ -51,29 +27,25 @@ step_selection_model <- R6Class("step_selection_model",
         if (length(nextcell) == 0) return(NA) else return(nextcell)
       })
       
-      # Return step selection specific objects
       list(
         env_0 = env_0,
         nbhd_0 = nbhd_0, 
         obs = obs,
         max_dist = max_dist,
-        outliers = integer(0)  # Will be set externally if needed
+        outliers = integer(0)  # set externally if needed
       )
     },
-    
+
     fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, 
                    env_raster = NULL, outliers = integer(0)) {
 
-      # Prepare objects
-      objects <- self$prepare_objects(trajectory, max_dist, rdf, 
-                                      sim, env_raster)
+      objects <- self$prepare_objects(trajectory, max_dist, rdf, sim, env_raster)
       objects$outliers <- outliers
       
       # Fit model
       tryCatch({
         par_out <- optim(par_start, log_likelihood0, objects = objects)
         ll <- log_likelihood0(par_out$par, objects)
-        
         return(list(
           par = par_out$par,
           ll = ll,
@@ -88,27 +60,27 @@ step_selection_model <- R6Class("step_selection_model",
   )
 )
 
-# Path Propagation Model Class  
+# Path propagation model class
 path_propagation_model <- R6Class("path_propagation_model",
   public = list(
-    
     prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE,
                                env_raster = NULL, sim_steps = NULL) {
-      message("Preparing path propagation objects")
-      
+      message("Preparing path propagation objects")   
       # Get environment data
       if (sim) {
         env_0 <- scale(rdf$sim1[])
         env_ras <- env_raster
       } else {
-        env_0 <- scale(rdf[, 1])
+        env_0 <- scale(rdf[, 1:6])
         env_ras <- brazil_ras
       }
       if (any(is.na(env_0))) env_0[which(is.na(env_0))] <- 0
       
       # Extended neighborhoods
       nbhd_0 <- make_nbhd(i = trajectory, sz = max_dist, r = env_ras, rdf = rdf)
-      
+      # Flatten nbhd_0 for environment indexing
+      env_i <- env_0[as.vector(t(nbhd_0))]
+      if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
       # Build observations for path propagation
       obs <- sapply(2:nrow(nbhd_0), function(r) {
         local <- nbhd_0[(r - 1), ]
@@ -116,7 +88,7 @@ path_propagation_model <- R6Class("path_propagation_model",
         if (length(nextcell) == 0) return(NA) else return(nextcell)
       })
       
-      # Build complex nested neighborhood structure
+      # Build inner neighborhood structure
       nbhd_list <- lapply(seq_len(nrow(nbhd_0)), function(i) {                
         row_inds <- seq_len(ncol(nbhd_0)) + (i - 1) * ncol(nbhd_0)
         names(row_inds) <- nbhd_0[i, ]
@@ -125,10 +97,6 @@ path_propagation_model <- R6Class("path_propagation_model",
         return(out)
       })
       nbhd_i <- do.call(rbind, nbhd_list)
-      
-      # Flatten nbhd_0 for environment indexing
-      env_i <- env_0[as.vector(t(nbhd_0))]
-      if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
       
       # Build connectivity matrix
       to_dest <- tapply(seq_len(length(nbhd_i)), nbhd_i, function(x) {  
@@ -151,28 +119,22 @@ path_propagation_model <- R6Class("path_propagation_model",
         dest = dest,
         obs = obs,
         max_dist = max_dist,
-        outliers = integer(0)  # Will be set externally if needed
+        outliers = integer(0)  # set externally if needed
       )
       
-      if (!is.null(sim_steps)) {
-        result$sim_steps <- sim_steps
-      }
-      
+      if (!is.null(sim_steps)) result$sim_steps <- sim_steps
       if (sim) {
         result$mu_env <- attributes(env_i)[[2]]
         result$sd_env <- attributes(env_i)[[3]]
       }
-      
       return(result)
     },
     
     fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, 
                    env_raster = NULL, sim_steps = NULL, outliers = integer(0)) {
-      # Prepare objects
       objects <- self$prepare_objects(trajectory, max_dist, rdf, sim, 
                                       env_raster, sim_steps)
       objects$outliers <- outliers
-      
       # Fit model
       tryCatch({
         par_out <- optim(par_start, log_likelihood, objects = objects)
@@ -184,6 +146,7 @@ path_propagation_model <- R6Class("path_propagation_model",
           convergence = par_out$convergence,
           objects = objects
         ))
+        
       }, error = function(e) {
         message(paste("Path propagation fitting error:", e$message))
         return(NA)
@@ -191,6 +154,24 @@ path_propagation_model <- R6Class("path_propagation_model",
     }
   )
 )
+
+# Landscape class for environmental raster
+# ## is this doing anything??
+# landscape <- R6Class("landscape", 
+#     public = list(
+#         raster = NULL,
+#         config = NULL,
+#         initialize = function(config) {
+#             self$config <- config
+#             message(paste("Generating landscape for", config$name))
+#             self$raster <- gen_landscape(
+#                 size = config$env_size,
+#                 s = config$autocorr_strength,
+#                 r = config$autocorr_range
+#             )},
+#         save_raster = function(filepath) {
+#             writeRaster(self$raster, filepath, overwrite = TRUE)
+#         }))
 
 ## Movement simulator for path generation and model fitting 
 movement_simulator <- R6Class("movement_simulator",
@@ -423,8 +404,8 @@ simulation_batch <- R6Class("simulation_batch",
     results = list(),
     
     # Create batch for fragmentation study
-    autocorr_range_study = function(r1_values = c(30), 
-                                         n_individuals = 30) {
+    autocorr_range_study = function(r1_values = c(1, 2, 3, 4, 5, 6, 8, 10, 15, 
+                                     20, 25, 30, 40, 50, 60, 70, 80, 90, 100)) {
       self$configs <- lapply(r1_values, function(r1) {
         simulation_config$new(
           name = paste0("r1_", r1),
@@ -469,8 +450,9 @@ simulation_batch <- R6Class("simulation_batch",
     },
     
     # Extract performance comparison for plotting
-    get_performance_summary = function() {
+    get_results = function() {
       summary_list <- list()
+      results_list <- list()
       
       for (name in names(self$results)) {
         fits <- self$results[[name]]$fits
@@ -481,6 +463,12 @@ simulation_batch <- R6Class("simulation_batch",
                         function(x) if (is.na(x[1])) NA else x$step_selection$ll)
         ll_pp <- sapply(fits, 
                       function(x) if (is.na(x[1])) NA else x$path_propagation$ll)
+
+        results_list[[name]] <- data.frame(
+          individual = seq_along(ll_step),
+          ll_step = ll_step,
+          ll_pp = ll_pp
+        )
         
         # Calculate AIC difference (positive means path propagation better)
         aic_diff <- 2 * (ll_step - ll_pp)
@@ -490,22 +478,23 @@ simulation_batch <- R6Class("simulation_batch",
           autocorr_range = config$autocorr_range,
           mean_aic_diff = mean(aic_diff, na.rm = TRUE),
           median_aic_diff = median(aic_diff, na.rm = TRUE),
-          aic_diff = list(aic_diff),
+          sd_aic_diff = sd(aic_diff, na.rm = TRUE),
           prop_pp_better = mean(aic_diff > 0, na.rm = TRUE),
           n_successful = sum(!is.na(aic_diff))
         )
       }
       
-      return(do.call(rbind, summary_list))
+      return(list(do.call(rbind, results_list), do.call(rbind, summary_list)))
     },
     
-    # Quick plot of results
     plot_fragmentation_effect = function() {
-      summary_df <- self$get_performance_summary()
+      saveRDS(self$get_results()[[1]], 
+              paste0("data/fragmentation_study_results_", Sys.Date(), ".rds"))
+      summary_df <- self$get_results()[[2]]
       
       plotpdf(nm = paste0("figs/fragmentation_study_", Sys.Date(), ".pdf"), 
-             x = 4, y = 4)
-      par(mfrow = c(1, 1))
+             x = 8, y = 4)
+      par(mfrow = c(1, 2))
       
       # Plot 1: AIC difference vs fragmentation
       plot(summary_df$autocorr_range, summary_df$median_aic_diff,
@@ -517,6 +506,11 @@ simulation_batch <- R6Class("simulation_batch",
       text(summary_df$autocorr_range, summary_df$median_aic_diff,
            labels = summary_df$config_name, pos = 3)
       
+      plot(summary_df$autocorr_range, summary_df$sd_aic_diff,
+           xlab = "Autocorrelation Range (r1)", 
+           ylab = "SD of AIC Difference (PP - SS)",
+           main = "Variability in Path Propagation Advantage",
+           pch = 19, cex = 1.5)
       dev.off()
       
       return(summary_df)

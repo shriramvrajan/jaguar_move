@@ -1,4 +1,5 @@
 source("R/00_functions.R")
+source("R/classes.R")
 
 simnames <- c("ssh", "pp3h")
 res <- results_table(simnames)
@@ -23,29 +24,31 @@ bad <- which(jag_meta$nmove < 200)
 pars <- pars0[-bad, ]
 
 par(mfrow = c(1, 2))
-id1 <- 57
+id1 <- 66
 plot_attraction(id = id1, results = pars0, model = 1)
 plot_attraction(id = id1, results = pars0, model = 2)
 
 
-plotpdf()
-ggplot(data = h, aes(x = h1, y = h2)) +
-    geom_point(size = 1) +
-    labs(x = "Log-likelihood step selection", y = "Log-likelihood path propagation") +
-    geom_abline(linetype = "dashed")
-dev.off()
+##--------------------------
 
-res2 <- res[-which(res$ll_ss == 0), ]
+# plotpdf()
+# ggplot(data = h, aes(x = h1, y = h2)) +
+#     geom_point(size = 1) +
+#     labs(x = "Log-likelihood step selection", y = "Log-likelihood path propagation") +
+#     geom_abline(linetype = "dashed")
+# dev.off()
 
-plotpdf(x = 5, y = 4, nm = "figs/empirical_aic.pdf")
-ggplot(data = res2, aes(x = aic_ss, y = aic_pp3)) +
-    geom_point(mapping = aes(col = bio), size = 3) +
-    geom_text(aes(label = ifelse(aic_ss < aic_pp3, jag_id, ""))) +
-    labs(x = "AIC step selection", y = "AIC path propagation") +
-    geom_abline(linetype = "dashed") 
-#hist(res$aic_ss - res$aic_pp3, breaks = 50)
-#abline(v = 0)
-dev.off()
+# res2 <- res[-which(res$ll_ss == 0), ]
+
+# plotpdf(x = 5, y = 4, nm = "figs/empirical_aic.pdf")
+# ggplot(data = res2, aes(x = aic_ss, y = aic_pp3)) +
+#     geom_point(mapping = aes(col = bio), size = 3) +
+#     geom_text(aes(label = ifelse(aic_ss < aic_pp3, jag_id, ""))) +
+#     labs(x = "AIC step selection", y = "AIC path propagation") +
+#     geom_abline(linetype = "dashed") 
+# #hist(res$aic_ss - res$aic_pp3, breaks = 50)
+# #abline(v = 0)
+# dev.off()
 
 # Holdout set fitting ----------------------------------------------------------
 

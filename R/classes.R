@@ -508,8 +508,7 @@ jaguar <- R6Class("jaguar",
     },
 
     get_track = function() {
-      # Placeholder for jaguar track data retrieval
-      dat <- jag_move[ID == id]
+      dat <- jag_move[ID == self$id]
       dat$timestamp <- as.POSIXct(dat$timestamp, 
                               format = "%m/%d/%Y %H:%M")
       dat$year <- as.numeric(format(dat$timestamp, "%Y"))
@@ -520,8 +519,13 @@ jaguar <- R6Class("jaguar",
       dat$hr <- format(dat$timestamp, "%H:%M")
       dat$hr <- as.numeric(gsub(":[0-9][0-9]", "", dat$hr))
       
-      tr <- make_track0(id)
-      st <- steps(tr)
+      path <- jag_move[ID == self$id]
+      path$t <- lubridate::mdy_hm(as.character(path$timestamp))
+      path <- vect(path, geom = c("longitude", "latitude"), crs = wgs84)
+      path <- project(path, epsg5880)
+      path <- track(x = crds(path)[, 1], y = crds(path)[, 2], 
+                    t = path$t, id = path$ID, crs = epsg5880)
+      st <- steps(path)
       dat$sl <- c(NA, st$sl_)             # step lengths in m
       dat$ta <- c(NA, st$ta_)             # turn angles in radians
       dat$dir <- c(NA, st$direction_p)    # bearing in radians
@@ -613,9 +617,9 @@ empirical_batch <- R6Class("empirical_batch",
       message(paste0("Processing ", length(i_todo), " individuals"))
       
       # Set up global neighborhood if needed
-      if (!exists("nbhd0")) {
+      if (!exists("nbhd_full")) {
         message("Generating global neighborhood matrix")
-        nbhd0 <<- make_nbhd(i = seq_len(nrow(brdf)), sz = self$config$step_size)
+        nbhd_full <<- make_nbhd(i = seq_len(nrow(brdf)), sz = self$config$step_size)
       }
       
       # Set up parallel processing
@@ -646,7 +650,6 @@ empirical_batch <- R6Class("empirical_batch",
     
     process_individual = function(i, ss_model, pp_model) {
       message(paste0("Processing jaguar #", i))
-      
       # Create jaguar instance and get data
       jag <- jaguar$new(i)
       trajectory_cells <- jag$get_trajectory_cells()

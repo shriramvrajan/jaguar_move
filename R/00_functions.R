@@ -133,40 +133,6 @@ rast9 <- function(r, cell) {
     zoom(r, cell9)
 }
 
-# Produce amt::track object for jaguar i
-make_track0 <- function(id) {
-    id <- as.numeric(id)
-    path <- jag_move[ID == id]
-    path$t <- lubridate::mdy_hm(as.character(path$timestamp))
-    path <- vect(path, geom = c("longitude", "latitude"), crs = wgs84)
-    path <- project(path, epsg5880)
-    path <- track(x = crds(path)[, 1], y = crds(path)[, 2], 
-                  t = path$t, id = path$ID, crs = epsg5880)
-}
-
-# Decompose timestamp into year, month, day, hour and add metadata to track
-make_full_track <- function(id) {
-    dat <- jag_move[ID == id]
-    dat$timestamp <- as.POSIXct(dat$timestamp, 
-                            format = "%m/%d/%Y %H:%M")
-    dat$year <- as.numeric(format(dat$timestamp, "%Y"))
-    dat$year <- ifelse(dat$year > 23, dat$year + 1900, dat$year + 2000)
-
-    dat$mon <- as.numeric(format(dat$timestamp, "%m"))
-    dat$day <- as.numeric(format(dat$timestamp, "%d"))
-    dat$hr <- format(dat$timestamp, "%H:%M")
-    dat$hr <- as.numeric(gsub(":[0-9][0-9]", "", dat$hr))
-    
-    tr <- make_track0(id)
-    st <- steps(tr)
-    dat$sl <- c(NA, st$sl_)             # step lengths in m
-    dat$ta <- c(NA, st$ta_)             # turn angles in radians
-    dat$dir <- c(NA, st$direction_p)    # bearing in radians
-    dat$dt <- c(NA, as.numeric(st$dt_)) # time interval in minutes
-    dat$spd <- dat$sl / dat$dt
-    return(dat[, c("timestamp", "longitude", "latitude", "ID", "year", "mon", 
-                   "day", "hr", "sl", "ta", "dir", "dt", "spd")])
-}
 
 # 1. Data exploration ----------------------------------------------------------
 

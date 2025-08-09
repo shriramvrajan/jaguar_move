@@ -133,8 +133,93 @@ rast9 <- function(r, cell) {
     zoom(r, cell9)
 }
 
+# 1. Movement model ============================================================
 
-# 1. Data exploration ----------------------------------------------------------
+# Output neighborhood as matrix
+# r:    Raster object
+# i:    Index of cell in raster
+# sz:   Size of neighborhood
+make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
+  mat <- matrix(0, nrow = length(i), ncol = (2 * sz + 1)^2)
+  # values to add to central cell's row/col to get neighborhood cells' row/col
+  ind1 <- t(rep(-sz:sz, each = 2 * sz + 1))
+  ind2 <- t(rep(-sz:sz, 2 * sz + 1))
+  for (j in seq_len(length(ind1))) {
+    mat[, j] <- terra::cellFromRowCol(r, rdf$row[i] + ind1[j], rdf$col[i] + ind2[j])
+  }
+  return(mat)
+}
+
+make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist, 
+                                 minimum = 0, scale = 1000) {
+  
+  avail <- data.frame(sl = sample(sl_emp, n, replace = TRUE),
+                      ta = sample(ta_emp, n, replace = TRUE))
+  avail$x <- avail$sl * cos(avail$ta) / scale # scales from meters to km
+  avail$y <- avail$sl * sin(avail$ta) / scale 
+  avail$xi <- sapply(avail$x, function(x) ifelse(x > 0, floor(x), ceiling(x)))
+  avail$yi <- sapply(avail$y, function(y) ifelse(y > 0, floor(y), ceiling(y)))
+  density <- tapply(avail$x, list(avail$yi, avail$xi), length)
+  density <- reshape2::melt(density)
+  names(density) <- c("x", "y", "n")
+  size <- max_dist * 2 + 1
+  out <- data.frame(x = rep(-max_dist:max_dist, times = size),
+                    y = rep(-max_dist:max_dist, each = size))
+
+  out <- merge(out, density, by = c("x", "y"), all.x = TRUE)
+  out$n[is.na(out$n)] <- 0
+  out$n <- out$n + minimum
+  out$n <- out$n / sum(out$n)
+  
+  return(out$n)
+}
+
+# Normalize probabilities across neighbors of each cell
+# v: vector of cell values
+normalize_nbhd <- function(v, nbhd) {
+  out <- matrix(v[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
+  out <- out / rowSums(out, na.rm = TRUE)
+}
+
+# Attractiveness function for movement model
+# env:      Environmental variable values
+# par:      Parameters for functional form
+# format:   TRUE to return as matrix, FALSE to return as vector
+env_function <- function(env, par, nbhd, form = "empirical") {
+
+  if (form == "empirical") {
+    # # First order no intercept
+    attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
+                            par[3] * env[, 3] + par[4] * env[, 4] + 
+                            par[5] * env[, 5] + par[6] * env[, 6]))
+    # Second order
+    # attract <- 1 / (1 + exp(par[1] + par[2] * env[, 1] + par[3] * env[, 1]^2 +   # footprint
+    #                         par[4] * env[, 2] + par[5] * env[, 2]^2 +            # elevation
+    #                         par[6] * env[, 3] + par[7] * env[, 3]^2 +            # slope
+    #                         par[8] * env[, 4] + par[9] * env[, 4]^2 +            # forest cover
+    #                         par[10] * env[, 5] + par[11] * env[, 5]^2 +          # distance to water
+    #                         par[12] * env[, 6] + par[13] * env[, 6]^2))          # distance to road
+  } else if (form == "simulation") {
+    # attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+  }
+  
+  attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
+  attract <- attract / rowSums(attract, na.rm = TRUE)
+  return(attract)  
+}
+
+apply_kernel <- function(attract0, kernel) {
+  kernel <- kernel / sum(kernel, na.rm = T)
+  na_mask <- is.na(attract0)
+  attract0[na_mask] <- 0
+  p <- attract0 * rep(kernel, each = nrow(attract0))
+  p <- p / rowSums(p, na.rm = TRUE)
+  p[na_mask] <- NA
+  return(p)
+}
+
+
+# 2. Data exploration ----------------------------------------------------------
 
 # Plot kernel for movement model
 plot_circle_kernel <- function(max_dist, k_par, bg_rate) {
@@ -277,235 +362,6 @@ plot_curve <- function(par, mu = 0, sd = 1, bounds = c(0, 10), values = FALSE) {
     abline(v = 0, lty = 2)
 }
 
-# 2. Movement model ============================================================
-
-# Output neighborhood as matrix
-# r:    Raster object
-# i:    Index of cell in raster
-# sz:   Size of neighborhood
-make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
-  mat <- matrix(0, nrow = length(i), ncol = (2 * sz + 1)^2)
-  # values to add to central cell's row/col to get neighborhood cells' row/col
-  ind1 <- t(rep(-sz:sz, each = 2 * sz + 1))
-  ind2 <- t(rep(-sz:sz, 2 * sz + 1))
-  for (j in seq_len(length(ind1))) {
-    mat[, j] <- terra::cellFromRowCol(r, rdf$row[i] + ind1[j], rdf$col[i] + ind2[j])
-  }
-  return(mat)
-}
-
-make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist, 
-                                 minimum = 0, scale = 1000) {
-  
-  avail <- data.frame(sl = sample(sl_emp, n, replace = TRUE),
-                      ta = sample(ta_emp, n, replace = TRUE))
-  avail$x <- avail$sl * cos(avail$ta) / scale # scales from meters to km
-  avail$y <- avail$sl * sin(avail$ta) / scale 
-  avail$xi <- sapply(avail$x, function(x) ifelse(x > 0, floor(x), ceiling(x)))
-  avail$yi <- sapply(avail$y, function(y) ifelse(y > 0, floor(y), ceiling(y)))
-  density <- tapply(avail$x, list(avail$yi, avail$xi), length)
-  density <- reshape2::melt(density)
-  names(density) <- c("x", "y", "n")
-  size <- max_dist * 2 + 1
-  out <- data.frame(x = rep(-max_dist:max_dist, times = size),
-                    y = rep(-max_dist:max_dist, each = size))
-
-  out <- merge(out, density, by = c("x", "y"), all.x = TRUE)
-  out$n[is.na(out$n)] <- 0
-  out$n <- out$n + minimum
-  out$n <- out$n / sum(out$n)
-  
-  return(out$n)
-}
-
-# Normalize probabilities across neighbors of each cell
-# v: vector of cell values
-normalize_nbhd <- function(v, nbhd) {
-  out <- matrix(v[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
-  out <- out / rowSums(out, na.rm = TRUE)
-}
-
-# Attractiveness function for movement model
-# env:      Environmental variable values
-# par:      Parameters for functional form
-# format:   TRUE to return as matrix, FALSE to return as vector
-env_function <- function(env, par, nbhd) {
-  # Second order
-  # attract <- 1 / (1 + exp(par[1] + par[2] * env[, 1] + par[3] * env[, 1]^2 +   # footprint
-  #                         par[4] * env[, 2] + par[5] * env[, 2]^2 +            # elevation
-  #                         par[6] * env[, 3] + par[7] * env[, 3]^2 +            # slope
-  #                         par[8] * env[, 4] + par[9] * env[, 4]^2 +            # forest cover
-  #                         par[10] * env[, 5] + par[11] * env[, 5]^2 +          # distance to water
-  #                         par[12] * env[, 6] + par[13] * env[, 6]^2))          # distance to road
-  
-  # # First order no intercept -------------------------------------------------
-  # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-  #                         par[3] * env[, 3] + par[4] * env[, 4] + 
-  #                         par[5] * env[, 5] + par[6] * env[, 6]))
-  
-  # Simulation -----------------------------------------------------------------
-  attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
-
-  #-----------------------------------------------------------------------------
-  attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
-  attract <- attract / rowSums(attract, na.rm = TRUE)
-  return(attract)  
-}
-
-apply_kernel <- function(attract0, kernel) {
-  kernel <- kernel / sum(kernel, na.rm = T)
-  na_mask <- is.na(attract0)
-  attract0[na_mask] <- 0
-  p <- attract0 * rep(kernel, each = nrow(attract0))
-  p <- p / rowSums(p, na.rm = TRUE)
-  p[na_mask] <- NA
-  return(p)
-}
-
-log_likelihood0 <- function(par, objects, debug = FALSE) {
-  nbhd_0   <- objects$nbhd_0
-  obs      <- objects$obs
-  env_0    <- objects$env_0
-  max_dist <- objects$max_dist
-  mk       <- objects$mk # only if empirical kernel
-  outliers <- objects$outliers
-
-  # Fitted movement kernel -----------------------------------------------------
-  # square kernel
-  # kernel0 <- dexp(0:(max_dist), rate = exp(par[length(par)])) # move par
-  # kernel <- matrix(0, nrow = max_dist * 2 + 1, ncol = max_dist * 2 + 1)
-  # center <- max_dist + 1
-  # for (i in seq_len(center + max_dist)) {
-  #   for (j in seq_len(center + max_dist)) {
-  #     kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
-  #   }
-  # }
-  # kernel <- kernel / sum(kernel)
-  
-  # circular kernel
-  # k_exp   <- par[length(par) - 1]
-  # bg_rate <- exp01(par[length(par)]) 
-  # kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
-  #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
-
-  # Empirical movement kernel --------------------------------------------------
-  attract0 <- env_function(env_0, par, nbhd_0)
-  # attract <- apply_kernel(attract0, kernel)
-  attract <- attract0 # no movement kernel
-  
-  indices <- if (length(outliers) > 0) {
-    setdiff(seq_along(obs), outliers)
-  } else {
-    seq_along(obs)
-  }
-  like <- sapply(indices, function(i) {
-    return(attract[i, obs[i]])
-  })
-
-  out <- -sum(log(like), na.rm = TRUE)
-
-  if (is.infinite(out) || is.na(out)) out <- 0
-  if (debug) {
-    return(list(attract = attract, like = like, out = out, par = par))
-  } else {
-    return(out)
-  }
-}
-
-# env_i       : Env variables for each cell of the extended neighborhood
-# nbhd_i      : Extended neighborhood for each cell. Rows are path cells, 
-#               columns are neighbors.
-# to_dest    : Immediate neighbors for each cell. Rows are path cells, 
-#              columns are neighbors.
-# dest       : 
-# obs        : Index of the cell of the extended neighborhood that corresponds
-#              to the next GPS observation
-# n_obs      : Number of GPS observations
-# max_dist   : Maximum distance in pixels for one step
-# sim_steps  : Number of steps to simulate
-log_likelihood <- function(par, objects, debug = FALSE) {
-
-  env_i      <- objects$env_i
-  nbhd_i     <- objects$nbhd_i
-  to_dest    <- objects$to_dest
-  dest       <- objects$dest
-  obs        <- objects$obs
-  max_dist   <- objects$max_dist
-  sim_steps  <- objects$sim_steps
-  outliers   <- objects$outliers
-  n_obs      <- length(obs) + 1
-
-  # Movement kernel ------------------------------------------------------------
-
-  # stay/move kernel 
-  # move_prob <- exp01(par[length(par)])
-  # kernel <- matrix(move_prob/8, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
-  # center <- step_size + 1
-  # kernel[center, center] <- 1 - move_prob
-
-  # square kernel
-  # kernel0 <- dexp(0:step_size, rate = par[length(par)]) # move par
-  # kernel <- matrix(0, nrow = step_size * 2 + 1, ncol = step_size * 2 + 1)
-  # center <- step_size + 1
-  # for (i in seq_len(center + step_size)) {
-  #   for (j in seq_len(center + step_size)) {
-  #     kernel[i, j] <- kernel0[max(c(abs(i - center), abs(j - center))) + 1]
-  #   }
-  # }
-  # kernel <- kernel / sum(kernel)
-
-  # circular kernel
-  # k_exp   <- par[length(par) - 1] # second-to-last parameter
-  # bg_rate <- exp01(par[length(par)]) # background rate
-  # kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
-  #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
-
-  # Attractiveness function ----------------------------------------------------
-  attract0 <- env_function(env_i, par, nbhd = nbhd_i) 
-  attract  <- attract0   # no movement kernel
-  # attract <- apply_kernel(attract0, kernel)
-
-  # Propagating probabilities forward ------------------------------------------
-  ncell_local <- (2 * max_dist + 1)^2 
-  current <- array(0, dim = c(ncell_local, n_obs, sim_steps))
-  
-  # center     : Center of ncell_local (center cell of (2 * buffer + 1)
-  # Set to 1 at step #1 for each observation because that's where it actually is
-  center <- ncell_local / 2 + 0.5
-  current[center, , 1] <- 1
-
-  for (j in 1:(sim_steps - 1)) {
-    # Probabilities across entire nbhd_i for step j
-    step_prob <- as.vector(current[, , j]) * attract[]
-    #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
-    #   nbhd_i is the 3rd cell of nbhd_i.
-    dest[] <- step_prob[as.vector(to_dest)]
-    # Summing probabilities up to step j to generate step j+1
-    current[, , j + 1] <- rowSums(dest, na.rm = TRUE)
-  }
-
-  # Calculate log likelihood 
-  predictions <- matrix(0, nrow = sim_steps, ncol = n_obs)
-  for (i in 1:n_obs) {
-    if (i %in% outliers) {
-      predictions[, i] <- rep(NA, sim_steps)
-      next
-    }
-    prob <- current[obs[i], i, ]
-    predictions[, i] <- prob #+ bg_rate - prob * bg_rate
-  }
-
-  log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
-  # out            <- -max(log_likelihood, na.rm = TRUE)
-  out <- -log_likelihood[sim_steps]
-  
-  if (is.infinite(out) || is.na(out)) out <- 0
-  if (debug) {
-    return(list(out = out, array = current, predictions = predictions, par = par))
-  } else {
-    return(out)
-  }
-}
 
 # 2b. Simulation ---------------------------------------------------------------
 

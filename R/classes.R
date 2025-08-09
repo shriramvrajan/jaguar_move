@@ -36,6 +36,44 @@ step_selection_model <- R6Class("step_selection_model",
       )
     },
 
+    log_likelihood = function(par, objects, debug = FALSE) {
+      nbhd_0   <- objects$nbhd_0
+      obs      <- objects$obs
+      env_0    <- objects$env_0
+      max_dist <- objects$max_dist
+      mk       <- objects$mk # only if empirical kernel
+      outliers <- objects$outliers
+      
+      # circular kernel
+      k_exp   <- par[length(par) - 1]
+      bg_rate <- exp01(par[length(par)]) 
+      kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
+                                           kfun = function(x) dexp(x, k_exp) + bg_rate)
+
+      # Empirical movement kernel --------------------------------------------------
+      attract0 <- env_function(env_0, par, nbhd_0)
+      attract <- apply_kernel(attract0, kernel)
+      # attract <- attract0 # no movement kernel
+      
+      indices <- if (length(outliers) > 0) {
+        setdiff(seq_along(obs), outliers)
+      } else {
+        seq_along(obs)
+      }
+      like <- sapply(indices, function(i) {
+        return(attract[i, obs[i]])
+      })
+
+      out <- -sum(log(like), na.rm = TRUE)
+
+      if (is.infinite(out) || is.na(out)) out <- 0
+      if (debug) {
+        return(list(attract = attract, like = like, out = out, par = par))
+      } else {
+        return(out)
+      }
+    },
+
     fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, 
                    env_raster = NULL, outliers = integer(0)) {
 
@@ -44,8 +82,8 @@ step_selection_model <- R6Class("step_selection_model",
       
       # Fit model
       tryCatch({
-        par_out <- optim(par_start, log_likelihood0, objects = objects)
-        ll <- log_likelihood0(par_out$par, objects)
+        par_out <- optim(par_start, self$log_likelihood, objects = objects)
+        ll <- self$log_likelihood(par_out$par, objects)
         return(list(
           par = par_out$par,
           ll = ll,
@@ -63,7 +101,7 @@ step_selection_model <- R6Class("step_selection_model",
 # Path propagation model class
 path_propagation_model <- R6Class("path_propagation_model",
   public = list(
-    prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE,
+    prepare_objects = function(trajectory, max_dist, step_size, rdf, sim = FALSE,
                                env_raster = NULL, sim_steps = NULL) {
       message("Preparing path propagation objects")   
       # Get environment data
@@ -119,6 +157,7 @@ path_propagation_model <- R6Class("path_propagation_model",
         dest = dest,
         obs = obs,
         max_dist = max_dist,
+        step_size = step_size,
         outliers = integer(0)  # set externally if needed
       )
       
@@ -129,16 +168,82 @@ path_propagation_model <- R6Class("path_propagation_model",
       }
       return(result)
     },
-    
-    fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, 
+
+    log_likelihood = function(par, objects, debug = FALSE) {
+
+      env_i      <- objects$env_i
+      nbhd_i     <- objects$nbhd_i
+      to_dest    <- objects$to_dest
+      dest       <- objects$dest
+      obs        <- objects$obs
+      max_dist   <- objects$max_dist
+      step_size  <- objects$step_size
+      sim_steps  <- objects$sim_steps
+      outliers   <- objects$outliers
+      n_obs      <- length(obs) + 1
+
+      # circular kernel
+      k_exp   <- par[length(par) - 1] # second-to-last parameter
+      bg_rate <- exp01(par[length(par)]) # background rate
+      kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
+                                           kfun = function(x) dexp(x, k_exp) + bg_rate)
+
+      # Attractiveness function
+      attract0 <- env_function(env_i, par, nbhd = nbhd_i) 
+      attract <- apply_kernel(attract0, kernel)
+      # attract  <- attract0   # no movement kernel
+
+      # Propagating probabilities forward
+      ncell_local <- (2 * max_dist + 1)^2 
+      current <- array(0, dim = c(ncell_local, n_obs, sim_steps))
+      
+      # center     : Center of ncell_local (center cell of (2 * buffer + 1)
+      # Set to 1 at step #1 for each observation because that's where it actually is
+      center <- ncell_local / 2 + 0.5
+      current[center, , 1] <- 1
+
+      for (j in 1:(sim_steps - 1)) {
+        # Probabilities across entire nbhd_i for step j
+        step_prob <- as.vector(current[, , j]) * attract[]
+        #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
+        #   nbhd_i is the 3rd cell of nbhd_i.
+        dest[] <- step_prob[as.vector(to_dest)]
+        # Summing probabilities up to step j to generate step j+1
+        current[, , j + 1] <- rowSums(dest, na.rm = TRUE)
+      }
+
+      # Calculate log likelihood 
+      predictions <- matrix(0, nrow = sim_steps, ncol = n_obs)
+      for (i in 1:n_obs) {
+        if (i %in% outliers) {
+          predictions[, i] <- rep(NA, sim_steps)
+          next
+        }
+        prob <- current[obs[i], i, ]
+        predictions[, i] <- prob #+ bg_rate - prob * bg_rate
+      }
+
+      log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
+      # out            <- -max(log_likelihood, na.rm = TRUE)
+      out <- -log_likelihood[sim_steps]
+      
+      if (is.infinite(out) || is.na(out)) out <- 0
+      if (debug) {
+        return(list(out = out, array = current, predictions = predictions, par = par))
+      } else {
+        return(out)
+      }
+    },
+
+    fit = function(trajectory, max_dist, step_size, rdf, par_start, sim = FALSE, 
                    env_raster = NULL, sim_steps = NULL, outliers = integer(0)) {
-      objects <- self$prepare_objects(trajectory, max_dist, rdf, sim, 
+      objects <- self$prepare_objects(trajectory, max_dist, step_size, rdf, sim, 
                                       env_raster, sim_steps)
       objects$outliers <- outliers
       # Fit model
       tryCatch({
-        par_out <- optim(par_start, log_likelihood, objects = objects)
-        ll <- log_likelihood(par_out$par, objects)
+        par_out <- optim(par_start, self$log_likelihood, objects = objects)
+        ll <- self$log_likelihood(par_out$par, objects)
         
         return(list(
           par = par_out$par,
@@ -683,7 +788,7 @@ empirical_batch <- R6Class("empirical_batch",
                               rep(0, self$config$npar), outliers = outliers)
       } else if (self$config$model_type == 2) {
         # Path propagation  
-        result <- pp_model$fit(trajectory_cells, max_dist, landscape$dataframe,
+        result <- pp_model$fit(trajectory_cells, max_dist, step_size, landscape$dataframe,
                               rep(0, self$config$npar), sim_steps = self$config$sim_steps,
                               outliers = outliers)
       }

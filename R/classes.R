@@ -36,7 +36,7 @@ step_selection_model <- R6Class("step_selection_model",
       )
     },
 
-    log_likelihood = function(par, objects, debug = FALSE) {
+    log_likelihood = function(par, objects, sim, debug = FALSE) {
       nbhd_0   <- objects$nbhd_0
       obs      <- objects$obs
       env_0    <- objects$env_0
@@ -51,7 +51,7 @@ step_selection_model <- R6Class("step_selection_model",
                                            kfun = function(x) dexp(x, k_exp) + bg_rate)
 
       # Empirical movement kernel --------------------------------------------------
-      attract0 <- env_function(env_0, par, nbhd_0)
+      attract0 <- env_function(env_0, par, nbhd_0, sim = sim)
       attract <- apply_kernel(attract0, kernel)
       # attract <- attract0 # no movement kernel
       
@@ -82,8 +82,8 @@ step_selection_model <- R6Class("step_selection_model",
       
       # Fit model
       tryCatch({
-        par_out <- optim(par_start, self$log_likelihood, objects = objects)
-        ll <- self$log_likelihood(par_out$par, objects)
+        par_out <- optim(par_start, self$log_likelihood, objects = objects, sim = sim)
+        ll <- self$log_likelihood(par_out$par, objects, sim)
         return(list(
           par = par_out$par,
           ll = ll,
@@ -102,7 +102,7 @@ step_selection_model <- R6Class("step_selection_model",
 path_propagation_model <- R6Class("path_propagation_model",
   public = list(
     prepare_objects = function(trajectory, max_dist, step_size, rdf, sim = FALSE,
-                               env_raster = NULL, sim_steps = NULL) {
+                               env_raster = NULL, propagation_steps = NULL) {
       message("Preparing path propagation objects")   
       # Get environment data
       if (sim) {
@@ -161,7 +161,7 @@ path_propagation_model <- R6Class("path_propagation_model",
         outliers = integer(0)  # set externally if needed
       )
       
-      if (!is.null(sim_steps)) result$sim_steps <- sim_steps
+      if (!is.null(propagation_steps)) result$propagation_steps <- propagation_steps
       if (sim) {
         result$mu_env <- attributes(env_i)[[2]]
         result$sd_env <- attributes(env_i)[[3]]
@@ -169,7 +169,7 @@ path_propagation_model <- R6Class("path_propagation_model",
       return(result)
     },
 
-    log_likelihood = function(par, objects, debug = FALSE) {
+    log_likelihood = function(par, objects, sim, debug = FALSE) {
 
       env_i      <- objects$env_i
       nbhd_i     <- objects$nbhd_i
@@ -178,7 +178,7 @@ path_propagation_model <- R6Class("path_propagation_model",
       obs        <- objects$obs
       max_dist   <- objects$max_dist
       step_size  <- objects$step_size
-      sim_steps  <- objects$sim_steps
+      propagation_steps  <- objects$propagation_steps
       outliers   <- objects$outliers
       n_obs      <- length(obs) + 1
 
@@ -189,20 +189,20 @@ path_propagation_model <- R6Class("path_propagation_model",
                                            kfun = function(x) dexp(x, k_exp) + bg_rate)
 
       # Attractiveness function
-      attract0 <- env_function(env_i, par, nbhd = nbhd_i) 
+      attract0 <- env_function(env_i, par, nbhd = nbhd_i, sim = sim) 
       attract <- apply_kernel(attract0, kernel)
       # attract  <- attract0   # no movement kernel
 
       # Propagating probabilities forward
       ncell_local <- (2 * max_dist + 1)^2 
-      current <- array(0, dim = c(ncell_local, n_obs, sim_steps))
+      current <- array(0, dim = c(ncell_local, n_obs, propagation_steps))
       
       # center     : Center of ncell_local (center cell of (2 * buffer + 1)
       # Set to 1 at step #1 for each observation because that's where it actually is
       center <- ncell_local / 2 + 0.5
       current[center, , 1] <- 1
 
-      for (j in 1:(sim_steps - 1)) {
+      for (j in 1:(propagation_steps - 1)) {
         # Probabilities across entire nbhd_i for step j
         step_prob <- as.vector(current[, , j]) * attract[]
         #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
@@ -213,19 +213,18 @@ path_propagation_model <- R6Class("path_propagation_model",
       }
 
       # Calculate log likelihood 
-      predictions <- matrix(0, nrow = sim_steps, ncol = n_obs)
+      predictions <- matrix(0, nrow = propagation_steps, ncol = n_obs)
       for (i in 1:n_obs) {
         if (i %in% outliers) {
-          predictions[, i] <- rep(NA, sim_steps)
+          predictions[, i] <- rep(NA, propagation_steps)
           next
         }
         prob <- current[obs[i], i, ]
         predictions[, i] <- prob #+ bg_rate - prob * bg_rate
       }
-
       log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
       # out            <- -max(log_likelihood, na.rm = TRUE)
-      out <- -log_likelihood[sim_steps]
+      out <- -log_likelihood[propagation_steps]
       
       if (is.infinite(out) || is.na(out)) out <- 0
       if (debug) {
@@ -236,14 +235,14 @@ path_propagation_model <- R6Class("path_propagation_model",
     },
 
     fit = function(trajectory, max_dist, step_size, rdf, par_start, sim = FALSE, 
-                   env_raster = NULL, sim_steps = NULL, outliers = integer(0)) {
+                   env_raster = NULL, propagation_steps = NULL, outliers = integer(0)) {
       objects <- self$prepare_objects(trajectory, max_dist, step_size, rdf, sim, 
-                                      env_raster, sim_steps)
+                                      env_raster, propagation_steps)
       objects$outliers <- outliers
       # Fit model
       tryCatch({
-        par_out <- optim(par_start, self$log_likelihood, objects = objects)
-        ll <- self$log_likelihood(par_out$par, objects)
+        par_out <- optim(par_start, self$log_likelihood, objects = objects, sim = sim)
+        ll <- self$log_likelihood(par_out$par, objects, sim)
         
         return(list(
           par = par_out$par,
@@ -311,7 +310,7 @@ movement_simulator <- R6Class("movement_simulator",
         # Extract config information
         n_cores <- n_cores %||% self$config$n_cores
         max_dist <- self$config$max_dist()
-        sim_steps <- self$config$sim_steps()
+        propagation_steps <- self$config$propagation_steps()
         par_start <- c(-1.5, 1.5, -0.2)
 
         obs_interval <- self$config$obs_interval
@@ -335,7 +334,7 @@ movement_simulator <- R6Class("movement_simulator",
                             # Data
                             "paths",
                             # Parameters
-                            "max_dist", "sim_steps", "par_start", "obs_interval", 
+                            "max_dist", "propagation_steps", "par_start", "obs_interval", 
                             "step_size", "env_size", "autocorr_strength", 
                             "autocorr_range")) %dopar% {                        
                     message(paste0("Fitting individual #: ", i))
@@ -368,7 +367,7 @@ movement_simulator <- R6Class("movement_simulator",
                                 par_start, sim = TRUE, env_raster = land_i)
                     pp_result <- pp_model$fit(trajectory, max_dist, rdf,
                                 par_start, sim = TRUE, env_raster = land_i, 
-                                sim_steps = sim_steps)
+                                propagation_steps = propagation_steps)
                     
                     return(list(
                       step_selection = ss_result,
@@ -411,7 +410,7 @@ movement_simulator <- R6Class("movement_simulator",
                                       sim = TRUE, env_raster = land_i)
               pp_result <- pp_model$fit(trajectory, max_dist, rdf, par_start,
                                       sim = TRUE, env_raster = land_i, 
-                                      sim_steps = sim_steps)
+                                      propagation_steps = propagation_steps)
               results[[i]] <- list(
                 step_selection = ss_result,
                 path_propagation = pp_result,
@@ -466,7 +465,7 @@ simulation_config <- R6Class("simulation_config",
         # Derived properties
         # max_dist = function() max(2, self$step_size * (self$obs_interval + 1)),
         max_dist = function() self$step_size * (self$obs_interval + 1),
-        sim_steps = function() self$obs_interval + 2,
+        propagation_steps = function() self$obs_interval + 2,
 
         save = function(filepath) {
             params <- list(
@@ -491,8 +490,7 @@ simulation_batch <- R6Class("simulation_batch",
     results = list(),
     
     # Create batch for fragmentation study
-    autocorr_range_study = function(r1_values = c(1, 2, 3, 4, 5, 6, 8, 10, 15, 
-                                     20, 25, 30, 40, 50, 60, 70, 80, 90, 100)) {
+    autocorr_range_study = function(r1_values = 1:40) {
       self$configs <- lapply(r1_values, function(r1) {
         simulation_config$new(
           name = paste0("r1_", r1),
@@ -658,7 +656,7 @@ empirical_config <- R6Class("empirical_config",
     model_type = 2, # 1 for step selection, 2 for path propagation
     npar = 8,       # Number of parameters, SHOULD BE SOMEWHERE ELSE
     step_size = 1,  # Minimum step size (inner neighborhood) in pixels
-    sim_steps = 10, # Number of steps to simulate for path propagation
+    propagation_steps = 10, # Number of steps to simulate for path propagation
 
     holdout_set = TRUE,
     holdout_frac = 0.3,
@@ -671,15 +669,14 @@ empirical_config <- R6Class("empirical_config",
     fit_model = TRUE,
     model_calcnull = FALSE,
     param_model = "pp3h",
-
-    initialize = function(model_type = 2, npar = 8, step_size = 1, sim_steps = 10,
+    initialize = function(model_type = 2, npar = 8, step_size = 1, propagation_steps = 10,
                          holdout_set = TRUE, holdout_frac = 0.5, parallel = TRUE, 
                          n_cores = 10, individuals = NULL, fit_model = TRUE,
                          model_calcnull = FALSE, param_model = "pp3h") {
       self$model_type <- model_type
       self$npar <- npar
       self$step_size <- step_size
-      self$sim_steps <- sim_steps
+      self$propagation_steps <- propagation_steps
       self$holdout_set <- holdout_set
       self$holdout_frac <- holdout_frac
       self$parallel <- parallel
@@ -788,8 +785,8 @@ empirical_batch <- R6Class("empirical_batch",
                               rep(0, self$config$npar), outliers = outliers)
       } else if (self$config$model_type == 2) {
         # Path propagation  
-        result <- pp_model$fit(trajectory_cells, max_dist, step_size, landscape$dataframe,
-                              rep(0, self$config$npar), sim_steps = self$config$sim_steps,
+        result <- pp_model$fit(trajectory_cells, max_dist, self$config$step_size, landscape$dataframe,
+                              rep(0, self$config$npar), propagation_steps = self$config$propagation_steps,
                               outliers = outliers)
       }
       

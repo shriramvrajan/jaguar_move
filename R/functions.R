@@ -185,9 +185,9 @@ normalize_nbhd <- function(v, nbhd) {
 # env:      Environmental variable values
 # par:      Parameters for functional form
 # format:   TRUE to return as matrix, FALSE to return as vector
-env_function <- function(env, par, nbhd, form = "empirical") {
+env_function <- function(env, par, nbhd, sim) {
 
-  if (form == "empirical") {
+  if (!sim) {
     # # First order no intercept
     attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
                             par[3] * env[, 3] + par[4] * env[, 4] + 
@@ -199,7 +199,7 @@ env_function <- function(env, par, nbhd, form = "empirical") {
     #                         par[8] * env[, 4] + par[9] * env[, 4]^2 +            # forest cover
     #                         par[10] * env[, 5] + par[11] * env[, 5]^2 +          # distance to water
     #                         par[12] * env[, 6] + par[13] * env[, 6]^2))          # distance to road
-  } else if (form == "simulation") {
+  } else if (sim) {
     # attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
   }
   

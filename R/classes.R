@@ -1,6 +1,8 @@
 # Attempt to refactor into object-oriented idiom
 library(R6)
 
+## Models ======================================================================
+
 # Step selection model class
 step_selection_model <- R6Class("step_selection_model",
   public = list(  
@@ -36,24 +38,36 @@ step_selection_model <- R6Class("step_selection_model",
       )
     },
 
+    build_kernel = function(par, objects, sim) {
+      browser()
+      # Extract kernel parameters
+      k_exp <- par[length(par) - 1]
+      bg_rate <- exp01(par[length(par)])
+      kernel <- calculate_dispersal_kernel(max_dispersal_dist = objects$max_dist, 
+                                          kfun = function(x) dexp(x, k_exp) + bg_rate)
+      
+      # Calculate environmental attraction
+      attract0 <- env_function(objects$env_0, par, objects$nbhd_0, sim = sim)
+      attract <- apply_kernel(attract0, kernel)
+      
+      return(attract)      
+    },
+
+    dispersal_from = function(init_point, par, landscape, max_dist, sim = FALSE) {
+      objects <- self$prepare_objects(init_point, max_dist, landscape$dataframe, 
+                                      sim, landscape$raster)
+      attract <- self$build_kernel(par, objects, sim)
+      return(list(probs = attract[1, ],
+                  nbhd = objects$nbhd_0[1, ],
+                  par = par))
+    },
+
     log_likelihood = function(par, objects, sim, debug = FALSE) {
-      nbhd_0   <- objects$nbhd_0
       obs      <- objects$obs
-      env_0    <- objects$env_0
       max_dist <- objects$max_dist
-      mk       <- objects$mk # only if empirical kernel
       outliers <- objects$outliers
       
-      # circular kernel
-      k_exp   <- par[length(par) - 1]
-      bg_rate <- exp01(par[length(par)]) 
-      kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
-                                           kfun = function(x) dexp(x, k_exp) + bg_rate)
-
-      # Empirical movement kernel --------------------------------------------------
-      attract0 <- env_function(env_0, par, nbhd_0, sim = sim)
-      attract <- apply_kernel(attract0, kernel)
-      # attract <- attract0 # no movement kernel
+      attract <- self$build_kernel(par, objects, sim)
       
       indices <- if (length(outliers) > 0) {
         setdiff(seq_along(obs), outliers)
@@ -258,6 +272,8 @@ path_propagation_model <- R6Class("path_propagation_model",
     }
   )
 )
+
+## Theoretical simulations =====================================================
 
 ## Movement simulator for path generation and model fitting 
 movement_simulator <- R6Class("movement_simulator",
@@ -602,6 +618,8 @@ simulation_batch <- R6Class("simulation_batch",
   )
 )
 
+## Empirical data fitting ======================================================
+
 jaguar <- R6Class("jaguar",
   public = list(
     id = NULL,
@@ -645,8 +663,19 @@ jaguar <- R6Class("jaguar",
     },
 
     get_landscape = function() {
-      # Placeholder for jaguar landscape data retrieval
-      return(list(raster = brazil_ras, dataframe = brdf))
+      # Bounding box of the jaguar's trajectory with 0.1 degree buffer
+      track <- self$get_track()
+      track_extent <- ext(terra::vect(track, 
+                          geom = c("longitude", "latitude"), crs = wgs84))
+      track_extent <- ext(
+        track_extent[1] - 0.1,
+        track_extent[2] + 0.1,
+        track_extent[3] - 0.1,
+        track_extent[4] + 0.1
+      )
+      brazil_ras_crop <- terra::crop(brazil_ras, track_extent)
+      brazil_ras_crop_df <- raster_to_df(brazil_ras_crop)
+      return(list(raster = brazil_ras_crop, dataframe = brazil_ras_crop_df))
     }
 
   ))
@@ -669,6 +698,7 @@ empirical_config <- R6Class("empirical_config",
     fit_model = TRUE,
     model_calcnull = FALSE,
     param_model = "pp3h",
+
     initialize = function(model_type = 2, npar = 8, step_size = 1, propagation_steps = 10,
                          holdout_set = TRUE, holdout_frac = 0.5, parallel = TRUE, 
                          n_cores = 10, individuals = NULL, fit_model = TRUE,
@@ -785,9 +815,10 @@ empirical_batch <- R6Class("empirical_batch",
                               rep(0, self$config$npar), outliers = outliers)
       } else if (self$config$model_type == 2) {
         # Path propagation  
-        result <- pp_model$fit(trajectory_cells, max_dist, self$config$step_size, landscape$dataframe,
-                              rep(0, self$config$npar), propagation_steps = self$config$propagation_steps,
-                              outliers = outliers)
+        result <- pp_model$fit(trajectory_cells, max_dist, self$config$step_size, 
+                            landscape$dataframe, rep(0, self$config$npar), 
+                            propagation_steps = self$config$propagation_steps,
+                            outliers = outliers)
       }
       
       # Save individual result
@@ -799,4 +830,45 @@ empirical_batch <- R6Class("empirical_batch",
       
       return(result)
     }
+  ))
+
+## Results and analysis =====================================================
+
+individual_analysis <- R6Class("individual_analysis",
+  public = list(
+    id = NULL,
+    jaguar = NULL,
+    track = NULL,
+    trajectory_cells = NULL,
+    landscape = NULL,
+    fitted_pars_ss = NULL,
+    fitted_pars_pp = NULL,
+
+    initialize = function(id = NULL) {
+      self$id <- as.numeric(id)
+      self$jaguar <- jaguar$new(id)
+      self$track <- self$jaguar$get_track()
+      self$trajectory_cells <- self$jaguar$get_trajectory_cells()
+      self$landscape <- self$jaguar$get_landscape()
+      self$fitted_pars_ss <- as.numeric(e_results[which(jag_id == id), 1:8])
+      self$fitted_pars_pp <- as.numeric(e_results[which(jag_id == id), 9:16])
+    },
+
+    compare_dispersal = function(init_point = NULL, max_dist = 10) {
+      ss_model <- step_selection_model$new()
+      pp_model <- path_propagation_model$new()
+
+      if (is.null(init_point)) {
+        init_point <- self$trajectory_cells[1]
+      }
+
+      ss_disp <- ss_model$dispersal_from(init_point, self$fitted_pars_ss, 
+                                        self$landscape, max_dist, sim = FALSE)
+      browser()
+      pp_disp <- pp_model$dispersal_from(init_point, self$fitted_pars_pp, 
+                                        self$landscape, max_dist, sim = FALSE)
+
+      return(list(step_selection = ss_disp, path_propagation = pp_disp))                                    
+    }
+
   ))

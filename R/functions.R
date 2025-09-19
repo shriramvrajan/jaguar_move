@@ -38,6 +38,9 @@ brdf <- readRDS("data/env_layers.rds")
 # Brazil biomes shapefile
 biome <- vect("data/input/Brazil_biomes/Brazil_biomes.shp")
 
+# Empirical results
+e_results <- readRDS("data/output/oldresults_empirical.rds")
+
 # Functions ====================================================================
 
 # 0. Basic ---------------------------------------------------------------------

@@ -3,6 +3,7 @@ source("R/classes.R")
 
 library(ggplot2)
 
+# simulation results
 frag <- readRDS("data/output/fragmentation_study_results_2025-08-08.rds")
 frag2 <- frag[-which(frag$ll_step == 0 | frag$ll_pp == 0), ]
 

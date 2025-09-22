@@ -14,6 +14,7 @@ library(pryr)
 library(foreach)
 library(doParallel)
 library(viridis)
+library(ggplot2)
 # library(plotly)
 
 # Data =========================================================================
@@ -190,6 +191,7 @@ normalize_nbhd <- function(v, nbhd) {
 # format:   TRUE to return as matrix, FALSE to return as vector
 env_function <- function(env, par, nbhd, sim) {
 
+  par <- as.numeric(par)
   if (!sim) {
     # # First order no intercept
     attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
@@ -208,6 +210,7 @@ env_function <- function(env, par, nbhd, sim) {
   
   attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
   attract <- attract / rowSums(attract, na.rm = TRUE)
+
   return(attract)  
 }
 
@@ -400,12 +403,6 @@ jag_path <- function(x0, y0, n_step, par, neighb, env_raster) {
   current_cell <- cellFromRowCol(env_raster, x0, y0)
   path[1, ] <- c(x0, y0, current_cell, NA)
 
-  # Movement kernel (circular)
-  # k_exp   <- par[length(par) - 1]
-  # bg_rate <- exp01(par[length(par)]) 
-  # kern_m <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
-  #                                      kfun = function(x) dexp(x, k_exp) + bg_rate)
-
   for (i in 2:n_step) {
       nbhd_cells <- nbhd_lookup[current_cell, ]
 
@@ -501,41 +498,31 @@ par_to_df <- function(par) {
     }))
 }
 
-results_table <- function(s, params = TRUE, holdout = TRUE) {
-
- npar <- vector()
-  
- lldf <- sapply(s, function(i) {
-    indiv <- paste0("out_", 1:82, ".rds")
-    out <- sapply(indiv, function(j) {
-      print(paste(i, j))
-      if (!(j %in% list.files(paste0("data/output/sim_", i, "/")))) {
-        return(NA)
-      } else {
-        out <- readRDS(paste0("data/output/sim_", i, "/", j))
-        npar[i] <<- length(out$par)
-        # return(c(out$out, out$par))
-        return(out$out)
-      }
-    })
-    return(out)
-  }) %>% data.table()
-  colnames(lldf) <- paste0("ll_", s)
-
-  aic <- lldf * 2 + npar[col(lldf)] * 2 
-  colnames(aic) <- paste0("aic_", s)
-  df <- cbind(lldf, aic)
-
-  df <- cbind(jag_id, sex = as.factor(jag_meta$Sex),
-                  age = as.numeric(jag_meta$Estimated.Age),
-                  weight = as.numeric(jag_meta$Weight),
-                  bio = as.factor(jag_meta$biome), df,
-                  nmove = as.numeric(jag_meta$nmove),
-                  ndays = as.numeric(jag_meta$ndays),
-                  meandist = as.numeric(jag_meta$meandist),
-                  totdist = as.numeric(jag_meta$totdist))
-
-  return(df)
+results_table <- function(file_ss, file_pp) {
+  r_ss <- readRDS(file_ss)
+  r_pp <- readRDS(file_pp)
+  out_df <- matrix(nrow = nrow(jag_meta), ncol = 22)
+  for (i in seq_len(nrow(out_df))) {
+    if (all(is.na(r_ss[[i]]))) {
+      out_df[i, 1:10] <- NA
+    } else {
+      out_df[i, 1:10] <- unlist(r_ss[[i]])
+      # aic based on likelihood
+      out_df[i, 11] <- 2 * out_df[i, 9] + 2 * 8
+    }
+    if (all(is.na(r_pp[[i]]))) {
+      out_df[i, 12:21] <- NA
+    } else {
+      out_df[i, 12:21] <- unlist(r_pp[[i]])
+      # aic based on likelihood
+      out_df[i, 22] <- 2 * out_df[i, 20] + 2 * 8
+    }
+  }
+  out <- cbind(jag_meta[, c("ID", "biome")], out_df) %>% as.data.frame()
+  names(out) <- c("ID", "biome", 
+                      paste0("ss_par", 1:8), "ss_ll", "ss_conv", "ss_aic",
+                      paste0("pp_par", 1:8), "pp_ll", "pp_conv", "pp_aic")
+  return(out)
 }
 
 # Given fitted parameter values and individual id, plot local environment transformed

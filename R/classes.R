@@ -20,18 +20,18 @@ step_selection_model <- R6Class("step_selection_model",
       if (any(is.na(env_0))) env_0[which(is.na(env_0))] <- 0
       
       # Neighborhoods for step selection
-      nbhd_0 <- make_nbhd(i = trajectory, sz = max_dist, r = env_ras, rdf = rdf)
-      
+      nbhd_ss <- make_nbhd(i = trajectory, sz = max_dist, r = env_ras, rdf = rdf)
+
       # Build observations for step selection
-      obs <- sapply(2:nrow(nbhd_0), function(r) {
-        local <- nbhd_0[(r - 1), ]
+      obs <- sapply(2:nrow(nbhd_ss), function(r) {
+        local <- nbhd_ss[(r - 1), ]
         nextcell <- which(local == trajectory[r])
         if (length(nextcell) == 0) return(NA) else return(nextcell)
       })
       
       list(
         env_0 = env_0,
-        nbhd_0 = nbhd_0, 
+        nbhd_ss = nbhd_ss, 
         obs = obs,
         max_dist = max_dist,
         outliers = integer(0)  # set externally if needed
@@ -39,26 +39,25 @@ step_selection_model <- R6Class("step_selection_model",
     },
 
     build_kernel = function(par, objects, sim) {
-      browser()
       # Extract kernel parameters
-      k_exp <- par[length(par) - 1]
-      bg_rate <- exp01(par[length(par)])
+      k_exp <- exp(par[length(par) - 1]) %>% as.numeric()
+      bg_rate <- exp01(par[length(par)]) %>% as.numeric()
       kernel <- calculate_dispersal_kernel(max_dispersal_dist = objects$max_dist, 
                                           kfun = function(x) dexp(x, k_exp) + bg_rate)
       
       # Calculate environmental attraction
-      attract0 <- env_function(objects$env_0, par, objects$nbhd_0, sim = sim)
+      attract0 <- env_function(objects$env_0, par, objects$nbhd_ss, sim = sim)
       attract <- apply_kernel(attract0, kernel)
       
       return(attract)      
     },
 
-    dispersal_from = function(init_point, par, landscape, max_dist, sim = FALSE) {
-      objects <- self$prepare_objects(init_point, max_dist, landscape$dataframe, 
-                                      sim, landscape$raster)
+    dispersal_from = function(init_point, par, rdf = brdf, raster = brazil_ras,
+                              max_dist, sim = FALSE) {
+      objects <- self$prepare_objects(init_point, max_dist, rdf, sim, raster)
       attract <- self$build_kernel(par, objects, sim)
       return(list(probs = attract[1, ],
-                  nbhd = objects$nbhd_0[1, ],
+                  nbhd = objects$nbhd_ss,
                   par = par))
     },
 
@@ -101,8 +100,8 @@ step_selection_model <- R6Class("step_selection_model",
         return(list(
           par = par_out$par,
           ll = ll,
-          convergence = par_out$convergence,
-          objects = objects
+          convergence = par_out$convergence
+          # objects = objects
         ))
       }, error = function(e) {
         message(paste("Step selection fitting error:", e$message))
@@ -127,11 +126,11 @@ path_propagation_model <- R6Class("path_propagation_model",
         env_ras <- brazil_ras
       }
       if (any(is.na(env_0))) env_0[which(is.na(env_0))] <- 0
-      
+
       # Extended neighborhoods
       nbhd_0 <- make_nbhd(i = trajectory, sz = max_dist, r = env_ras, rdf = rdf)
       # Flatten nbhd_0 for environment indexing
-      env_i <- env_0[as.vector(t(nbhd_0))]
+      env_i <- env_0[as.vector(t(nbhd_0)), ]
       if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
       # Build observations for path propagation
       obs <- sapply(2:nrow(nbhd_0), function(r) {
@@ -183,48 +182,65 @@ path_propagation_model <- R6Class("path_propagation_model",
       return(result)
     },
 
-    log_likelihood = function(par, objects, sim, debug = FALSE) {
-
+    build_kernel = function(par, objects, sim, propagation_steps = 10) { ## FIX propagation_steps
       env_i      <- objects$env_i
       nbhd_i     <- objects$nbhd_i
       to_dest    <- objects$to_dest
       dest       <- objects$dest
-      obs        <- objects$obs
       max_dist   <- objects$max_dist
       step_size  <- objects$step_size
-      propagation_steps  <- objects$propagation_steps
-      outliers   <- objects$outliers
-      n_obs      <- length(obs) + 1
+      n_obs      <- length(objects$obs) + 1
 
-      # circular kernel
-      k_exp   <- par[length(par) - 1] # second-to-last parameter
-      bg_rate <- exp01(par[length(par)]) # background rate
+      # Extract kernel parameters
+      k_exp   <- exp(par[length(par) - 1]) %>% as.numeric # Ensure positive
+      bg_rate <- exp01(par[length(par)]) %>% as.numeric() # Ensure [0, 1]
       kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
-                                           kfun = function(x) dexp(x, k_exp) + bg_rate)
+                                          kfun = function(x) dexp(x, k_exp) + bg_rate)
 
-      # Attractiveness function
+      # Calculate environmental attraction
       attract0 <- env_function(env_i, par, nbhd = nbhd_i, sim = sim) 
       attract <- apply_kernel(attract0, kernel)
-      # attract  <- attract0   # no movement kernel
 
       # Propagating probabilities forward
       ncell_local <- (2 * max_dist + 1)^2 
       current <- array(0, dim = c(ncell_local, n_obs, propagation_steps))
       
-      # center     : Center of ncell_local (center cell of (2 * buffer + 1)
-      # Set to 1 at step #1 for each observation because that's where it actually is
+      # Set starting probability to 1 at center
       center <- ncell_local / 2 + 0.5
       current[center, , 1] <- 1
 
       for (j in 1:(propagation_steps - 1)) {
-        # Probabilities across entire nbhd_i for step j
         step_prob <- as.vector(current[, , j]) * attract[]
-        #   e.g. if to_dest[1, 2] = 3, then the 2nd neighbor of the 1st cell of
-        #   nbhd_i is the 3rd cell of nbhd_i.
         dest[] <- step_prob[as.vector(to_dest)]
-        # Summing probabilities up to step j to generate step j+1
         current[, , j + 1] <- rowSums(dest, na.rm = TRUE)
       }
+      
+      return(current)
+    },
+
+    dispersal_from = function(init_point, par, rdf = brdf, raster = brazil_ras, 
+                              max_dist = 10, propagation_steps = 10,
+                              step_size = 1,  sim = FALSE) {
+      objects <- self$prepare_objects(init_point, max_dist, step_size, rdf, sim,
+                                      brazil_ras, propagation_steps)
+      current <- self$build_kernel(par, objects, sim, propagation_steps)
+
+      # Return final probability distribution for the starting point
+      return(list(
+        probs = current[, 1, propagation_steps],  # Final step probabilities
+        nbhd = objects$nbhd_i,
+        par = par,
+        propagation_steps = propagation_steps
+      ))                                   
+    },
+
+    log_likelihood = function(par, objects, sim, debug = FALSE) {
+
+      obs        <- objects$obs
+      outliers   <- objects$outliers
+      n_obs      <- length(obs) + 1
+
+      current <- self$build_kernel(par, objects, sim, propagation_steps)
 
       # Calculate log likelihood 
       predictions <- matrix(0, nrow = propagation_steps, ncol = n_obs)
@@ -237,9 +253,8 @@ path_propagation_model <- R6Class("path_propagation_model",
         predictions[, i] <- prob #+ bg_rate - prob * bg_rate
       }
       log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
-      # out            <- -max(log_likelihood, na.rm = TRUE)
-      out <- -log_likelihood[propagation_steps]
-      
+      out            <- -max(log_likelihood, na.rm = TRUE)
+
       if (is.infinite(out) || is.na(out)) out <- 0
       if (debug) {
         return(list(out = out, array = current, predictions = predictions, par = par))
@@ -261,8 +276,8 @@ path_propagation_model <- R6Class("path_propagation_model",
         return(list(
           par = par_out$par,
           ll = ll,
-          convergence = par_out$convergence,
-          objects = objects
+          convergence = par_out$convergence
+          # objects = objects
         ))
         
       }, error = function(e) {
@@ -656,7 +671,7 @@ jaguar <- R6Class("jaguar",
                     "day", "hr", "sl", "ta", "dir", "dt", "spd")])
     },
 
-    get_trajectory_cells = function() {
+    get_track_cells = function() {
       track <- self$get_track()
       return(cellFromXY(brazil_ras, 
                          track[, c("longitude", "latitude")]))
@@ -682,27 +697,26 @@ jaguar <- R6Class("jaguar",
 
 empirical_config <- R6Class("empirical_config",
   public = list(
-    model_type = 2, # 1 for step selection, 2 for path propagation
-    npar = 8,       # Number of parameters, SHOULD BE SOMEWHERE ELSE
-    step_size = 1,  # Minimum step size (inner neighborhood) in pixels
-    propagation_steps = 10, # Number of steps to simulate for path propagation
+    model_type = NULL, # 1 for step selection, 2 for path propagation
+    npar = NULL,       # Number of parameters, SHOULD BE SOMEWHERE ELSE
+    step_size = NULL,  # Minimum step size (inner neighborhood) in pixels
+    propagation_steps = NULL, # Number of steps to simulate for path propagation
 
-    holdout_set = TRUE,
-    holdout_frac = 0.3,
+    holdout_set = NULL,
+    holdout_frac = NULL,
 
-    parallel = TRUE,
-    n_cores = 10,
+    parallel = NULL,
+    n_cores = NULL,
 
     individuals = NULL, # NULL = all, or vector of IDs
 
-    fit_model = TRUE,
-    model_calcnull = FALSE,
-    param_model = "pp3h",
+    fit_model = NULL,
+    model_calcnull = NULL,
 
-    initialize = function(model_type = 2, npar = 8, step_size = 1, propagation_steps = 10,
-                         holdout_set = TRUE, holdout_frac = 0.5, parallel = TRUE, 
+    initialize = function(model_type = 2, npar = 8, step_size = 1, propagation_steps = 6,
+                         holdout_set = TRUE, holdout_frac = 0.3, parallel = TRUE, 
                          n_cores = 10, individuals = NULL, fit_model = TRUE,
-                         model_calcnull = FALSE, param_model = "pp3h") {
+                         model_calcnull = FALSE) {
       self$model_type <- model_type
       self$npar <- npar
       self$step_size <- step_size
@@ -714,7 +728,6 @@ empirical_config <- R6Class("empirical_config",
       self$individuals <- individuals
       self$fit_model <- fit_model
       self$model_calcnull <- model_calcnull
-      self$param_model <- param_model
     }
   )
 )
@@ -776,6 +789,20 @@ empirical_batch <- R6Class("empirical_batch",
         }
       }
       
+      # If there are already completed results, load and combine
+      if (length(done) > 0) {
+        existing_results <- list()
+        for (i in done) {
+          if (file.exists(paste0("data/output/out_", i, ".rds"))) {
+            existing_results[[length(existing_results) + 1]] <- 
+              readRDS(paste0("data/output/out_", i, ".rds"))
+          } else {
+            existing_results[[length(existing_results) + 1]] <- NA
+          }
+        }
+        results <- c(existing_results, results)
+      }
+
       self$results <- results
       return(results)
     },
@@ -784,21 +811,23 @@ empirical_batch <- R6Class("empirical_batch",
       message(paste0("Processing jaguar #", i))
       # Create jaguar instance and get data
       jag <- jaguar$new(i)
-      trajectory_cells <- jag$get_trajectory_cells()
+      track_cells <- jag$get_track_cells()
       track <- jag$get_track()
-      landscape <- jag$get_landscape()
       
       # Handle outliers and holdout
-      n_obs <- length(trajectory_cells)
+      n_obs <- length(track_cells)
       threshold <- mean(na.exclude(track$dt)) + 3 * sd(na.exclude(track$dt))
       outliers <- which(track$dt > threshold) - 1
+
+      # Starting parameters
+      par_start <- c(rep(0, npar-2), 0.1, 0.1)  # Small positive values for rate parameters
       
       if (self$config$holdout_set && nrow(track) > 100) {
         hold <- seq_len(ceiling(nrow(track) * self$config$holdout_frac))
         if (self$config$fit_model) {
-          trajectory_cells <- trajectory_cells[hold]
+          track_cells <- track_cells[hold]
         } else {
-          trajectory_cells <- trajectory_cells[-hold]
+          track_cells <- track_cells[-hold]
           outliers <- outliers[outliers > max(hold)]
           if (length(outliers) > 0) outliers <- outliers - length(hold)
         }
@@ -811,12 +840,12 @@ empirical_batch <- R6Class("empirical_batch",
       # Fit models based on config
       if (self$config$model_type == 1) {
         # Step selection
-        result <- ss_model$fit(trajectory_cells, max_dist, landscape$dataframe, 
-                              rep(0, self$config$npar), outliers = outliers)
+        result <- ss_model$fit(track_cells, max_dist, brdf, par_start =
+                              par_start, outliers = outliers)
       } else if (self$config$model_type == 2) {
         # Path propagation  
-        result <- pp_model$fit(trajectory_cells, max_dist, self$config$step_size, 
-                            landscape$dataframe, rep(0, self$config$npar), 
+        result <- pp_model$fit(track_cells, max_dist, self$config$step_size, 
+                            brdf, par_start = par_start, 
                             propagation_steps = self$config$propagation_steps,
                             outliers = outliers)
       }
@@ -832,26 +861,35 @@ empirical_batch <- R6Class("empirical_batch",
     }
   ))
 
-## Results and analysis =====================================================
+## Results and analysis ========================================================
 
 individual_analysis <- R6Class("individual_analysis",
   public = list(
     id = NULL,
     jaguar = NULL,
     track = NULL,
-    trajectory_cells = NULL,
+    track_cells = NULL,
     landscape = NULL,
-    fitted_pars_ss = NULL,
-    fitted_pars_pp = NULL,
+    results = NULL,
 
     initialize = function(id = NULL) {
       self$id <- as.numeric(id)
       self$jaguar <- jaguar$new(id)
       self$track <- self$jaguar$get_track()
-      self$trajectory_cells <- self$jaguar$get_trajectory_cells()
+      self$track_cells <- self$jaguar$get_track_cells()
       self$landscape <- self$jaguar$get_landscape()
-      self$fitted_pars_ss <- as.numeric(e_results[which(jag_id == id), 1:8])
-      self$fitted_pars_pp <- as.numeric(e_results[which(jag_id == id), 9:16])
+      self$results <- self$load_results(id = self$id)
+    },
+
+    load_results = function(id = NULL, 
+                  file_ss = "data/output/empirical_results_ss_2025-09-21.rds",
+                  file_pp = "data/output/empirical_results_pp_2025-09-22.rds") {
+      if (!is.null(id)) {
+        self$id <- as.numeric(id)
+      }
+
+      all_results <- results_table(file_ss = file_ss, file_pp = file_pp)
+      return(all_results[all_results$ID == self$id, ])
     },
 
     compare_dispersal = function(init_point = NULL, max_dist = 10) {
@@ -859,14 +897,26 @@ individual_analysis <- R6Class("individual_analysis",
       pp_model <- path_propagation_model$new()
 
       if (is.null(init_point)) {
-        init_point <- self$trajectory_cells[1]
+        init_point <- self$track_cells[1]
       }
 
-      ss_disp <- ss_model$dispersal_from(init_point, self$fitted_pars_ss, 
-                                        self$landscape, max_dist, sim = FALSE)
-      browser()
-      pp_disp <- pp_model$dispersal_from(init_point, self$fitted_pars_pp, 
-                                        self$landscape, max_dist, sim = FALSE)
+      fitted_pars_ss <- self$results[3:10]
+      fitted_pars_pp <- self$results[14:21]
+
+      ss_disp <- ss_model$dispersal_from(init_point = init_point, 
+                        par = fitted_pars_ss, max_dist = max_dist, sim = FALSE)
+      message("Step selection dispersal calculated")
+
+      if (!exists("nbhd_full", envir = .GlobalEnv)) {
+        message("Generating global neighborhood matrix")
+        nbhd_full <<- make_nbhd(i = seq_len(nrow(brdf)), sz = 1)
+      }
+      pp_disp <- pp_model$dispersal_from(init_point = init_point, 
+                         par = fitted_pars_pp, max_dist = max_dist, sim = FALSE)
+      message("Path propagation dispersal calculated")
+
+      par(mfrow = c(1, 3))
+
 
       return(list(step_selection = ss_disp, path_propagation = pp_disp))                                    
     }

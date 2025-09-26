@@ -193,24 +193,15 @@ env_function <- function(env, par, nbhd, sim) {
 
   par <- as.numeric(par)
   if (!sim) {
-    # # First order no intercept
+    # First order, no intercept
     attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
                             par[3] * env[, 3] + par[4] * env[, 4] + 
                             par[5] * env[, 5] + par[6] * env[, 6]))
-    # Second order
-    # attract <- 1 / (1 + exp(par[1] + par[2] * env[, 1] + par[3] * env[, 1]^2 +   # footprint
-    #                         par[4] * env[, 2] + par[5] * env[, 2]^2 +            # elevation
-    #                         par[6] * env[, 3] + par[7] * env[, 3]^2 +            # slope
-    #                         par[8] * env[, 4] + par[9] * env[, 4]^2 +            # forest cover
-    #                         par[10] * env[, 5] + par[11] * env[, 5]^2 +          # distance to water
-    #                         par[12] * env[, 6] + par[13] * env[, 6]^2))          # distance to road
-  } else if (sim) {
-    # attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+  } else {
+    attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
   }
-  
   attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
   attract <- attract / rowSums(attract, na.rm = TRUE)
-
   return(attract)  
 }
 
@@ -478,29 +469,10 @@ plot_path <- function(path, int = obs_interval, vgram = FALSE,
 
 # 3. Output analysis -----------------------------------------------------------
 
-## Load parameters and likelihood
-load_output <- function(name, i = NULL) {
-    dir <- paste0("data/output/sim_", name, "/")
-    # ll_files <- list.files(dir)[grep("likelihood_", list.files(dir))]
-    # par_files <- list.files(dir)[grep("par_out_", list.files(dir))]
-    # ll_files <- paste0("likelihood_", 1:njag, ".rds")
-    # par_files <- paste0("par_out_", 1:njag, ".rds")
-    seq <- if (is.null(i)) 1:njag else i
-    out_files <- paste0("out_", seq, ".rds")
-    out <- load_if_exists(out_files, dir)
-    if (length(out) == 1) out <- out[[1]]
-    return(out)
-}
-
-par_to_df <- function(par) {
-    df <- do.call(rbind, lapply(par, function(x) {
-        print(x[[1]])
-    }))
-}
-
 results_table <- function(file_ss, file_pp) {
   r_ss <- readRDS(file_ss)
   r_pp <- readRDS(file_pp)
+  
   out_df <- matrix(nrow = nrow(jag_meta), ncol = 22)
   for (i in seq_len(nrow(out_df))) {
     if (all(is.na(r_ss[[i]]))) {
@@ -524,57 +496,3 @@ results_table <- function(file_ss, file_pp) {
                       paste0("pp_par", 1:8), "pp_ll", "pp_conv", "pp_aic")
   return(out)
 }
-
-# Given fitted parameter values and individual id, plot local environment transformed
-# by environmental function.
-plot_attraction <- function(id, results, model = 2) {
-  id <- as.numeric(id)
-  pars <- switch(model, results[results$id == id, 1:6], results[results$id == id, 9:14])
-  # make neighborhood for individual (extended)
-  path <- jag_move[ID == id]
-  # get bounding box of path and crop brazil_ras
-  gps <- vect(path[, 3:4], geom = c("longitude", "latitude"))
-  # add small buffer to bbox
-  bbox <- ext(gps) #+ c(-0.1, 0.1, -0.1, 0.1) # 0.1 degrees buffer
-  # get raster of local environment
-  local_ras <- crop(brazil_ras, bbox)
-  # normalize each layer of local_ras to [-1, 1]
-  local_ras <- scale(local_ras, center = TRUE, scale = TRUE)
-
-  attract <- 1 / (1 + exp(pars[[1]] * local_ras[[1]] +
-                     pars[[2]] * local_ras[[2]] + 
-                     pars[[3]] * local_ras[[3]] + 
-                     pars[[4]] * local_ras[[4]] + 
-                     pars[[5]] * local_ras[[5]] + 
-                     pars[[6]] * local_ras[[6]]))
-                     
-  # plot local environment in terms of attraction
-  terra::plot(attract, main = paste("Local environment for jaguar", id))
-  # plot jaguar path points as arrows between points
-  
-  n <- nrow(path)
-  
-  colors <- colorRampPalette(c("gold", "darkorange", "darkred"))(n-1)
-
-  points(path$longitude, path$latitude, pch = 19, cex = 0.5, col = rgb(1, 0, 0, 0.5))
-  # arrows(x0 = path$longitude[-n],
-  #       y0 = path$latitude[-n],
-  #       x1 = path$longitude[-1], 
-  #       y1 = path$latitude[-1],
-  #       length = 0.08,
-  #       col = colors,
-  #       lwd = 1.5)
-}
-  # plot local environment in terms of attraction
-  # terra::plot(attract, main = paste("Local environment for jaguar", id))
-  # plot jaguar path points as arrows between points
-  
-  # n <- nrow(path)
-  # colors <- colorRampPalette(c("gold", "darkorange", "darkred"))(n-1)
-  # arrows(x0 = path$longitude[-n],
-  #       y0 = path$latitude[-n],
-  #       x1 = path$longitude[-1], 
-  #       y1 = path$latitude[-1],
-  #       length = 0.08,
-  #       col = colors,
-  #       lwd = 1.5)

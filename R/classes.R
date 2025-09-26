@@ -9,7 +9,7 @@ library(R6)
 #  $dispersal_from()  - simulate dispersal from a starting point
 #  $log_likelihood()  - calculate log-likelihood of observed steps
 #  $fit()             - fit the model to a trajectory
-step_selection_model <- R6Class("step_selection_model",
+step_selection <- R6Class("step_selection",
   public = list(  
     prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE,
                                env_raster = NULL) {
@@ -56,12 +56,12 @@ step_selection_model <- R6Class("step_selection_model",
     },
 
     dispersal_from = function(init_point, par, rdf = brdf, raster = brazil_ras,
-                              max_dist, sim = FALSE) {
-      objects <- self$prepare_objects(init_point, max_dist, rdf, sim, raster)
-      attract <- self$build_kernel(par, objects, sim)
-      return(list(probs = attract[1, ],
-                  nbhd = objects$nbhd_ss,
-                  par = par))
+                              max_dist, n_steps, step_size, sim = FALSE) {
+        objects <- self$prepare_objects(init_point, max_dist, rdf, sim, raster)
+        attract <- self$build_kernel(par, objects, sim)
+        return(list(probs = attract[1, ],
+                    nbhd = objects$nbhd_ss,
+                    par = par))
     },
 
     log_likelihood = function(par, objects, sim, debug = FALSE) {
@@ -120,16 +120,16 @@ step_selection_model <- R6Class("step_selection_model",
 #   $dispersal_from()  - simulate dispersal from a starting point
 #   $log_likelihood()  - calculate log-likelihood of observed path
 #   $fit()             - fit the model to a trajectory
-path_propagation_model <- R6Class("path_propagation_model",
+path_propagation <- R6Class("path_propagation",
   public = list(
-    propagation_steps = NULL,
 
+    propagation_steps = NULL,
     initialize = function(propagation_steps = 10) {
       self$propagation_steps <- propagation_steps
     },
 
-    prepare_objects = function(trajectory, max_dist, step_size, rdf, sim = FALSE,
-                               env_raster = NULL, propagation_steps = NULL) {
+    prepare_objects = function(trajectory, env_raster = NULL, rdf, sim = FALSE,
+                               max_dist) {
       message("Preparing path propagation objects")   
       env_ras <- if (sim) env_raster else brazil_ras
 
@@ -184,9 +184,7 @@ path_propagation_model <- R6Class("path_propagation_model",
         dest = dest,
         obs = obs,
         max_dist = max_dist,
-        step_size = step_size,
         outliers = integer(0),  # set externally if needed
-        propagation_steps = propagation_steps,
         mu_env = attributes(env_i)[[2]],
         sd_env = attributes(env_i)[[3]]
       )
@@ -194,55 +192,54 @@ path_propagation_model <- R6Class("path_propagation_model",
       return(result)
     },
 
-    build_kernel = function(par, objects, sim) { ## FIX propagation_steps
+    build_kernel = function(par, objects, sim, max_dist, n_steps, step_size) {
       env_i      <- objects$env_i
       nbhd_i     <- objects$nbhd_i
       to_dest    <- objects$to_dest
       dest       <- objects$dest
-      max_dist   <- objects$max_dist
-      step_size  <- objects$step_size
       n_obs      <- length(objects$obs) + 1
 
       # Extract kernel parameters
       k_exp   <- exp(par[length(par) - 1]) %>% as.numeric # Ensure positive
       bg_rate <- exp01(par[length(par)]) %>% as.numeric() # Ensure [0, 1]
-      kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
-                                          kfun = function(x) dexp(x, k_exp) + bg_rate)
+      kernel <- calculate_dispersal_kernel(max_dispersal_dist = max_dist, 
+                                    kfun = function(x) dexp(x, k_exp) + bg_rate)
 
       # Calculate environmental attraction
-      attract0 <- env_function(env_i, par, nbhd = nbhd_i, sim = sim) 
+      attract0 <- env_function(env_i, par, nbhd = nbhd_i, sim = sim)
       attract <- apply_kernel(attract0, kernel)
 
       # Propagating probabilities forward
       ncell_local <- (2 * max_dist + 1)^2 
-      current <- array(0, dim = c(ncell_local, n_obs, self$propagation_steps))
+      current <- array(0, dim = c(ncell_local, n_obs, n_steps))
       
       # Set starting probability to 1 at center
       center <- ncell_local / 2 + 0.5
       current[center, , 1] <- 1
 
-      for (j in 1:(self$propagation_steps - 1)) {
+      for (j in 1:(steps - 1)) {
         step_prob <- as.vector(current[, , j]) * attract[]
         dest[] <- step_prob[as.vector(to_dest)]
         current[, , j + 1] <- rowSums(dest, na.rm = TRUE)
-      }
+      }             
       
       return(current)
     },
 
     dispersal_from = function(init_point, par, rdf = brdf, raster = brazil_ras, 
-                              max_dist = self$max_dist, step_size = 1,  sim = FALSE) {
-      steps <- max_dist * 0.7
-      objects <- self$prepare_objects(init_point, max_dist, step_size, rdf, sim,
-                                      brazil_ras, propagation_steps = steps)
-      current <- self$build_kernel(par, objects, sim)
+                              max_dist = self$max_dist, step_size = 1,  
+                              n_steps = 100, sim = FALSE) {
 
+      objects <- self$prepare_objects(trajectory = init_point, rdf = rdf, 
+                                      max_dist = max_dist, sim = sim)
+      current <- self$build_kernel(par, objects, sim, n_steps = n_steps,
+                                  max_dist = max_dist, step_size = step_size)
       # Return final probability distribution for the starting point
       return(list(
-        probs = current[, 1, self$propagation_steps],  # Final step probabilities
+        probs = current[, 1, n_steps],  # Final step probabilities
         nbhd = objects$nbhd_i,
         par = par,
-        propagation_steps = self$propagation_steps
+        propagation_steps = n_steps
       ))                                   
     },
 
@@ -372,7 +369,7 @@ movement_simulator <- R6Class("movement_simulator",
           results <- foreach(i = seq_len(n_individuals),
               .packages = c("terra", "gstat"),
               .export = c(  # Model classes
-                            "step_selection_model", "path_propagation_model",
+                            "step_selection", "path_propagation",
                             # All functions
                             all_functions,
                             # Data
@@ -403,8 +400,8 @@ movement_simulator <- R6Class("movement_simulator",
                     nbhd_full <<- make_nbhd(i = seq_len(ncell(land_i)), 
                                       sz = step_size, r = land_i, rdf = rdf)
                     
-                    ss_model <- step_selection_model$new()
-                    pp_model <- path_propagation_model$new()
+                    ss_model <- step_selection$new()
+                    pp_model <- path_propagation$new()
                     
                     # Fit both models
                     ss_result <- ss_model$fit(trajectory, max_dist, rdf, 
@@ -421,8 +418,8 @@ movement_simulator <- R6Class("movement_simulator",
                 }
         } else {
           # Create model instances
-          ss_model <- step_selection_model$new()
-          pp_model <- path_propagation_model$new()
+          ss_model <- step_selection$new()
+          pp_model <- path_propagation$new()
           
           results <- list()
           for (i in 1:self$config$n_individuals) {
@@ -804,8 +801,8 @@ empirical_batch <- R6Class("empirical_batch",
       }
       
       # Create model instances
-      ss_model <- step_selection_model$new()
-      pp_model <- path_propagation_model$new()
+      ss_model <- step_selection$new()
+      pp_model <- path_propagation$new()
       
       # Main processing loop
       if (self$config$parallel) {
@@ -934,9 +931,10 @@ individual_analysis <- R6Class("individual_analysis",
       return(all_results[all_results$ID == self$id, ])
     },
 
-    compare_dispersal = function(init_point = NULL, step = NULL, max_dist = 10) {
-      ss_model <- step_selection_model$new()
-      pp_model <- path_propagation_model$new()
+    compare_dispersal = function(init_point = NULL, step = NULL, plot_dist,
+                                max_dist, step_size, n_steps) {
+      ss_model <- path_propagation$new() # they are the same 
+      pp_model <- path_propagation$new()
 
       if (is.null(init_point) && is.null(step)) {
         init_point <- self$track_cells[1]
@@ -950,39 +948,67 @@ individual_analysis <- R6Class("individual_analysis",
       fitted_pars_ss <- self$results[3:10]
       fitted_pars_pp <- self$results[14:21]
 
-      self$ss_disp <- ss_model$dispersal_from(init_point = init_point, 
-                        par = fitted_pars_ss, max_dist = max_dist, sim = FALSE)
-      message("Step selection dispersal calculated")
-
       if (!exists("nbhd_full", envir = .GlobalEnv)) {
         message("Generating global neighborhood matrix")
         nbhd_full <<- make_nbhd(i = seq_len(nrow(brdf)), sz = 1)
       }
+
+      step_size_ss <- max_dist                 # no distinction for step selection
+      n_steps_ss   <- ceiling(n_steps / step_size_ss)   # Adjust steps for step size
+      self$ss_disp <- ss_model$dispersal_from(init_point = init_point,
+        n_steps = n_steps_ss, step_size = step_size_ss, max_dist = max_dist,
+        par = fitted_pars_ss, sim = FALSE)
+      message("Step selection dispersal calculated")
+
       self$pp_disp <- pp_model$dispersal_from(init_point = init_point, 
-                         par = fitted_pars_pp, max_dist = max_dist, sim = FALSE)
+        n_steps = n_steps, step_size = step_size, par = fitted_pars_pp, 
+        max_dist = max_dist, sim = FALSE)
       message("Path propagation dispersal calculated")
 
-      plotpdf(nm = paste0("figs/indiv_test_", Sys.Date(), ".pdf"), x = 8, y = 4)
-      par(mfrow = c(1, 3))
-      center <- (2 * max_dist + 1)  ^ 2 / 2 + 1
+      plotpdf(nm = paste0("figs/indiv_test_", Sys.Date(), ".pdf"), x = 8, y = 8)
+      par(mfrow = c(2, 2))
+      # Extract probability distributions
       p_ss <- self$ss_disp$probs
-      p_ss[center] <- NA  # Set center to NA for better color scaling
-      p_ss <- p_ss / max(p_ss, na.rm = TRUE)
-      rast_ss <- rast(matrix(log(p_ss), 
-                          nrow = 2 * max_dist + 1, ncol = 2 * max_dist + 1))
-      terra::plot(rast_ss, main = "Step selection")
       p_pp <- self$pp_disp$probs
-      p_pp[center] <- NA  # Set center to NA for better color scaling
-      p_pp <- p_pp / max(p_pp, na.rm = TRUE)
-      rast_pp <- rast(matrix(log(p_pp), 
-                          nrow = 2 * max_dist + 1, ncol = 2 * max_dist + 1))
-      terra::plot(rast_pp, main = "Path propagation")
-      diff <- p_pp - p_ss
-      rast_diff <- rast(matrix(diff, 
-                          nrow = 2 * max_dist + 1, ncol = 2 * max_dist + 1))
-      terra::plot(rast_diff, main = "Difference (PP - SS)")
+
+      # Create rasters using full computational area
+      center <- (2 * max_dist + 1)^2 / 2 + 1
+      p_ss[center] <- NA  # Set center to NA for better color scaling
+      p_pp[center] <- NA
+
+      # Scale for visualization
+      p_ss_scaled <- sqrt(p_ss / max(p_ss, na.rm = TRUE))
+      p_pp_scaled <- sqrt(p_pp / max(p_pp, na.rm = TRUE))
+
+      # Create rasters
+      rast_ss <- rast(matrix(p_ss_scaled, nrow = 2 * max_dist + 1, ncol = 2 * max_dist + 1))
+      rast_pp <- rast(matrix(p_pp_scaled, nrow = 2 * max_dist + 1, ncol = 2 * max_dist + 1))
+
+      # Define plotting extent based on plot_dist
+      init_coords <- xyFromCell(brazil_ras, init_point)
+      pixel_res <- res(brazil_ras)[1]
+      half_pix <- plot_dist * pixel_res
+      plot_extent <- ext(c(
+        init_coords[1] - half_pix, init_coords[1] + half_pix,
+        init_coords[2] - half_pix, init_coords[2] + half_pix
+      ))
+
+      # Plotting
+      terra::plot(rast_ss, main = "Step selection", ext = plot_extent)
+      terra::plot(rast_pp, main = "Path propagation", ext = plot_extent)
+
+      # Difference plot
+      diff <- p_pp_scaled - p_ss_scaled
+      rast_diff <- rast(matrix(diff, nrow = 2 * max_dist + 1, ncol = 2 * max_dist + 1))
+      terra::plot(rast_diff, main = "Difference (PP - SS)", ext = plot_extent)
+
+      # Forest cover context
+      forest_cover <- terra::crop(brazil_ras[[4]], plot_extent)
+      terra::plot(forest_cover, main = "Forest cover")
+      track_coords <- self$track[, c("longitude", "latitude")]
+      points(track_coords, pch = 19, cex = 0.5, col = "red")
       dev.off()
-      message("Dispersal comparison plot saved")                   
+      message("Dispersal comparison plot saved")   
     }
 
   ))

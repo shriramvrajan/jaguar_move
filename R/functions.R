@@ -15,7 +15,6 @@ library(foreach)
 library(doParallel)
 library(viridis)
 library(ggplot2)
-# library(plotly)
 
 # Data =========================================================================
 
@@ -50,17 +49,6 @@ e_results <- readRDS("data/output/oldresults_empirical.rds")
 exp01 <- function(x) {
     return(1 / (1 + exp(x)))
 }
-
-# Calculate moving window average
-moving_window <- function(x, y, window = 0.2) {
-    out <- sapply(seq_len(length(x)), function(i) {
-      pos <- which(x > x[i] - window & x < x[i] + window)
-      return(mean(y[pos], na.rm = T))
-    })
-    df <- data.frame(x = x, y = out)
-    return(df[order(df$x), ])
-}
-
 # Output message m both in console and in logfile f
 message <- function(m, f = "data/output/run_log.txt") {
     m <- paste(format(Sys.time(), "%d.%m.%y  %R"), m)
@@ -81,36 +69,11 @@ log_tail <- function(n = 10, f = "data/output/run_log.txt") {
     tail(readLines(f), n)
 }
 
-# Print list of all simulations from simlist.md
-simlist <- function() {
-    # List all files in the simulations directory
-    sim <- readLines("simulations/simlist.md")
-    sim <- sim[-which(sim == "")]
-    print(sim)
-}
-
 # Set up parallel processing
 parallel_setup <- function(n_cores = 4) {
     cl <- makeCluster(n_cores)
     registerDoParallel(cl)
     message(paste0("Parallel processing set up with ", n_cores, " cores."))
-}
-
-# Load files from a list if they exist in a directory dir
-load_if_exists <- function(files, dir) {
-    out <- lapply(files, function(f) {
-        if (file.exists(paste0(dir, "/", f))) {
-            readRDS(paste0(dir, "/", f))
-        } else {
-            return(NA)
-        }
-    })
-}
-
-# Save raster r as filename fn under ./data/
-save_raster <- function(r, fn) {
-    # Save raster often because it can get corrupted while working
-    writeRaster(r, paste0("data/", fn), overwrite = TRUE)
 }
 
 # Turn raster into a 3-column dataframe with row, col, and value
@@ -135,6 +98,18 @@ rast9 <- function(r, cell) {
     expand <- expand.grid((row - 1):(row + 1), (col - 1):(col + 1))
     cell9 <- ext(r, cells = terra::cellFromRowCol(r, expand$Var1, expand$Var2))
     zoom(r, cell9)
+}
+
+plot_satellite <- function(bbox) {
+    tryCatch({
+        satellite_map <- ggmap::get_map(location = bbox, maptype = "satellite")
+        p <- ggmap(satellite_map) + labs(title = "Dispersal kernel area") +
+        theme_void()
+        print(p)
+    }, error = function(e) {
+        message("Satellite map not available.")
+        return(NULL)
+    })
 }
 
 # 1. Movement model ============================================================

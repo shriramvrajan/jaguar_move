@@ -1,7 +1,7 @@
-rm(list = ls())
+# Load required functions and classes only once
 source("R/functions.R")
 source("R/classes.R")
-
+ 
 file_ss <- "data/output/empirical_results_ss_2025-09-24.rds"
 file_pp <- "data/output/empirical_results_pp_2025-09-24.rds"
 
@@ -11,8 +11,8 @@ res <- results_table(file_ss = file_ss, file_pp = file_pp)
 
 # Empirical individual analysis ================================================
 
-jag_i <- individual_analysis$new(id = 114, file_ss = file_ss, file_pp = file_pp)
-jag_i$compare_dispersal(step = 1, max_dist = 50)
+jag_i <- individual_analysis$new(id = 12, file_ss = file_ss, file_pp = file_pp)
+jag_i$compare_dispersal(plot_dist = 30, max_dist = 10, step_size = 1, n_steps = 1000)
 
 # Simulation results ===========================================================
 

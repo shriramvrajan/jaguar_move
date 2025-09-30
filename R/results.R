@@ -12,6 +12,9 @@ res <- results_table(file_ss = file_ss, file_pp = file_pp)
 # Empirical individual analysis ================================================
 
 jag_i <- individual_analysis$new(id = 12, file_ss = file_ss, file_pp = file_pp)
+
+# Both step_size and n_steps are defined by the user for path propagation, 
+# step selection uses max_dist as step size and adjusts n_steps accordingly
 jag_i$compare_dispersal(plot_dist = 30, max_dist = 10, step_size = 1, n_steps = 1000)
 
 # Simulation results ===========================================================

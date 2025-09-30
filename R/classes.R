@@ -129,8 +129,8 @@ path_propagation <- R6Class("path_propagation",
     },
 
     prepare_objects = function(trajectory, env_raster = NULL, rdf, sim = FALSE,
-                               max_dist) {
-      message("Preparing path propagation objects")   
+                               max_dist, step_size) {
+      message("Preparing indexed objects for path propagation")   
       env_ras <- if (sim) env_raster else brazil_ras
 
       # Extended neighborhoods
@@ -146,14 +146,19 @@ path_propagation <- R6Class("path_propagation",
       # Build inner neighborhood structure. Each entry in the list is the 
       # immediate neighborhood of each cell in the extended neighborhood,
       # as represented by a cell number of raster env_ras
+      unique_cells <- unique(as.vector(nbhd_0))
+      nbhd_step <- make_nbhd(i = unique_cells, sz = step_size, r = env_raster, 
+                              rdf = rdf)
+      rownames(nbhd_step) <- as.character(unique_cells)
+
       nbhd_list <- lapply(seq_len(nrow(nbhd_0)), function(i) {                
         row_inds <- seq_len(ncol(nbhd_0)) + (i - 1) * ncol(nbhd_0)
-        names(row_inds) <- nbhd_0[i, ]
-        out <- matrix(row_inds[as.character(nbhd_full[nbhd_0[i, ], ])], 
-                      nrow = length(row_inds), ncol = ncol(nbhd_full))
+        names(row_inds) <- as.character(nbhd_0[i, ])
+        out <- matrix(row_inds[as.character(nbhd_step[names(row_inds)]), ], 
+                      nrow = length(row_inds), ncol = ncol(nbhd_step))
         return(out)
       })
-      nbhd_i <- do.call(rbind, nbhd_list)
+      # nbhd_i <- do.call(rbind, nbhd_list)
 
       # Reindexing to link row numbers from nbhd_i to cell numbers in env_ras
       nbhd_0 <- as.vector(t(nbhd_0))
@@ -175,7 +180,10 @@ path_propagation <- R6Class("path_propagation",
       
       env_i <- if (sim) scale(rdf$sim1[nbhd_0]) else scale(rdf[nbhd_0, ])
       if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
+      paste("Prepared", nrow(nbhd_i), "indexed cells for path propagation") %>%
+        message()
 
+      browser()
       # Return path propagation specific objects
       result <- list(
         env_i = env_i,
@@ -396,10 +404,6 @@ movement_simulator <- R6Class("movement_simulator",
                     trajectory <- terra::cellFromRowCol(land_i, 
                                     trajectory_df[, 1], trajectory_df[, 2])
                     
-                    # Build individual neighborhood
-                    nbhd_full <<- make_nbhd(i = seq_len(ncell(land_i)), 
-                                      sz = step_size, r = land_i, rdf = rdf)
-                    
                     ss_model <- step_selection$new()
                     pp_model <- path_propagation$new()
                     
@@ -442,10 +446,6 @@ movement_simulator <- R6Class("movement_simulator",
               trajectory <- terra::cellFromRowCol(land_i, 
                                     trajectory_df[, 1], trajectory_df[, 2])
               
-              # Build individual neighborhood
-              nbhd_full <<- make_nbhd(i = seq_len(ncell(land_i)), 
-                                    sz = self$config$step_size, 
-                                    r = land_i, rdf = rdf)
               # Fit both models
               ss_result <- ss_model$fit(trajectory, max_dist, rdf, par_start, 
                                       sim = TRUE, env_raster = land_i)
@@ -788,12 +788,6 @@ empirical_batch <- R6Class("empirical_batch",
       
       message(paste0("Processing ", length(i_todo), " individuals"))
       
-      # Set up global neighborhood if needed
-      if (!exists("nbhd_full")) {
-        message("Generating global neighborhood matrix")
-        nbhd_full <<- make_nbhd(i = seq_len(nrow(brdf)), sz = self$config$step_size)
-      }
-      
       # Set up parallel processing
       if (self$config$parallel) {
         registerDoParallel(self$config$n_cores)
@@ -933,25 +927,14 @@ individual_analysis <- R6Class("individual_analysis",
 
     compare_dispersal = function(init_point = NULL, step = NULL, plot_dist,
                                 max_dist, step_size, n_steps) {
-      ss_model <- path_propagation$new() # they are the same 
-      pp_model <- path_propagation$new()
+      ss_model <- path_propagation$new() # they are the same now
+      pp_model <- path_propagation$new() # they are the same now
 
-      if (is.null(init_point) && is.null(step)) {
-        init_point <- self$track_cells[1]
-      } else if (!is.null(step)) {
-        if (step < 1 || step > length(self$track_cells)) {
-          stop("Step out of bounds")
-        }
-        init_point <- self$track_cells[step]
-      }
+      if (is.null(step)) step <- 1
+      init_point <- self$track_cells[step]
 
       fitted_pars_ss <- self$results[3:10]
       fitted_pars_pp <- self$results[14:21]
-
-      if (!exists("nbhd_full", envir = .GlobalEnv)) {
-        message("Generating global neighborhood matrix")
-        nbhd_full <<- make_nbhd(i = seq_len(nrow(brdf)), sz = 1)
-      }
 
       step_size_ss <- max_dist                 # no distinction for step selection
       n_steps_ss   <- ceiling(n_steps / step_size_ss)   # Adjust steps for step size

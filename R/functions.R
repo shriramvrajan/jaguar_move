@@ -119,13 +119,16 @@ plot_satellite <- function(bbox) {
 # i:    Index of cell in raster
 # sz:   Size of neighborhood
 make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
-  mat <- matrix(0, nrow = length(i), ncol = (2 * sz + 1)^2)
-  # values to add to central cell's row/col to get neighborhood cells' row/col
-  ind1 <- t(rep(-sz:sz, each = 2 * sz + 1))
-  ind2 <- t(rep(-sz:sz, 2 * sz + 1))
-  for (j in seq_len(length(ind1))) {
-    mat[, j] <- terra::cellFromRowCol(r, rdf$row[i] + ind1[j], rdf$col[i] + ind2[j])
-  }
+  n_cells <- length(i)
+  n_offsets <- (2 * sz + 1)^2
+
+  offsets_row <- t(rep(-sz:sz, each = 2 * sz + 1))
+  offsets_col <- t(rep(-sz:sz, times = 2 * sz + 1))
+  rows_all <- rep(rdf$row[i], each = n_offsets) + rep(offsets_row, times = n_cells)
+  cols_all <- rep(rdf$col[i], each = n_offsets) + rep(offsets_col, times = n_cells)
+
+  cells_all <- terra::cellFromRowCol(r, rows_all, cols_all)
+  mat <- matrix(cells_all, nrow = n_cells, ncol = n_offsets, byrow = TRUE)
   return(mat)
 }
 
@@ -164,10 +167,12 @@ normalize_nbhd <- function(v, nbhd) {
 # env:      Environmental variable values
 # par:      Parameters for functional form
 # format:   TRUE to return as matrix, FALSE to return as vector
-env_function <- function(env, par, nbhd, sim) {
+env_function <- function(env, par, nbhd = NULL, sim = FALSE) {
 
   par <- as.numeric(par)
   if (!sim) {
+    env <- scale(env)
+    if (any(is.na(env))) env[which(is.na(env))] <- 0
     # First order, no intercept
     attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
                             par[3] * env[, 3] + par[4] * env[, 4] + 
@@ -175,9 +180,14 @@ env_function <- function(env, par, nbhd, sim) {
   } else {
     attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
   }
-  attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
-  attract <- attract / rowSums(attract, na.rm = TRUE)
-  return(attract)  
+
+  if (is.null(nbhd)) {
+    return(attract)
+  } else {
+    attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
+    attract <- attract / rowSums(attract, na.rm = TRUE)
+    return(attract)  
+  }
 }
 
 apply_kernel <- function(attract0, kernel) {

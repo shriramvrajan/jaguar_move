@@ -234,7 +234,7 @@ path_propagation_model <- R6Class("path_propagation_model",
       # Make it sparse?
       p_current <- setNames(1.0, as.character(init_point))
 
-      for(i in 1:n_steps) {
+      for (i in 1:n_steps) {
         message(paste("Step:", i, "of", n_steps))
         p_next <- numeric(0)
         
@@ -974,6 +974,8 @@ individual_analysis <- R6Class("individual_analysis",
       if (is.null(step)) step <- 1
       init_point <- self$track_cells[step]
 
+      max_displacement <- step_size * n_steps
+
       fitted_pars_ss <- self$results[3:10]
       fitted_pars_pp <- self$results[14:21]
 
@@ -996,13 +998,13 @@ individual_analysis <- R6Class("individual_analysis",
       ########## PLOTTING STARTS HERE (probably move somewhere else) ###########
 
       plotpdf(nm = paste0("figs/indiv_test_", Sys.Date(), ".pdf"), x = 8, y = 8)
-      par(mfrow = c(2, 2))
+      par(mfrow = c(1, 2))
       # Extract probability distributions
       p_ss <- self$ss_disp$probs
       p_pp <- self$pp_disp$probs
 
       # Create rasters using full computational area
-      center <- (2 * max_dist + 1)^2 / 2 + 1
+      center <- (2 * max_displacement + 1)^2 / 2 + 1
       p_ss[center] <- NA  # Set center to NA for better color scaling
       p_pp[center] <- NA
 
@@ -1013,31 +1015,37 @@ individual_analysis <- R6Class("individual_analysis",
       p_pp_scaled <- log(p_pp + 1) / log(max(p_pp, na.rm = TRUE) + 1)
 
       # Create rasters
-      rast_ss <- rast(matrix(p_ss_scaled, nrow = 2 * max_dist + 1, ncol = 2 * max_dist + 1))
-      rast_pp <- rast(matrix(p_pp_scaled, nrow = 2 * max_dist + 1, ncol = 2 * max_dist + 1))
+      rast_ss <- rast(matrix(p_ss_scaled, nrow = 2 * max_displacement + 1, ncol = 2 * max_displacement + 1))
+      rast_pp <- rast(matrix(p_pp_scaled, nrow = 2 * max_displacement + 1, ncol = 2 * max_displacement + 1))
 
-      # Define plotting extent based on max_dist``
+      # Define plotting extent based on max_displacement``
       init_coords <- xyFromCell(brazil_ras, init_point)
       pixel_res <- res(brazil_ras)[1]
-      half_pix <- max_dist * pixel_res
+      half_pix <- max_displacement * pixel_res
       plot_extent <- ext(c(
         init_coords[1] - half_pix, init_coords[1] + half_pix,
         init_coords[2] - half_pix, init_coords[2] + half_pix
       ))
 
-      # Plotting
-      terra::plot(rast_ss, main = "Step selection")
-      terra::plot(rast_pp, main = "Path propagation")
+      crs(rast_ss) <- crs(brazil_ras)
+      ext(rast_ss) <- plot_extent
+      crs(rast_pp) <- crs(brazil_ras)
+      ext(rast_pp) <- plot_extent
 
-      # Difference plot
-      diff <- p_pp_scaled - p_ss_scaled
-      rast_diff <- rast(matrix(diff, nrow = 2 * max_dist + 1, ncol = 2 * max_dist + 1))
-      terra::plot(rast_diff, main = "Difference (PP - SS)")
-      # Forest cover context
-      forest_cover <- terra::crop(brazil_ras[[4]], plot_extent)
-      terra::plot(forest_cover, main = "Forest cover")
+      # Plotting
       track_coords <- self$track[, c("longitude", "latitude")]
-      points(track_coords, pch = 19, cex = 0.5, col = "red")
+      terra::plot(rast_ss, main = "Step selection")
+      points(track_coords, pch = 19, cex = 0.3, col = rgb(1, 0, 0, 0.3))
+      terra::plot(rast_pp, main = "Path propagation")
+      points(track_coords, pch = 19, cex = 0.3, col = rgb(1, 0, 0, 0.3))
+
+      # # Difference plot
+      # diff <- p_pp_scaled - p_ss_scaled
+      # rast_diff <- rast(matrix(diff, nrow = 2 * max_displacement + 1, ncol = 2 * max_displacement + 1))
+      # terra::plot(rast_diff, main = "Difference (PP - SS)")
+      # # Forest cover context
+      # forest_cover <- terra::crop(brazil_ras[[4]], plot_extent)
+      # terra::plot(forest_cover, main = "Forest cover")
       dev.off()
       message("Dispersal comparison plot saved")                
     }

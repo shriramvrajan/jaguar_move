@@ -13,7 +13,7 @@ res <- results_table(file_ss = file_ss, file_pp = file_pp)
 
 jag_i <- individual_analysis$new(id = 114, file_ss = file_ss, file_pp = file_pp)
 
-jag_i$compare_dispersal(step_size = 5, n_steps = 200)
+jag_i$compare_dispersal(step_size = 2, n_steps = 20)
 
 # Simulation results ===========================================================
 

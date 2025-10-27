@@ -481,3 +481,62 @@ results_table <- function(file_ss, file_pp) {
                       paste0("pp_par", 1:8), "pp_ll", "pp_conv", "pp_aic")
   return(out)
 }
+
+plot_dispersal_comparison <- function(p_ss, p_pp, max_displacement, id) {
+                
+      plotpdf(nm = paste0("figs/dispersal_tests/indiv_test_", id, "_", 
+                          Sys.Date(), ".pdf"), x = 6, y = 6)
+      par(mfrow = c(2, 2))
+
+      # Extract probability distributions
+      center <- (2 * max_displacement + 1)^2 / 2 + 1
+      p_ss[center] <- NA  # Set center to NA for better color scaling
+      p_pp[center] <- NA
+
+      # Scale for visualization
+      p_ss_scaled <- p_ss / max(p_ss, na.rm = TRUE)
+      p_pp_scaled <- p_pp / max(p_pp, na.rm = TRUE)
+
+      # Create rasters
+      rast_ss <- rast(matrix(p_ss_scaled, nrow = 2 * max_displacement + 1, 
+                             ncol = 2 * max_displacement + 1))
+      rast_pp <- rast(matrix(p_pp_scaled, nrow = 2 * max_displacement + 1,
+                             ncol = 2 * max_displacement + 1))
+
+      # Define plotting extent based on max_displacement
+      init_coords <- xyFromCell(brazil_ras, init_point)
+      pixel_res <- res(brazil_ras)[1]
+      half_pix <- max_displacement * pixel_res
+      plot_extent <- ext(c(
+        init_coords[1] - half_pix, init_coords[1] + half_pix,
+        init_coords[2] - half_pix, init_coords[2] + half_pix
+      ))
+
+      crs(rast_ss) <- crs(brazil_ras)
+      ext(rast_ss) <- plot_extent
+      crs(rast_pp) <- crs(brazil_ras)
+      ext(rast_pp) <- plot_extent
+
+      # Plotting
+      track_coords <- self$track[, c("longitude", "latitude")]
+      track_vect <- vect(track_coords, geom = c("longitude", "latitude"), crs = wgs84)
+      track_vect <- project(track_vect, crs(brazil_ras))
+      rast_ss <- terra::crop(rast_ss, track_vect)
+      rast_pp <- terra::crop(rast_pp, track_vect)
+      terra::plot(rast_ss, main = "Step selection")
+      terra::plot(rast_pp, main = "Path propagation")
+      terra::plot(rast_ss)
+      points(track_vect, pch = 19, cex = 0.3, col = rgb(1, 0, 0, 0.05))
+      terra::plot(rast_pp)
+      points(track_vect, pch = 19, cex = 0.3, col = rgb(1, 0, 0, 0.05))
+
+      # # Difference plot
+      # diff <- p_pp_scaled - p_ss_scaled
+      # rast_diff <- rast(matrix(diff, nrow = 2 * max_displacement + 1, ncol = 2 * max_displacement + 1))
+      # terra::plot(rast_diff, main = "Difference (PP - SS)")
+      # # Forest cover context
+      # forest_cover <- terra::crop(brazil_ras[[4]], plot_extent)
+      # terra::plot(forest_cover, main = "Forest cover")
+      dev.off()
+      message("Dispersal comparison plot saved")  
+}

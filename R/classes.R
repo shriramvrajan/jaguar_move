@@ -775,7 +775,7 @@ empirical_config <- R6Class("empirical_config",
     model_calcnull = NULL,    # Whether to calculate null model likelihood (T/F)
 
     initialize = function(model_type, npar = 8, step_size = 1, 
-                         holdout_set = TRUE, holdout_frac = 0.3,
+                         holdout_set = TRUE, holdout_frac = 0.7,
                          parallel = FALSE, propagation_steps = 6, n_cores = 10,
                          individuals = NULL, fit_model = TRUE,
                          model_calcnull = FALSE) {

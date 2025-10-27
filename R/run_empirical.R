@@ -4,8 +4,8 @@ source("R/classes.R")       # New classes
 
 set.seed(1)
 model_type <- 2  # 1: step selection, 2: path propagation
-config <- empirical_config$new(model_type = model_type, individuals = 12,
-                               parallel = FALSE, n_cores = 6)
+config <- empirical_config$new(model_type = model_type, individuals = NULL,
+                               parallel = FALSE, n_cores = 4)
 
 batch <- empirical_batch$new(config)
 

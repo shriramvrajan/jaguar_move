@@ -122,10 +122,11 @@ step_selection_model <- R6Class("step_selection_model",
 #   $fit()             - fit the model to a trajectory
 path_propagation_model <- R6Class("path_propagation_model",
   public = list(
-    propagation_steps = 6,  # Default, should be set externally
+    propagation_steps = 10,  # Default, should be set externally
 
     prepare_objects = function(trajectory, max_dist, step_size, rdf, sim = FALSE,
                                env_raster = NULL) {
+      ## This is where the magic happens. Indexing is everything!
       message("Preparing path propagation objects")   
       env_ras <- if (sim) env_raster else brazil_ras
 
@@ -171,7 +172,6 @@ path_propagation_model <- R6Class("path_propagation_model",
       
       env_i <- if (sim) scale(rdf$sim1[nbhd_0]) else scale(rdf[nbhd_0, ])
       if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
-      
       # Return path propagation specific objects
       result <- list(
         env_i = env_i,
@@ -292,7 +292,7 @@ path_propagation_model <- R6Class("path_propagation_model",
       # Calculate log likelihood 
       predictions <- matrix(0, nrow = self$propagation_steps, ncol = n_obs)
       for (i in 1:n_obs) {
-        if (i %in% outliers) {
+        if (i %in% outliers || is.na(obs[i])) {
           predictions[, i] <- rep(NA, self$propagation_steps)
           next
         }
@@ -300,7 +300,10 @@ path_propagation_model <- R6Class("path_propagation_model",
         predictions[, i] <- prob #+ bg_rate - prob * bg_rate
       }
       log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
-      out            <- -max(log_likelihood, na.rm = TRUE)
+      log_likelihood[is.infinite(log_likelihood)] <- NA
+      log_likelihood[log_likelihood == 0] <- NA
+      out            <- ifelse(all(is.na(log_likelihood)), 1e10, #penalty
+                               -max(log_likelihood, na.rm = TRUE))
 
       if (is.infinite(out) || is.na(out)) out <- 0
       if (debug) {
@@ -312,6 +315,7 @@ path_propagation_model <- R6Class("path_propagation_model",
 
     fit = function(trajectory, max_dist, step_size, rdf, par_start, sim = FALSE, 
                   env_raster = NULL, outliers = integer(0)) {
+                    
       objects <- self$prepare_objects(trajectory, max_dist, step_size, rdf, sim, 
                                       env_raster)
       objects$outliers <- outliers
@@ -441,7 +445,8 @@ movement_simulator <- R6Class("movement_simulator",
                     
                     ss_model <- step_selection_model$new()
                     pp_model <- path_propagation_model$new()
-                    
+                    pp_model$propagation_steps <- self$config$propagation_steps
+
                     # Fit both models
                     ss_result <- ss_model$fit(trajectory, max_dist, rdf, 
                                 par_start, sim = TRUE, env_raster = land_i)
@@ -752,47 +757,7 @@ jaguar <- R6Class("jaguar",
       brazil_ras_crop_df <- raster_to_df(brazil_ras_crop)
       return(list(raster = brazil_ras_crop, dataframe = brazil_ras_crop_df))
     }
-
   ))
-
-# Empirical model fitting configuration
-empirical_config <- R6Class("empirical_config",
-  public = list(
-    # Model parameters
-    model_type = NULL,        # 1 for step selection, 2 for path propagation
-    npar = NULL,              # Number of parameters, SHOULD BE SOMEWHERE ELSE
-    step_size = NULL,         # Minimum step size (inner neighborhood) in pixels
-    propagation_steps = NULL, # Number of steps to simulate for path propagation
-    # Holdout set parameters
-    holdout_set = NULL,       # Whether to use holdout set for evaluation (T/F)
-    holdout_frac = NULL,      # Fraction of data to hold out
-    # Parallel processing parameters
-    parallel = NULL,          # Whether to use parallel processing (T/F)
-    n_cores = NULL,           # Number of cores to use if parallel
-    # Model fitting options
-    individuals = NULL,       # NULL = all individuals, or vector of IDs
-    fit_model = NULL,         # Whether to fit the model (T/F)
-    model_calcnull = NULL,    # Whether to calculate null model likelihood (T/F)
-
-    initialize = function(model_type, npar = 8, step_size = 1, 
-                         holdout_set = TRUE, holdout_frac = 0.7,
-                         parallel = FALSE, propagation_steps = 6, n_cores = 10,
-                         individuals = NULL, fit_model = TRUE,
-                         model_calcnull = FALSE) {
-      self$model_type <- model_type
-      self$npar <- npar
-      self$step_size <- step_size
-      self$propagation_steps <- propagation_steps
-      self$holdout_set <- holdout_set
-      self$holdout_frac <- holdout_frac
-      self$parallel <- parallel
-      self$n_cores <- n_cores
-      self$individuals <- individuals
-      self$fit_model <- fit_model
-      self$model_calcnull <- model_calcnull
-    }
-  )
-)
 
 # Batch runner for empirical data fitting
 # Needs a bit of refactoring for cyclomatic complexity
@@ -808,7 +773,7 @@ empirical_batch <- R6Class("empirical_batch",
     },
 
     run_all = function() {
-       # Determine which individuals to process
+      # Determine which individuals to process
       if (is.null(self$config$individuals)) {
         individuals_to_process <- jag_id$jag_id
       } else {
@@ -818,9 +783,9 @@ empirical_batch <- R6Class("empirical_batch",
       # Check for already completed results
       outfiles <- list.files("data/output")
       done <- gsub(".rds", "", outfiles) %>% 
-        gsub("out_", "", .) %>% 
+        gsub("out_",     "", .) %>% 
         gsub("ll_null_", "", .) %>%
-        gsub("ll_", "", .) %>% 
+        gsub("ll_",      "", .) %>% 
         as.numeric()
       done <- done[!is.na(done)]
       i_todo <- setdiff(individuals_to_process, done)
@@ -842,6 +807,7 @@ empirical_batch <- R6Class("empirical_batch",
       # Create model instances
       ss_model <- step_selection_model$new()
       pp_model <- path_propagation_model$new()
+      pp_model$propagation_steps <- self$config$propagation_steps 
       
       # Main processing loop
       if (self$config$parallel) {
@@ -868,12 +834,12 @@ empirical_batch <- R6Class("empirical_batch",
         }
         results <- c(existing_results, results)
       }
+      self$results <- results
 
       # Clean up out_ files 
       outfiles <- list.files("data/output", pattern = "^out_.*\\.rds$")
       file.remove(file.path("data/output", outfiles))
 
-      self$results <- results
       return(results)
     },
     
@@ -888,7 +854,7 @@ empirical_batch <- R6Class("empirical_batch",
       n_obs <- length(track_cells)
       threshold <- mean(na.exclude(track$dt)) + 3 * sd(na.exclude(track$dt))
       outliers <- which(track$dt > threshold) - 1
-
+      
       # Starting parameters
       par_start <- c(rep(1, self$config$npar - 2), 0.1, 0.1)  # Small positive values for rate parameters
       

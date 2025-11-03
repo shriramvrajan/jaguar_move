@@ -1,4 +1,3 @@
-rm(list = ls())
 ## Basic functions and libraries 
 
 # Libraries ====================================================================

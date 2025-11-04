@@ -128,6 +128,7 @@ path_propagation_model <- R6Class("path_propagation_model",
                                env_raster = NULL) {
       ## This is where the magic happens. Indexing is everything!
       message("Preparing path propagation objects")   
+      
       env_ras <- if (sim) env_raster else brazil_ras
 
       # Extended neighborhoods
@@ -245,7 +246,7 @@ path_propagation_model <- R6Class("path_propagation_model",
           cell <- as.numeric(cell)
           nbhd <- make_nbhd(i = cell, sz = step_size, r = raster, rdf = rdf)[1, ]
           nbhd <- nbhd[!is.na(nbhd)]
-
+          
           dists <- sqrt((rdf$row[nbhd] - rdf$row[cell])^2 + 
                         (rdf$col[nbhd] - rdf$col[cell])^2)
           dist_kernel <- dexp(dists, k_exp) + bg_rate
@@ -448,11 +449,10 @@ movement_simulator <- R6Class("movement_simulator",
                     pp_model$propagation_steps <- self$config$propagation_steps
 
                     # Fit both models
-                    ss_result <- ss_model$fit(trajectory, max_dist, rdf, 
+                    ss_result <- ss_model$fit(trajectory, max_dist, rdf = rdf, 
                                 par_start, sim = TRUE, env_raster = land_i)
-                    pp_result <- pp_model$fit(trajectory, max_dist, rdf,
-                                par_start, sim = TRUE, env_raster = land_i, 
-                                propagation_steps = propagation_steps)
+                    pp_result <- pp_model$fit(trajectory, max_dist, rdf = rdf,
+                                par_start, sim = TRUE, env_raster = land_i)
                     
                     return(list(
                       step_selection = ss_result,
@@ -491,11 +491,11 @@ movement_simulator <- R6Class("movement_simulator",
                                     sz = self$config$step_size, 
                                     r = land_i, rdf = rdf)
               # Fit both models
-              ss_result <- ss_model$fit(trajectory, max_dist, rdf, par_start, 
-                                      sim = TRUE, env_raster = land_i)
-              pp_result <- pp_model$fit(trajectory, max_dist, rdf, par_start,
-                                      sim = TRUE, env_raster = land_i, 
-                                      propagation_steps = propagation_steps)
+              ss_result <- ss_model$fit(trajectory, max_dist, rdf = rdf, 
+                         par_start = par_start, sim = TRUE, env_raster = land_i)
+              pp_result <- pp_model$fit(trajectory, max_dist, rdf = rdf, 
+                         par_start = par_start, sim = TRUE, env_raster = land_i,
+                         step_size = step_size)
               results[[i]] <- list(
                 step_selection = ss_result,
                 path_propagation = pp_result,
@@ -516,22 +516,22 @@ movement_simulator <- R6Class("movement_simulator",
 simulation_config <- R6Class("simulation_config",
     public <- list(
         # Landscape parameters
-        env_size = 200,
-        autocorr_strength = 5,
-        autocorr_range = 50,
+        env_size = NULL,
+        autocorr_strength = NULL,
+        autocorr_range = NULL,
 
         # Model parameters
-        env_response = c(-1.5, 1.5, -0.2),
-        step_size = 1,
-        obs_interval = 1,
+        env_response = NULL,
+        step_size = NULL,
+        obs_interval = NULL,
 
         # Simulation parameters
-        n_steps = 1000,
-        n_individuals = 10,
-        n_cores = 15,
+        n_steps = NULL,
+        n_individuals = NULL,
+        n_cores = NULL,
 
         # Output parameters
-        name = "default", 
+        name = NULL, 
 
         initialize = function(name = "default", autocorr_range = 50, 
                             n_individuals = 10, env_size = 200, 
@@ -756,6 +756,17 @@ jaguar <- R6Class("jaguar",
       brazil_ras_crop <- terra::crop(brazil_ras, track_extent)
       brazil_ras_crop_df <- raster_to_df(brazil_ras_crop)
       return(list(raster = brazil_ras_crop, dataframe = brazil_ras_crop_df))
+    },
+
+    get_fragmentation = function() {
+      # get maximum displacement radius from starting point
+      track <- self$get_track()
+      track_extent <- ext(terra::vect(track, 
+                          geom = c("longitude", "latitude"), crs = wgs84))
+                          
+      start_point <- c(track$longitude[1], track$latitude[1])
+      start_cell <- cellFromXY(brazil_ras, matrix(start_point, nrow = 1))
+      
     }
   ))
 

@@ -457,7 +457,7 @@ results_table <- function(file_ss, file_pp) {
   r_ss <- readRDS(file_ss)
   r_pp <- readRDS(file_pp)
   
-  out_df <- matrix(nrow = nrow(jag_meta), ncol = 22)
+  out_df <- matrix(nrow = nrow(jag_meta), ncol = 21)
   for (i in seq_len(nrow(out_df))) {
     if (all(is.na(r_ss[[i]]))) {
       out_df[i, 1:10] <- NA
@@ -467,17 +467,17 @@ results_table <- function(file_ss, file_pp) {
       out_df[i, 11] <- 2 * out_df[i, 9] + 2 * 8
     }
     if (all(is.na(r_pp[[i]]))) {
-      out_df[i, 12:21] <- NA
+      out_df[i, 12:20] <- NA
     } else {
-      out_df[i, 12:21] <- unlist(r_pp[[i]])
+      out_df[i, 12:20] <- unlist(r_pp[[i]])
       # aic based on likelihood
-      out_df[i, 22] <- 2 * out_df[i, 20] + 2 * 8
+      out_df[i, 21] <- 2 * out_df[i, 19] + 2 * 7
     }
   }
   out <- cbind(jag_meta[, c("ID", "biome")], out_df) %>% as.data.frame()
   names(out) <- c("ID", "biome", 
                       paste0("ss_par", 1:8), "ss_ll", "ss_conv", "ss_aic",
-                      paste0("pp_par", 1:8), "pp_ll", "pp_conv", "pp_aic")
+                      paste0("pp_par", 1:7), "pp_ll", "pp_conv", "pp_aic")
   return(out)
 }
 

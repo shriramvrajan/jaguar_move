@@ -44,10 +44,9 @@ step_selection_model <- R6Class("step_selection_model",
 
     build_kernel = function(par, objects, sim) {
       # Extract kernel parameters
-      k_exp <- exp(par[length(par) - 1]) %>% as.numeric()
-      bg_rate <- exp01(par[length(par)]) %>% as.numeric()
+      k_exp <- exp(par[length(par)]) %>% as.numeric()
       kernel <- calculate_dispersal_kernel(max_dispersal_dist = objects$max_dist, 
-                                          kfun = function(x) dexp(x, k_exp) + bg_rate)
+                                          kfun = function(x) dexp(x, k_exp))
       # Calculate environmental attraction
       attract0 <- env_function(objects$env_ss, par, objects$nbhd_ss, sim = sim)
       attract <- apply_kernel(attract0, kernel)
@@ -200,10 +199,9 @@ path_propagation_model <- R6Class("path_propagation_model",
       n_obs      <- length(objects$obs) + 1
 
       # Extract kernel parameters
-      k_exp   <- exp(par[length(par) - 1]) %>% as.numeric # Ensure positive
-      bg_rate <- exp01(par[length(par)]) %>% as.numeric() # Ensure [0, 1]
+      k_exp   <- exp(par[length(par)]) %>% as.numeric # Ensure positive
       kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
-                                          kfun = function(x) dexp(x, k_exp) + bg_rate)
+                    kfun = function(x) dexp(x, k_exp))
 
       # Calculate environmental attraction
       attract0 <- env_function(env_i, par, nbhd = nbhd_i, sim = sim) 
@@ -226,69 +224,13 @@ path_propagation_model <- R6Class("path_propagation_model",
       return(current)
     },
 
-    dispersal_from = function(init_point, par, step_size, n_steps, rdf = brdf,
-                              raster = brazil_ras, threshold = 1e-6) {
-      k_exp <- exp(par[length(par) - 1]) %>% as.numeric()
-      bg_rate <- exp01(par[length(par)]) %>% as.numeric()
-      max_displacement <- step_size * n_steps
-
-      # Make it sparse?
-      p_current <- setNames(1.0, as.character(init_point))
-
-      for (i in 1:n_steps) {
-        message(paste("Step:", i, "of", n_steps))
-        p_next <- numeric(0)
-        
-        for (cell in names(p_current)) {
-          p <- p_current[cell]
-          if (p < threshold) next
-
-          cell <- as.numeric(cell)
-          nbhd <- make_nbhd(i = cell, sz = step_size, r = raster, rdf = rdf)[1, ]
-          nbhd <- nbhd[!is.na(nbhd)]
-          
-          dists <- sqrt((rdf$row[nbhd] - rdf$row[cell])^2 + 
-                        (rdf$col[nbhd] - rdf$col[cell])^2)
-          dist_kernel <- dexp(dists, k_exp) + bg_rate
-          env_kernel  <- env_function(rdf[nbhd, 1:6], par, sim = FALSE)
-          weights     <- dist_kernel * env_kernel /
-                           sum(dist_kernel * env_kernel, na.rm = TRUE)
-          
-          for (i in seq_along(nbhd)) {
-            name         <- as.character(nbhd[i])
-            if (!(name %in% names(p_next))) p_next[name] <- 0
-            p_next[name] <- p_next[name] + p * weights[i]
-          }
-        }
-
-        p_current <- p_next
-        p_current <- p_current[p_current >= threshold]
-      }
-
-      nbhd_full <- make_nbhd(i = init_point, sz = max_displacement, r = raster, 
-                             rdf = rdf)
-      p_vector <- numeric(length(nbhd_full))
-      for (name in names(p_current)) {
-        cell <- as.numeric(name)
-        idx  <- which(nbhd_full == cell)
-        if (length(idx) > 0) p_vector[idx] <- p_current[name]
-      }
-      p_vector <- p_vector / sum(p_vector, na.rm = TRUE)
-
-      return(list(probs = p_vector,
-                  nbhd = nbhd_full,
-                  par = par,
-                  n_steps = n_steps,
-                  step_size = step_size
-      ))
-    },
-
     log_likelihood = function(par, objects, sim, debug = FALSE) {
 
       obs        <- objects$obs
       outliers   <- objects$outliers
       n_obs      <- length(obs) + 1
       current <- self$build_kernel(par, objects, sim)
+
 
       # Calculate log likelihood 
       predictions <- matrix(0, nrow = self$propagation_steps, ncol = n_obs)
@@ -298,13 +240,20 @@ path_propagation_model <- R6Class("path_propagation_model",
           next
         }
         prob <- current[obs[i], i, ]
-        predictions[, i] <- prob #+ bg_rate - prob * bg_rate
+        predictions[, i] <- prob 
       }
+      # Only break on first call
+      # if (!exists("debug_called")) {
+      #   debug_called <<- TRUE
+      #   browser()
+      # }
+      predictions[predictions == 0] <- 1e-10
+      predictions[is.infinite(predictions)] <- NA
       log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
-      log_likelihood[is.infinite(log_likelihood)] <- NA
-      log_likelihood[log_likelihood == 0] <- NA
       out            <- ifelse(all(is.na(log_likelihood)), 1e10, #penalty
                                -max(log_likelihood, na.rm = TRUE))
+      print(paste("Current LL:", round(-out, 4)))
+      print(paste("Parameters:", paste(round(par, 4), collapse = ", ")))
 
       if (is.infinite(out) || is.na(out)) out <- 0
       if (debug) {
@@ -336,6 +285,66 @@ path_propagation_model <- R6Class("path_propagation_model",
         message(paste("Path propagation fitting error:", e$message))
         return(NA)
       })
+    },
+
+
+    dispersal_from = function(init_point, par, step_size, n_steps, rdf = brdf,
+                              raster = brazil_ras, threshold = 1e-6) {
+      
+      # FIX BG RATE ISSUE
+
+      k_exp <- exp(par[length(par)]) %>% as.numeric()
+      max_displacement <- step_size * n_steps
+
+      # Make it sparse?
+      p_current <- setNames(1.0, as.character(init_point))
+
+      for (i in 1:n_steps) {
+        message(paste("Step:", i, "of", n_steps))
+        p_next <- numeric(0)
+        
+        for (cell in names(p_current)) {
+          p <- p_current[cell]
+          if (p < threshold) next
+
+          cell <- as.numeric(cell)
+          nbhd <- make_nbhd(i = cell, sz = step_size, r = raster, rdf = rdf)[1, ]
+          nbhd <- nbhd[!is.na(nbhd)]
+          
+          dists <- sqrt((rdf$row[nbhd] - rdf$row[cell])^2 + 
+                        (rdf$col[nbhd] - rdf$col[cell])^2)
+          dist_kernel <- dexp(dists, k_exp) 
+          env_kernel  <- env_function(rdf[nbhd, 1:6], par, sim = FALSE)
+          weights     <- dist_kernel * env_kernel /
+                           sum(dist_kernel * env_kernel, na.rm = TRUE)
+          
+          for (i in seq_along(nbhd)) {
+            name         <- as.character(nbhd[i])
+            if (!(name %in% names(p_next))) p_next[name] <- 0
+            p_next[name] <- p_next[name] + p * weights[i]
+          }
+        }
+
+        p_current <- p_next
+        p_current <- p_current[p_current >= threshold]
+      }
+
+      nbhd_full <- make_nbhd(i = init_point, sz = max_displacement, r = raster, 
+                             rdf = rdf)
+      p_vector <- numeric(length(nbhd_full))
+      for (name in names(p_current)) {
+        cell <- as.numeric(name)
+        idx  <- which(nbhd_full == cell)
+        if (length(idx) > 0) p_vector[idx] <- p_current[name]
+      }
+      p_vector <- p_vector / sum(p_vector, na.rm = TRUE)
+
+      return(list(probs = p_vector,
+                  nbhd = nbhd_full,
+                  par = par,
+                  n_steps = n_steps,
+                  step_size = step_size
+      ))
     }
   )
 )
@@ -395,7 +404,7 @@ movement_simulator <- R6Class("movement_simulator",
         # Extract config information
         n_cores <- n_cores %||% self$config$n_cores
         max_dist <- self$config$max_dist()
-        propagation_steps <- self$config$propagation_steps()
+        # propagation_steps <- self$config$propagation_steps()
         par_start <- c(-1.5, 1.5, -0.2)
 
         obs_interval <- self$config$obs_interval
@@ -763,7 +772,7 @@ jaguar <- R6Class("jaguar",
       track <- self$get_track()
       track_extent <- ext(terra::vect(track, 
                           geom = c("longitude", "latitude"), crs = wgs84))
-                          
+
       start_point <- c(track$longitude[1], track$latitude[1])
       start_cell <- cellFromXY(brazil_ras, matrix(start_point, nrow = 1))
       
@@ -882,7 +891,8 @@ empirical_batch <- R6Class("empirical_batch",
       
       # Calculate max distance for this individual
       sl_emp <- as.vector(na.exclude(track$sl[track$dt < threshold]))
-      max_dist <- ceiling(1.5 * max(sl_emp / 1000, na.rm = TRUE))
+      max_dist <- ceiling(2 * max(sl_emp / 1000, na.rm = TRUE))
+      pp_model$propagation_steps <- ceiling(1.5 * max_dist / self$config$step_size)
       
       # Fit models based on config
       if (self$config$model_type == 1) {

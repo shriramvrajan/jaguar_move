@@ -7,9 +7,9 @@ set.seed(123456)
 config <- list(   
     # Model parameters
     model_type        = 2,    # 1 for step selection, 2 for path propagation
-    npar              = 8,    # Number of parameters, SHOULD BE SOMEWHERE ELSE
+    npar              = 7,    # Number of parameters, SHOULD BE SOMEWHERE ELSE
     step_size         = 1,    # Minimum step size (inner neighborhood) in pixels
-    propagation_steps = 8,    # Number of steps to simulate for path propagation
+    # propagation_steps = NA,    # Number of steps to simulate for path propagation (set)
     individuals       = NULL,        # NULL = all individuals, or vector of IDs
 
     # Holdout set parameters

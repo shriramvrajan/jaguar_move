@@ -8,12 +8,19 @@ file_pp <- "data/output/empirical_results_pp_2025-11-09.rds"
 # Empirical batch results ======================================================
 
 res <- results_table(file_ss = file_ss, file_pp = file_pp)
+res <- cbind(res, jag_meta[, -c("ID", "biome")])
+
+pl <- ggplot(res, aes(x = ss_aic/nmove, y = pp_aic/nmove)) +
+  geom_point(aes(color = start, size = totdist)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(x = "Step selection AIC", y = "Path propagation AIC") 
+plot(pl)
 
 # Empirical individual analysis ================================================
 
-jag_i <- individual_analysis$new(id = 114, file_ss = file_ss, file_pp = file_pp)
+# jag_i <- individual_analysis$new(id = 114, file_ss = file_ss, file_pp = file_pp)
 
-jag_i$compare_dispersal(step_size = 2, n_steps = 20)
+# jag_i$compare_dispersal(step_size = 2, n_steps = 20)
 
 # Simulation results ===========================================================
 

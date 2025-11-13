@@ -175,7 +175,7 @@ env_function <- function(env, par, nbhd = NULL, sim = FALSE) {
     # First order, no intercept
     attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
                             par[3] * env[, 3] + par[4] * env[, 4] + 
-                            par[5] * env[, 5] + par[6] * env[, 6]))
+                            par[5] * env[, 5] + par[6] * env[, 6]) + par[7])
   } else {
     attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
   }
@@ -189,11 +189,12 @@ env_function <- function(env, par, nbhd = NULL, sim = FALSE) {
   }
 }
 
-apply_kernel <- function(attract0, kernel) {
+apply_kernel <- function(attract0, kernel, bg_rate) {
   kernel <- kernel / sum(kernel, na.rm = T)
   na_mask <- is.na(attract0)
   attract0[na_mask] <- 0
-  p <- attract0 * rep(kernel, each = nrow(attract0))
+  p <- attract0 * rep(kernel, each = nrow(attract0)) + bg_rate - 
+        bg_rate * attract0
   p <- p / rowSums(p, na.rm = TRUE)
   p[na_mask] <- NA
   return(p)
@@ -457,27 +458,27 @@ results_table <- function(file_ss, file_pp) {
   r_ss <- readRDS(file_ss)
   r_pp <- readRDS(file_pp)
   
-  out_df <- matrix(nrow = nrow(jag_meta), ncol = 21)
+  out_df <- matrix(nrow = nrow(jag_meta), ncol = 23)
   for (i in seq_len(nrow(out_df))) {
     if (all(is.na(r_ss[[i]]))) {
-      out_df[i, 1:10] <- NA
+      out_df[i, 1:11] <- NA
     } else {
-      out_df[i, 1:10] <- unlist(r_ss[[i]])
+      out_df[i, 1:11] <- unlist(r_ss[[i]])
       # aic based on likelihood
-      out_df[i, 11] <- 2 * out_df[i, 9] + 2 * 8
+      out_df[i, 12] <- 2 * out_df[i, 9] + 2 * 8
     }
     if (all(is.na(r_pp[[i]]))) {
-      out_df[i, 12:20] <- NA
+      out_df[i, 12:22] <- NA
     } else {
-      out_df[i, 12:20] <- unlist(r_pp[[i]])
+      out_df[i, 12:22] <- unlist(r_pp[[i]])
       # aic based on likelihood
-      out_df[i, 21] <- 2 * out_df[i, 19] + 2 * 7
+      out_df[i, 23] <- 2 * out_df[i, 19] + 2 * 7
     }
   }
   out <- cbind(jag_meta[, c("ID", "biome")], out_df) %>% as.data.frame()
   names(out) <- c("ID", "biome", 
-                      paste0("ss_par", 1:8), "ss_ll", "ss_conv", "ss_aic",
-                      paste0("pp_par", 1:7), "pp_ll", "pp_conv", "pp_aic")
+                      paste0("ss_par", 1:9), "ss_ll", "ss_conv", "ss_aic",
+                      paste0("pp_par", 1:9), "pp_ll", "pp_conv", "pp_aic")
   return(out)
 }
 

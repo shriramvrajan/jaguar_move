@@ -4,16 +4,18 @@ source("R/classes.R")       # New classes
 
 set.seed(123456)
 
+model_type <- 1    # 1 for step selection, 2 for path propagation
+
 config <- list(   
     # Model parameters
-    model_type        = 2,    # 1 for step selection, 2 for path propagation
-    npar              = 7,    # Number of parameters, SHOULD BE SOMEWHERE ELSE
+    model_type        = model_type,
+    npar              = switch(model_type, 9, 9),    # Number of parameters
     step_size         = 1,    # Minimum step size (inner neighborhood) in pixels
     # propagation_steps = NA,    # Number of steps to simulate for path propagation (set)
     individuals       = NULL,        # NULL = all individuals, or vector of IDs
 
     # Holdout set parameters
-    holdout_set  = TRUE,      # Whether to use holdout set for evaluation (T/F)
+    holdout_set  = FALSE,      # Whether to use holdout set for evaluation (T/F)
     holdout_frac = 0.7,       # Fraction of data to use for training
 
     # Parallel processing parameters

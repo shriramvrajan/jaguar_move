@@ -44,12 +44,13 @@ step_selection_model <- R6Class("step_selection_model",
 
     build_kernel = function(par, objects, sim) {
       # Extract kernel parameters
-      k_exp <- exp(par[length(par)]) %>% as.numeric()
+      k_exp   <- exp(par[length(par) - 1]) %>% as.numeric()
+      bg_rate <- exp(par[length(par)]) %>% as.numeric()
       kernel <- calculate_dispersal_kernel(max_dispersal_dist = objects$max_dist, 
                                           kfun = function(x) dexp(x, k_exp))
       # Calculate environmental attraction
       attract0 <- env_function(objects$env_ss, par, objects$nbhd_ss, sim = sim)
-      attract <- apply_kernel(attract0, kernel)
+      attract <- apply_kernel(attract0, kernel, bg_rate)
       
       return(attract)      
     },
@@ -198,14 +199,15 @@ path_propagation_model <- R6Class("path_propagation_model",
       step_size  <- objects$step_size
       n_obs      <- length(objects$obs) + 1
 
-      # Extract kernel parameters
-      k_exp   <- exp(par[length(par)]) %>% as.numeric # Ensure positive
+      # Build dispersal kernel
+      k_exp   <- exp(par[length(par) - 1]) %>% as.numeric # Ensure positive
       kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
                     kfun = function(x) dexp(x, k_exp))
 
       # Calculate environmental attraction
+      bg_rate <- exp(par[length(par)]) %>% as.numeric()
       attract0 <- env_function(env_i, par, nbhd = nbhd_i, sim = sim) 
-      attract <- apply_kernel(attract0, kernel)
+      attract <- apply_kernel(attract0, kernel, bg_rate)
 
       # Propagating probabilities forward
       ncell_local <- (2 * max_dist + 1)^2 
@@ -229,8 +231,8 @@ path_propagation_model <- R6Class("path_propagation_model",
       obs        <- objects$obs
       outliers   <- objects$outliers
       n_obs      <- length(obs) + 1
-      current <- self$build_kernel(par, objects, sim)
 
+      current <- self$build_kernel(par, objects, sim)
 
       # Calculate log likelihood 
       predictions <- matrix(0, nrow = self$propagation_steps, ncol = n_obs)
@@ -242,11 +244,7 @@ path_propagation_model <- R6Class("path_propagation_model",
         prob <- current[obs[i], i, ]
         predictions[, i] <- prob 
       }
-      # Only break on first call
-      # if (!exists("debug_called")) {
-      #   debug_called <<- TRUE
-      #   browser()
-      # }
+      
       predictions[predictions == 0] <- 1e-10
       predictions[is.infinite(predictions)] <- NA
       log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
@@ -292,7 +290,6 @@ path_propagation_model <- R6Class("path_propagation_model",
                               raster = brazil_ras, threshold = 1e-6) {
       
       # FIX BG RATE ISSUE
-
       k_exp <- exp(par[length(par)]) %>% as.numeric()
       max_displacement <- step_size * n_steps
 
@@ -856,8 +853,9 @@ empirical_batch <- R6Class("empirical_batch",
       }
       self$results <- results
 
-      # Clean up out_ files 
-      outfiles <- list.files("data/output", pattern = "^out_.*\\.rds$")
+      # Clean up temporary output files 
+      outfiles <- c(list.files("data/output", pattern = "^out_.*\\.rds$"),
+                    list.files("data/output", pattern = "^NA_.*\\.rds$"))
       file.remove(file.path("data/output", outfiles))
 
       return(results)
@@ -891,8 +889,8 @@ empirical_batch <- R6Class("empirical_batch",
       
       # Calculate max distance for this individual
       sl_emp <- as.vector(na.exclude(track$sl[track$dt < threshold]))
-      max_dist <- ceiling(2 * max(sl_emp / 1000, na.rm = TRUE))
-      pp_model$propagation_steps <- ceiling(1.5 * max_dist / self$config$step_size)
+      max_dist <- ceiling(1.5 * max(sl_emp / 1000, na.rm = TRUE))
+      pp_model$propagation_steps <- ceiling(0.9 * max_dist / self$config$step_size)
       
       # Fit models based on config
       if (self$config$model_type == 1) {
@@ -1036,5 +1034,4 @@ individual_analysis <- R6Class("individual_analysis",
       dev.off()
       message("Dispersal comparison plot saved")                
     }
-
   ))

@@ -2,16 +2,16 @@ rm(list = ls())
 source("R/functions.R")
 source("R/classes.R")
 
-file_ss <- "data/output/empirical_results_ss_2025-11-03.rds"
-file_pp <- "data/output/empirical_results_pp_2025-11-09.rds"
+file_ss <- "data/output/empirical_results_ss_2025-11-13.rds"
+file_pp <- "data/output/empirical_results_pp_2025-11-13.rds"
 
 # Empirical batch results ======================================================
 
 res <- results_table(file_ss = file_ss, file_pp = file_pp)
 res <- cbind(res, jag_meta[, -c("ID", "biome")])
 
-pl <- ggplot(res, aes(x = ss_aic/nmove, y = pp_aic/nmove)) +
-  geom_point(aes(color = start, size = totdist)) +
+pl <- ggplot(res, aes(x = ss_aic, y = pp_aic)) +
+  geom_point(aes(color = biome, size = meandist)) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
   labs(x = "Step selection AIC", y = "Path propagation AIC") 
 plot(pl)

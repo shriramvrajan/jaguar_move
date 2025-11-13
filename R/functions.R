@@ -458,21 +458,24 @@ results_table <- function(file_ss, file_pp) {
   r_ss <- readRDS(file_ss)
   r_pp <- readRDS(file_pp)
   
-  out_df <- matrix(nrow = nrow(jag_meta), ncol = 23)
+  ncol_ss <- length(unlist(r_ss[[1]]))
+  ncol_pp <- length(unlist(r_pp[[1]]))
+  out_df <- matrix(nrow = nrow(jag_meta), ncol = ncol_ss + ncol_pp + 2)
   for (i in seq_len(nrow(out_df))) {
     if (all(is.na(r_ss[[i]]))) {
-      out_df[i, 1:11] <- NA
+      out_df[i, 1:ncol_ss] <- NA
     } else {
-      out_df[i, 1:11] <- unlist(r_ss[[i]])
+      out_df[i, 1:ncol_ss] <- unlist(r_ss[[i]])
       # aic based on likelihood
-      out_df[i, 12] <- 2 * out_df[i, 9] + 2 * 8
+      out_df[i, ncol_ss + 1] <- 2 * out_df[i, ncol_ss - 1] + 2 * (ncol_ss - 2)
     }
     if (all(is.na(r_pp[[i]]))) {
-      out_df[i, 12:22] <- NA
+      out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- NA
     } else {
-      out_df[i, 12:22] <- unlist(r_pp[[i]])
+      out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- unlist(r_pp[[i]])
       # aic based on likelihood
-      out_df[i, 23] <- 2 * out_df[i, 19] + 2 * 7
+      out_df[i, ncol_ss + ncol_pp + 2] <- 2 * out_df[i, ncol_ss + ncol_pp] +
+                                           2 * (ncol_pp - 2)
     }
   }
   out <- cbind(jag_meta[, c("ID", "biome")], out_df) %>% as.data.frame()

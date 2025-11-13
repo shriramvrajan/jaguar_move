@@ -45,7 +45,7 @@ step_selection_model <- R6Class("step_selection_model",
     build_kernel = function(par, objects, sim) {
       # Extract kernel parameters
       k_exp   <- exp(par[length(par) - 1]) %>% as.numeric()
-      bg_rate <- exp(par[length(par)]) %>% as.numeric()
+      bg_rate <- plogis(par[length(par)]) %>% as.numeric()
       kernel <- calculate_dispersal_kernel(max_dispersal_dist = objects$max_dist, 
                                           kfun = function(x) dexp(x, k_exp))
       # Calculate environmental attraction
@@ -98,7 +98,10 @@ step_selection_model <- R6Class("step_selection_model",
       
       # Fit model
       tryCatch({
-        par_out <- optim(par_start, self$log_likelihood, objects = objects, sim = sim)
+        par_out <- optim(par_start, self$log_likelihood, objects = objects, 
+                         sim = sim, method = "L-BFGS-B",
+                         lower = c(rep(-10, length(par_start) - 2), -10, -10),
+                         upper = c(rep(10, length(par_start) - 2), 10, 10))
         ll <- self$log_likelihood(par_out$par, objects, sim)
         return(list(
           par = par_out$par,
@@ -269,7 +272,10 @@ path_propagation_model <- R6Class("path_propagation_model",
       objects$outliers <- outliers
       # Fit model
       tryCatch({
-        par_out <- optim(par_start, self$log_likelihood, objects = objects, sim = sim)
+        par_out <- optim(par_start, self$log_likelihood, objects = objects, 
+                         sim = sim, method = "L-BFGS-B",
+                         lower = c(rep(-10, length(par_start) - 2), -10, -10),
+                         upper = c(rep(10, length(par_start) - 2), 10, 10))
         ll <- self$log_likelihood(par_out$par, objects, sim)
         
         return(list(
@@ -874,7 +880,7 @@ empirical_batch <- R6Class("empirical_batch",
       outliers <- which(track$dt > threshold) - 1
       
       # Starting parameters
-      par_start <- c(rep(1, self$config$npar - 2), 0.1, 0.1)  # Small positive values for rate parameters
+      par_start <- c(rep(0, self$config$npar - 2), log(0.1), 0)  # Small positive values for rate parameters
       
       if (self$config$holdout_set && nrow(track) > 100) {
         hold <- seq_len(ceiling(nrow(track) * self$config$holdout_frac))

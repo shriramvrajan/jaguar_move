@@ -2,14 +2,14 @@ rm(list = setdiff(ls(), "nbhd_full"))
 source("R/functions.R")     # Existing functions
 source("R/classes.R")       # New classes
 
-set.seed(123456)
+set.seed(7)
 
-model_type <- 1    # 1 for step selection, 2 for path propagation
+model_type <- 2    # 1 for step selection, 2 for path propagation
 
 config <- list(   
     # Model parameters
     model_type        = model_type,
-    npar              = switch(model_type, 9, 9),    # Number of parameters
+    npar              = switch(model_type, 7, 7),    # Number of parameters
     step_size         = 1,    # Minimum step size (inner neighborhood) in pixels
     # propagation_steps = NA,    # Number of steps to simulate for path propagation (set)
     individuals       = NULL,        # NULL = all individuals, or vector of IDs

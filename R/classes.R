@@ -44,13 +44,12 @@ step_selection_model <- R6Class("step_selection_model",
 
     build_kernel = function(par, objects, sim) {
       # Extract kernel parameters
-      k_exp   <- exp(par[length(par) - 1]) %>% as.numeric()
-      bg_rate <- plogis(par[length(par)]) %>% as.numeric()
+      k_exp   <- exp(par[length(par)]) %>% as.numeric()
       kernel <- calculate_dispersal_kernel(max_dispersal_dist = objects$max_dist, 
                                           kfun = function(x) dexp(x, k_exp))
       # Calculate environmental attraction
       attract0 <- env_function(objects$env_ss, par, objects$nbhd_ss, sim = sim)
-      attract <- apply_kernel(attract0, kernel, bg_rate)
+      attract <- apply_kernel(attract0, kernel)
       
       return(attract)      
     },
@@ -83,6 +82,10 @@ step_selection_model <- R6Class("step_selection_model",
       out <- -sum(log(like), na.rm = TRUE)
 
       if (is.infinite(out) || is.na(out)) out <- 0
+
+      print(paste("Current LL:", round(-out, 4)))
+      print(paste("Parameters:", paste(round(par, 4), collapse = ", ")))
+
       if (debug) {
         return(list(attract = attract, like = like, out = out, par = par))
       } else {
@@ -97,11 +100,14 @@ step_selection_model <- R6Class("step_selection_model",
       objects$outliers <- outliers
       
       # Fit model
+      # Starting parameters & bounds defined separately for both models, fix when possible
       tryCatch({
         par_out <- optim(par_start, self$log_likelihood, objects = objects, 
-                         sim = sim, method = "L-BFGS-B",
-                         lower = c(rep(-10, length(par_start) - 2), -10, -10),
-                         upper = c(rep(10, length(par_start) - 2), 10, 10))
+                        sim = sim, method = "L-BFGS-B",
+                        control = list(
+                          maxit = 2000,     # More iterations
+                          factr = 1e10      # Looser tolerance
+                        ))
         ll <- self$log_likelihood(par_out$par, objects, sim)
         return(list(
           par = par_out$par,
@@ -203,14 +209,13 @@ path_propagation_model <- R6Class("path_propagation_model",
       n_obs      <- length(objects$obs) + 1
 
       # Build dispersal kernel
-      k_exp   <- exp(par[length(par) - 1]) %>% as.numeric # Ensure positive
+      k_exp  <- exp(par[length(par)]) %>% as.numeric # Ensure positive
       kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
                     kfun = function(x) dexp(x, k_exp))
 
       # Calculate environmental attraction
-      bg_rate <- exp(par[length(par)]) %>% as.numeric()
       attract0 <- env_function(env_i, par, nbhd = nbhd_i, sim = sim) 
-      attract <- apply_kernel(attract0, kernel, bg_rate)
+      attract <- apply_kernel(attract0, kernel)
 
       # Propagating probabilities forward
       ncell_local <- (2 * max_dist + 1)^2 
@@ -252,7 +257,7 @@ path_propagation_model <- R6Class("path_propagation_model",
       predictions[is.infinite(predictions)] <- NA
       log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
       out            <- ifelse(all(is.na(log_likelihood)), 1e10, #penalty
-                               -max(log_likelihood, na.rm = TRUE))
+                               max(log_likelihood, na.rm = TRUE))
       print(paste("Current LL:", round(-out, 4)))
       print(paste("Parameters:", paste(round(par, 4), collapse = ", ")))
 
@@ -272,10 +277,13 @@ path_propagation_model <- R6Class("path_propagation_model",
       objects$outliers <- outliers
       # Fit model
       tryCatch({
-        par_out <- optim(par_start, self$log_likelihood, objects = objects, 
-                         sim = sim, method = "L-BFGS-B",
-                         lower = c(rep(-10, length(par_start) - 2), -10, -10),
-                         upper = c(rep(10, length(par_start) - 2), 10, 10))
+        par_out <- optim(par_start, self$log_likelihood, objects = objects,                         
+                        sim = sim, method = "L-BFGS-B",
+                        control = list(
+                          maxit = 2000,     # More iterations
+                          factr = 1e10      # Looser tolerance
+                        ))
+                         
         ll <- self$log_likelihood(par_out$par, objects, sim)
         
         return(list(
@@ -880,7 +888,8 @@ empirical_batch <- R6Class("empirical_batch",
       outliers <- which(track$dt > threshold) - 1
       
       # Starting parameters
-      par_start <- c(rep(0, self$config$npar - 2), log(0.1), 0)  # Small positive values for rate parameters
+      par_start <- c(rep(0, self$config$npar - 1), 
+                    log(1.0))               # k_exp = 1
       
       if (self$config$holdout_set && nrow(track) > 100) {
         hold <- seq_len(ceiling(nrow(track) * self$config$holdout_frac))

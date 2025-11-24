@@ -33,22 +33,18 @@ jag_meta  <- readRDS("data/jag_meta2.rds")
 brazil_ras <- rast("data/env_layers.grd")
 # load("data/env_layers.RData") # same information as a dataframe ('brdf')
 brdf <- readRDS("data/env_layers.rds")
-brdf <- brdf[, -1]  # Remove human footprint
+# brdf <- brdf[, -1]  # Remove human footprint
 
 # Brazil biomes shapefile
 biome <- vect("data/input/Brazil_biomes/Brazil_biomes.shp")
 
 # Empirical results
-e_results <- readRDS("data/output/oldresults_empirical.rds")
+# e_results <- readRDS("data/output/oldresults_empirical.rds")
 
 # Functions ====================================================================
 
 # 0. Basic ---------------------------------------------------------------------
 
-# Logistic function 
-exp01 <- function(x) {
-    return(1 / (1 + exp(x)))
-}
 # Output message m both in console and in logfile f
 message <- function(m, f = "data/output/run_log.txt") {
     m <- paste(format(Sys.time(), "%d.%m.%y  %R"), m)
@@ -176,7 +172,7 @@ env_function <- function(env, par, nbhd = NULL, sim = FALSE) {
     # First order with intercept
     attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
                             par[3] * env[, 3] + par[4] * env[, 4] + 
-                            par[5] * env[, 5] + par[6]))
+                            par[5] * env[, 5] + par[6] * env[, 6] + par[7]))
   } else {
     attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
   }
@@ -190,11 +186,11 @@ env_function <- function(env, par, nbhd = NULL, sim = FALSE) {
   }
 }
 
-apply_kernel <- function(attract0, kernel) {
+apply_kernel <- function(attract0, kernel, bg_rate) {
   kernel <- kernel / sum(kernel, na.rm = T)
   na_mask <- is.na(attract0)
   attract0[na_mask] <- 0
-  p <- attract0 * rep(kernel, each = nrow(attract0))
+  p <- attract0 * rep(kernel, each = nrow(attract0)) + bg_rate - bg_rate * attract0
   p <- p / rowSums(p, na.rm = TRUE)
   p[na_mask] <- NA
   return(p)

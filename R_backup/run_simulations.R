@@ -1,8 +1,6 @@
 rm(list = ls())
-source("R/functions.R")  # Existing functions
-source("R/classes.R")       # New classes
-
-batch0 <- simulation_batch$new()$autocorr_range_study()
+source("R_backup/functions.R")  
+source("R_backup/classes.R")       
 
 ## Autocorrelation range study
 batch <- simulation_batch$new()

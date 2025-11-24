@@ -14,7 +14,6 @@ step_selection_model <- R6Class("step_selection_model",
     prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE,
                                env_raster = NULL) {
       message("Preparing step selection objects")
-      
       # Get environment data
       env_ras <- if (sim) env_raster else brazil_ras
       # Neighborhoods for step selection
@@ -44,12 +43,13 @@ step_selection_model <- R6Class("step_selection_model",
 
     build_kernel = function(par, objects, sim) {
       # Extract kernel parameters
-      k_exp   <- exp(par[length(par)]) %>% as.numeric()
+      k_exp   <- exp(par[length(par) - 1]) %>% as.numeric()
+      bg_rate <- plogis(par[length(par)]) %>% as.numeric()
       kernel <- calculate_dispersal_kernel(max_dispersal_dist = objects$max_dist, 
                                           kfun = function(x) dexp(x, k_exp))
       # Calculate environmental attraction
       attract0 <- env_function(objects$env_ss, par, objects$nbhd_ss, sim = sim)
-      attract <- apply_kernel(attract0, kernel)
+      attract <- apply_kernel(attract0, kernel, bg_rate)
       
       return(attract)      
     },
@@ -63,7 +63,7 @@ step_selection_model <- R6Class("step_selection_model",
                   par = par))
     },
 
-    log_likelihood = function(par, objects, sim, debug = FALSE) {
+    log_likelihood = function(par, objects, sim, debug = TRUE) {
       obs      <- objects$obs
       max_dist <- objects$max_dist
       outliers <- objects$outliers
@@ -85,12 +85,9 @@ step_selection_model <- R6Class("step_selection_model",
 
       print(paste("Current LL:", round(-out, 4)))
       print(paste("Parameters:", paste(round(par, 4), collapse = ", ")))
-
-      if (debug) {
-        return(list(attract = attract, like = like, out = out, par = par))
-      } else {
-        return(out)
-      }
+      saveRDS(list(out = out, array = like, par = par),
+              "data/output/current_iter_ss.rds")
+      return(out)
     },
 
     fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, 
@@ -209,15 +206,16 @@ path_propagation_model <- R6Class("path_propagation_model",
       n_obs      <- length(objects$obs) + 1
 
       # Build dispersal kernel
-      k_exp  <- exp(par[length(par)]) %>% as.numeric # Ensure positive
+      k_exp  <- exp(par[length(par) - 1]) %>% as.numeric # Ensure positive
       kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
                     kfun = function(x) dexp(x, k_exp))
 
       # Calculate environmental attraction
+      bg_rate <- plogis(par[length(par)]) %>% as.numeric
       attract0 <- env_function(env_i, par, nbhd = nbhd_i, sim = sim) 
-      attract <- apply_kernel(attract0, kernel)
+      attract <- apply_kernel(attract0, kernel, bg_rate)
 
-      # Propagating probabilities forward
+      # Propagate probabilities forward
       ncell_local <- (2 * max_dist + 1)^2 
       current <- array(0, dim = c(ncell_local, n_obs, self$propagation_steps))
       
@@ -254,19 +252,17 @@ path_propagation_model <- R6Class("path_propagation_model",
       }
       
       predictions[predictions == 0] <- 1e-10
-      predictions[is.infinite(predictions)] <- NA
       log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
       out            <- ifelse(all(is.na(log_likelihood)), 1e10, #penalty
-                               max(log_likelihood, na.rm = TRUE))
+                               -max(log_likelihood, na.rm = TRUE))
       print(paste("Current LL:", round(-out, 4)))
       print(paste("Parameters:", paste(round(par, 4), collapse = ", ")))
 
       if (is.infinite(out) || is.na(out)) out <- 0
-      if (debug) {
-        return(list(out = out, array = current, predictions = predictions, par = par))
-      } else {
-        return(out)
-      }
+      # saveRDS(list(out = out, array = current, predictions = predictions, par = par),
+      #         "data/output/current_iter_pp.rds")
+
+      return(out)
     },
 
     fit = function(trajectory, max_dist, step_size, rdf, par_start, sim = FALSE, 
@@ -601,18 +597,6 @@ simulation_batch <- R6Class("simulation_batch",
     configs = list(),
     results = list(),
     
-    # Create batch for fragmentation study
-    autocorr_range_study = function(r1_values = 1:40) {
-      self$configs <- lapply(r1_values, function(r1) {
-        simulation_config$new(
-          name = paste0("r1_", r1),
-          autocorr_range = r1
-        )
-      })
-      names(self$configs) <- sapply(self$configs, function(x) x$name)
-      return(self)
-    },
-    
     # Run all simulations in the batch
     run_all = function(parallel = TRUE, n_cores = NULL) {
       self$results <- list()
@@ -694,18 +678,18 @@ simulation_batch <- R6Class("simulation_batch",
       
       # Plot 1: AIC difference vs fragmentation
       plot(summary_df$autocorr_range, summary_df$median_aic_diff,
-           xlab = "Autocorrelation Range (r1)", 
-           ylab = "Median AIC Difference (PP - SS)",
-           main = "Path Propagation Advantage vs Fragmentation",
+           xlab = "Autocorrelation range (r1)", 
+           ylab = "Median AIC difference (PP - SS)",
+           main = "Path propagation advantage vs fragmentation",
            pch = 19, cex = 1.5)
       abline(h = 0, lty = 2)
       text(summary_df$autocorr_range, summary_df$median_aic_diff,
            labels = summary_df$config_name, pos = 3)
       
       plot(summary_df$autocorr_range, summary_df$sd_aic_diff,
-           xlab = "Autocorrelation Range (r1)", 
-           ylab = "SD of AIC Difference (PP - SS)",
-           main = "Variability in Path Propagation Advantage",
+           xlab = "Autocorrelation range (r1)", 
+           ylab = "SD of AIC difference (PP - SS)",
+           main = "Variability in path propagation advantage",
            pch = 19, cex = 1.5)
       dev.off()
       
@@ -888,8 +872,9 @@ empirical_batch <- R6Class("empirical_batch",
       outliers <- which(track$dt > threshold) - 1
       
       # Starting parameters
-      par_start <- c(rep(0, self$config$npar - 1), 
-                    log(1.0))               # k_exp = 1
+      par_start <- c(rep(0, self$config$npar - 2), # no environment preferences
+                    log(1.0),                      # k_exp = 1
+                    -15)                           # bg_rate ~ 0 
       
       if (self$config$holdout_set && nrow(track) > 100) {
         hold <- seq_len(ceiling(nrow(track) * self$config$holdout_frac))
@@ -905,7 +890,8 @@ empirical_batch <- R6Class("empirical_batch",
       # Calculate max distance for this individual
       sl_emp <- as.vector(na.exclude(track$sl[track$dt < threshold]))
       max_dist <- ceiling(1.5 * max(sl_emp / 1000, na.rm = TRUE))
-      pp_model$propagation_steps <- ceiling(0.9 * max_dist / self$config$step_size)
+      pp_model$propagation_steps <- max(8, 
+                                ceiling(0.9 * max_dist / self$config$step_size))
       
       # Fit models based on config
       if (self$config$model_type == 1) {

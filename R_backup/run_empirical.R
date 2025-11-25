@@ -12,7 +12,7 @@ config <- list(
     npar              = switch(model_type, 9, 9),    # Number of parameters
     step_size         = 1,    # Minimum step size (inner neighborhood) in pixels
     # propagation_steps = NA,    # Number of steps to simulate for path propagation (set)
-    individuals       = NULL,        # NULL = all individuals, or vector of IDs
+    individuals       = 19,        # NULL = all individuals, or vector of IDs
 
     # Holdout set parameters
     holdout_set  = FALSE,      # Whether to use holdout set for evaluation (T/F)

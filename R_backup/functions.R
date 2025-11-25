@@ -108,6 +108,41 @@ plot_satellite <- function(bbox) {
     })
 }
 
+# Bresenham line algorithm
+bresenham <- function(x0, y0, x1, y1, grid_size) {
+  # Clip to grid boundaries
+  x0 <- round(max(1, min(grid_size, x0)))
+  y0 <- round(max(1, min(grid_size, y0)))
+  x1 <- round(max(1, min(grid_size, x1)))
+  y1 <- round(max(1, min(grid_size, y1)))
+  dx <- abs(x1 - x0)
+  dy <- abs(y1 - y0)
+  err <- dx - dy # ?
+  sx <- if(x0 < x1) 1 else -1
+  sy <- if(y0 < y1) 1 else -1
+
+  cells <- matrix(ncol = 2, nrow = 0)
+  x <- x0
+  y <- y0
+  
+  while (TRUE) {
+      cells <- rbind(cells, c(x, y))
+      if (x == x1 && y == y1) break
+      e2 <- 2 * err
+      if (e2 > -dy) {
+          err <- err - dy
+          x <- x + sx
+      }
+      if (e2 < dx) {
+          err <- err + dx
+          y <- y + sy
+      }
+      # Safety check to prevent infinite loops
+      if (x < 1 || x > grid_size || y < 1 || y > grid_size) break
+  }
+  return(cells)
+}
+
 # 1. Movement model ============================================================
 
 # Output neighborhood as matrix
@@ -186,11 +221,12 @@ env_function <- function(env, par, nbhd = NULL, sim = FALSE) {
   }
 }
 
-apply_kernel <- function(attract0, kernel, bg_rate) {
+apply_kernel <- function(attract0, kernel, bg_rate = 0) {
   kernel <- kernel / sum(kernel, na.rm = T)
   na_mask <- is.na(attract0)
   attract0[na_mask] <- 0
-  p <- attract0 * rep(kernel, each = nrow(attract0)) + bg_rate - bg_rate * attract0
+  p <- attract0 * rep(kernel, each = nrow(attract0))
+  p <- p + bg_rate - p * bg_rate
   p <- p / rowSums(p, na.rm = TRUE)
   p[na_mask] <- NA
   return(p)
@@ -343,21 +379,79 @@ plot_curve <- function(par, mu = 0, sd = 1, bounds = c(0, 10), values = FALSE) {
 
 # 2b. Simulation ---------------------------------------------------------------
 
+thicken_line <- function(line_cells, width, grid_size) {
+    if (width <= 1) return(line_cells)
+    
+    # Start with original line
+    all_cells <- line_cells
+    
+    # For width=2, add immediate 8-connected neighbors
+    # For width=3, add neighbors within distance 1, etc.
+    radius <- floor(width / 2)
+    
+    for (i in seq_len(nrow(line_cells))) {
+        x <- line_cells[i, 1]
+        y <- line_cells[i, 2]
+        # Add all cells within radius
+        for (dx in 0:radius) {
+            for (dy in 0:radius) {
+                new_x <- x + dx
+                new_y <- y + dy
+                # Check bounds
+                if (new_x >= 1 && new_x <= grid_size && 
+                    new_y >= 1 && new_y <= grid_size) {
+                    all_cells <- rbind(all_cells, c(new_x, new_y))
+                }
+            }
+        }
+    }
+    return(unique(all_cells))
+}
+
 # Generates a random field with a given correlation structure
-# b: beta parameter for gstat, s: sill, r: range, n: nugget
-gen_landscape <- function(size = 100, b = 1, s = 0.03, r = 10, n = 0) {   
+# beta: beta parameter for gstat, s: sill, r: range, n: nugget
+gen_landscape <- function(size = 100, beta = 1, s = 0.03, r = 10, n = 0,
+                      b_density = 0, b_length = 20, b_value = 2, b_width = 2) {   
+
+    # Autocorrelation model - base field
     xy <- expand.grid(1:size, 1:size)
     names(xy) <- c("x", "y")
-
-    # Autocorrelation model
-    model <- gstat(formula = z ~ 1, locations = ~x + y, dummy = TRUE, beta = b, 
+    model <- gstat(formula = z ~ 1, locations = ~x + y, dummy = TRUE, beta = beta, 
                    model = vgm(psill = s, range = r, model = "Exp", nugget = n), 
                    nmax = 20)
     out <- predict(model, newdata = xy, nsim = 1)
     if (any(out < 0)) out[out < 0] <- 0
+    out_mat <- matrix(out$sim1, nrow = size, ncol = size, byrow = TRUE)
+
+    # Add barriers
+    if (b_density > 0) {
+      # Number of barriers per 10k cells
+      n_barriers <- ceiling(b_density * (size ^ 2) / 10000)
+
+      for (b in seq_len(n_barriers)) {
+        x0 <- sample(1:size, 1)
+        y0 <- sample(1:size, 1)
+        angle <- runif(1, 0, 2 * pi)
+
+        length <- rgamma(1, shape = 4, scale = b_length / 4)
+        x1 <- x0 + length * cos(angle)
+        y1 <- y0 + length * sin(angle)
+
+        line_xy <- bresenham(x0, y0, x1, y1, size)
+        thick_cells <- thicken_line(line_xy, b_width, size)
+
+        for(i in seq_len(nrow(thick_cells))) {
+          out_mat[thick_cells[i, 1], thick_cells[i, 2]] <- b_value
+        }
+      }
+    }
 
     # Output as raster 
-    out <- rast(out)
+    out <- data.frame(x = rep(1:size, each = size), y = rep(1:size, times = size),
+                      sim1 = as.vector(t(out_mat))) %>% rast
+    plotpdf(nm = "figs/current_landscape.pdf")
+    terra::plot(out)
+    dev.off()
     return(out)
 }
 

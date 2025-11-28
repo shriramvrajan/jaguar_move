@@ -4,7 +4,8 @@ source("R_backup/classes.R")       # New classes
 
 set.seed(7)
 
-model_type <- 2    # 1 for step selection, 2 for path propagation
+# 1 for step selection, 2 for path propagation
+model_type <- 2   
 
 config <- list(   
     # Model parameters
@@ -12,7 +13,7 @@ config <- list(
     npar              = switch(model_type, 9, 9),    # Number of parameters
     step_size         = 1,    # Minimum step size (inner neighborhood) in pixels
     # propagation_steps = NA,    # Number of steps to simulate for path propagation (set)
-    individuals       = 19,        # NULL = all individuals, or vector of IDs
+    individuals       = NULL,        # NULL = all individuals, or vector of IDs
 
     # Holdout set parameters
     holdout_set  = FALSE,      # Whether to use holdout set for evaluation (T/F)
@@ -26,7 +27,6 @@ config <- list(
     fit_model      = TRUE,    # Whether to fit the model (T/F)
     model_calcnull = FALSE    # Whether to calculate null model likelihood (T/F)
 )
-
 batch <- empirical_batch$new(config)
 results <- batch$run_all()
 

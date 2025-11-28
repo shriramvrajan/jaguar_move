@@ -76,7 +76,7 @@ step_selection_model <- R6Class("step_selection_model",
 
       print(paste("Current LL:", round(-out, 4)))
       print(paste("Parameters:", paste(round(par, 4), collapse = ", ")))
-      # saveRDS(list(out = out, array = like, par = par),
+      # saveRDS(list(out = out, array = like, par = par, o = objects),
       #         "data/output/current_iter_ss.rds")
       return(out)
     },
@@ -91,7 +91,9 @@ step_selection_model <- R6Class("step_selection_model",
       # Starting parameters & bounds defined separately for both models, fix when possible
       tryCatch({
         par_out <- optim(par_start, self$log_likelihood, objects = objects, 
-                        sim = sim,
+                        sim = sim,  method = "L-BFGS-B",
+                        lower = c(rep(-Inf, length(par_start) - 2), -5, -30),
+                        upper = c(rep(Inf, length(par_start) - 2), 5, -2),
                         control = list(
                           maxit = 2000,     # More iterations
                           factr = 1e5
@@ -241,7 +243,7 @@ path_propagation_model <- R6Class("path_propagation_model",
       return(current)
     },
 
-    log_likelihood = function(par, objects, sim, dt, debug = FALSE) {
+    log_likelihood = function(par, objects, sim, debug = FALSE) {
 
       obs        <- objects$obs
       outliers   <- objects$outliers
@@ -250,24 +252,19 @@ path_propagation_model <- R6Class("path_propagation_model",
       current <- self$build_kernel(par, objects, sim)
 
       # Calculate log likelihood 
-      # predictions <- matrix(0, nrow = self$propagation_steps, ncol = n_obs)
-      predictions <- numeric(n_obs)
+      predictions <- matrix(0, nrow = self$propagation_steps, ncol = n_obs)
       for (i in 1:n_obs) {
         if (i %in% outliers || is.na(obs[i])) {
-          predictions[i] <- NA
+          predictions[, i] <- rep(NA, self$propagation_steps)
           next
         }
-        # prob <- current[obs[i], i, ]
-        predictions[i] <- current[obs[i], i, dt[i] + 1]
-      }
-      out <- -sum(log(predictions), na.rm = TRUE)
-      
-      # log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
-      # out            <- -max(log_likelihood, na.rm = TRUE)
+        predictions[, i] <- current[obs[i], i, ]
+      }      
+      log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
+      out            <- -max(log_likelihood, na.rm = TRUE)
       print(paste("Current LL:", round(-out, 4)))
       print(paste("Parameters:", paste(round(par, 4), collapse = ", ")))
-
-      if (is.infinite(out) || is.na(out)) out <- 0
+      # if (is.infinite(out) || is.na(out)) out <- 0
       return(out)
     },
 
@@ -280,8 +277,13 @@ path_propagation_model <- R6Class("path_propagation_model",
       # Fit model
       tryCatch({
         par_out <- optim(par_start, self$log_likelihood, objects = objects,                         
-                        sim = sim, dt = dt, 
-                        control = list(maxit = 2000, factr = 1e5))     # More iterations
+                        sim = sim,  method = "L-BFGS-B",
+                        lower = c(rep(-Inf, length(par_start) - 2), -5, -30),
+                        upper = c(rep(Inf, length(par_start) - 2), 5, -2),
+                        control = list(
+                          maxit = 2000,     # More iterations
+                          factr = 1e5
+                        ))
                         
         ll <- self$log_likelihood(par_out$par, objects, sim)
         
@@ -877,13 +879,9 @@ empirical_batch <- R6Class("empirical_batch",
 
       dt_scaled <- track$dt[2:length(track$dt)] / median(na.exclude(track$dt))
       dt_discrete <- pmax(1, round(dt_scaled))
-      outliers <- which(dt_discrete > mean(dt_discrete) + 2 * sd(dt_discrete))
+      outliers <- which(dt_discrete > 1)
+
       if (length(outliers) > 0) dt_discrete <- dt_discrete[-outliers]
-      
-      # Starting parameters
-      par_start <- c(rep(0, self$config$npar - 2), # no environment preferences
-                    log(2.0),                      # k_exp = 4
-                    -15)                           # bg_rate ~ 0 
       
       if (self$config$holdout_set && nrow(track) > 100) {
         hold <- seq_len(ceiling(nrow(track) * self$config$holdout_frac))
@@ -897,10 +895,18 @@ empirical_batch <- R6Class("empirical_batch",
       }
       
       # Calculate max distance for this individual
-      sl_emp <- as.vector(na.exclude(track$sl[-outliers]))
-      max_dist <- ceiling(1.5 * max(sl_emp / 1000, na.rm = TRUE))
-      pp_model$propagation_steps <- max(dt_discrete) + 1
-      
+      pp_model$propagation_steps <- 8
+      sl_emp <- na.exclude(track$sl[-outliers])
+      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+      print(max_dist)
+      print(paste(max_dist, pp_model$propagation_steps))
+      print(quantile(dt_discrete))
+            
+      # Starting parameters
+      par_start <- c(rep(0, self$config$npar - 2), # no environment preferences
+                    log(1.0),                      # k_exp 
+                    -15)                           # bg_rate ~ 0 
+
       # Fit models based on config
       if (self$config$model_type == 1) {
         # Step selection
@@ -910,7 +916,7 @@ empirical_batch <- R6Class("empirical_batch",
         # Path propagation  
         result <- pp_model$fit(track_cells, max_dist, self$config$step_size, 
                             rdf = brdf, par_start = par_start,
-                            outliers = outliers, dt = dt_discrete)
+                            outliers = outliers)
       }
       
       # Save individual result

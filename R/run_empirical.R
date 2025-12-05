@@ -10,7 +10,7 @@ model_type <- 2
 config <- list(   
     # Model parameters
     model_type        = model_type,
-    npar              = switch(model_type, 9, 9),    # Number of parameters
+    npar              = switch(model_type, 15, 15),    # Number of parameters
     step_size         = 1,    # Minimum step size (inner neighborhood) in pixels
     # propagation_steps = NA,    # Number of steps to simulate for path propagation (set)
     individuals       = NULL,        # NULL = all individuals, or vector of IDs
@@ -20,8 +20,8 @@ config <- list(
     holdout_frac = 0.7,       # Fraction of data to use for training
 
     # Parallel processing parameters
-    parallel = FALSE,         # Whether to use parallel processing (T/F)
-    n_cores  = 3,             # Number of cores to use if parallel
+    parallel = TRUE,         # Whether to use parallel processing (T/F)
+    n_cores  = 5,             # Number of cores to use if parallel
 
     # Model fitting options
     fit_model      = TRUE,    # Whether to fit the model (T/F)

@@ -11,6 +11,7 @@ library(R6)
 #  $fit()             - fit the model to a trajectory
 step_selection_model <- R6Class("step_selection_model",
   public = list(  
+    ## prepare_objects ---------------------------------------------------------
     prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE,
                                env_raster = NULL) {
       message("Preparing step selection objects")
@@ -26,7 +27,13 @@ step_selection_model <- R6Class("step_selection_model",
         if (length(nextcell) == 0) return(NA) else return(nextcell)
       })
 
-      env_ss <- scale(rdf[unique(nbhd_ss), ])
+      if (sim) {
+        env_table <- scale(rdf[unique(nbhd_ss), 1, drop = FALSE])
+        env_ss <- as.vector(env_table)
+        names(env_ss) <- row.names(env_table)
+      } else {
+        env_ss <- scale(rdf[unique(nbhd_ss), ])
+      }
       if (any(is.na(env_ss))) env_ss[which(is.na(env_ss))] <- 0
 
       nbhd_ss <- matrix(as.character(nbhd_ss), 
@@ -41,19 +48,20 @@ step_selection_model <- R6Class("step_selection_model",
       )
     },
 
+    ## build_kernel ------------------------------------------------------------
     build_kernel = function(par, objects, sim) {
       # Extract kernel parameters
-      k_exp   <- exp(par[length(par) - 1]) %>% as.numeric()
-      bg_rate <- plogis(par[length(par)]) %>% as.numeric()
+      k_exp   <- ifelse(sim, exp(par[length(par)]), exp(par[length(par) - 1]))
+      bg_rate <- ifelse(sim, 0, plogis(par[length(par)]))
       kernel <- calculate_dispersal_kernel(max_dispersal_dist = objects$max_dist, 
                                           kfun = function(x) dexp(x, k_exp))
       # Calculate environmental attraction
       attract0 <- env_function(objects$env_ss, par, objects$nbhd_ss, sim = sim)
       attract <- apply_kernel(attract0, kernel, bg_rate = bg_rate)
-      
       return(attract)      
     },
 
+    ## log_likelihood ----------------------------------------------------------
     log_likelihood = function(par, objects, sim, debug = TRUE) {
       obs      <- objects$obs
       max_dist <- objects$max_dist
@@ -69,35 +77,48 @@ step_selection_model <- R6Class("step_selection_model",
       like <- sapply(indices, function(i) {
         return(attract[i, obs[i]])
       })
-
       out <- -sum(log(like), na.rm = TRUE)
 
       # if (is.infinite(out) || is.na(out)) out <- 0
 
       print(paste("Current LL:", round(-out, 4)))
-      print(paste("Parameters:", paste(round(par, 4), collapse = ", ")))
+      print(paste("SS parameters:", paste(round(par, 4), collapse = ", ")))
       # saveRDS(list(out = out, array = like, par = par, o = objects),
       #         "data/output/current_iter_ss.rds")
       return(out)
     },
 
+    ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, 
                    env_raster = NULL, outliers = integer(0)) {
 
       objects <- self$prepare_objects(trajectory, max_dist, rdf, sim, env_raster)
       objects$outliers <- outliers
-      
+      print(paste("PAR START:", as.character(par_start), ","))
       # Fit model
       # Starting parameters & bounds defined separately for both models, fix when possible
+      lbound <- if (sim) {
+        c(rep(-Inf, length(par_start)))
+      } else {
+        c(rep(-Inf, length(par_start) - 2), -5, -30)
+      }
+
+      ubound <- if (sim) {
+        c(rep(Inf, length(par_start)))
+      } else {
+        c(rep(Inf, length(par_start) - 2), 5, -2)
+      }
+
       tryCatch({
         par_out <- optim(par_start, self$log_likelihood, objects = objects, 
                         sim = sim,  method = "L-BFGS-B",
-                        lower = c(rep(-Inf, length(par_start) - 2), -5, -30),
-                        upper = c(rep(Inf, length(par_start) - 2), 5, -2),
+                        lower = lbound,
+                        upper = ubound,
                         control = list(
                           maxit = 2000,     # More iterations
                           factr = 1e5
                         ))
+        
         ll <- self$log_likelihood(par_out$par, objects, sim)
         return(list(
           par = par_out$par,
@@ -132,6 +153,7 @@ path_propagation_model <- R6Class("path_propagation_model",
   public = list(
     propagation_steps = 10,  # Default, should be set externally
 
+    ## prepare_objects ---------------------------------------------------------
     prepare_objects = function(trajectory, max_dist, step_size, rdf, sim = FALSE,
                                env_raster = NULL) {
       ## This is where the magic happens. Indexing is everything!
@@ -199,16 +221,15 @@ path_propagation_model <- R6Class("path_propagation_model",
       return(result)
     },
 
+    ## build_kernel ------------------------------------------------------------
     build_kernel = function(par, objects, sim) { 
-      # saveRDS(list(p=par, o=objects), "data/output/debug.rds")
-
       # Numerical values
       max_dist   <- objects$max_dist
       ncell_local <- (2 * max_dist + 1)^2 
       step_size  <- objects$step_size
       n_obs      <- length(objects$obs) + 1
-      k_exp  <- exp(par[length(par) - 1]) %>% as.numeric # Ensure positive
-      bg_rate <- plogis(par[length(par)])
+      k_exp   <- ifelse(sim, exp(par[length(par)]), exp(par[length(par) - 1]))
+      bg_rate <- ifelse(sim, 0, plogis(par[length(par)]))
 
       # Matrices of dimension (n_obs * ncell_local) rows x 9 columns
       env_i      <- objects$env_i
@@ -243,6 +264,7 @@ path_propagation_model <- R6Class("path_propagation_model",
       return(current)
     },
 
+    ## log_likelihood ----------------------------------------------------------
     log_likelihood = function(par, objects, sim, debug = FALSE) {
 
       obs        <- objects$obs
@@ -263,23 +285,35 @@ path_propagation_model <- R6Class("path_propagation_model",
       log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
       out            <- -max(log_likelihood, na.rm = TRUE)
       print(paste("Current LL:", round(-out, 4)))
-      print(paste("Parameters:", paste(round(par, 4), collapse = ", ")))
+      print(paste("PP parameters:", paste(round(par, 4), collapse = ", ")))
       # if (is.infinite(out) || is.na(out)) out <- 0
       return(out)
     },
 
+    ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, step_size, rdf, par_start, sim = FALSE, 
                   env_raster = NULL, outliers = integer(0), dt) {
                     
       objects <- self$prepare_objects(trajectory, max_dist, step_size, rdf, sim, 
                                       env_raster)
       objects$outliers <- outliers
+      lbound <- if (sim) {
+        c(rep(-Inf, length(par_start)))
+      } else {
+        c(rep(-Inf, length(par_start) - 2), -5, -30)
+      }
+
+      ubound <- if (sim) {
+        c(rep(Inf, length(par_start)))
+      } else {
+        c(rep(Inf, length(par_start) - 2), 5, -2)
+      }
       # Fit model
       tryCatch({
         par_out <- optim(par_start, self$log_likelihood, objects = objects,                         
                         sim = sim,  method = "L-BFGS-B",
-                        lower = c(rep(-Inf, length(par_start) - 2), -5, -30),
-                        upper = c(rep(Inf, length(par_start) - 2), 5, -2),
+                        lower = lbound,
+                        upper = ubound,
                         control = list(
                           maxit = 2000,     # More iterations
                           factr = 1e5
@@ -374,6 +408,7 @@ movement_simulator <- R6Class("movement_simulator",
             self$config <- config
         },
 
+        ## simulate_paths ------------------------------------------------------
         simulate_paths = function() {  # terra not working well with parallel
             message(paste("Simulating", self$config$n_individuals, 
                             "paths for", self$config$name))
@@ -410,14 +445,15 @@ movement_simulator <- R6Class("movement_simulator",
             return(results)
     },
     
+    ## fit_models --------------------------------------------------------------
     fit_models = function(paths, parallel = TRUE, n_cores = NULL) {
         message(paste("Fitting models for", self$config$name))
         
         # Extract config information
         n_cores <- n_cores %||% self$config$n_cores
         max_dist <- self$config$max_dist()
-        # propagation_steps <- self$config$propagation_steps()
-        par_start <- c(-1.5, 1.5, -0.2)
+        propagation_steps <- self$config$propagation_steps()
+        par_start <- c(-1.5, 1.5, -0.2, log(1.0))
 
         obs_interval <- self$config$obs_interval
         step_size <- self$config$step_size
@@ -471,22 +507,21 @@ movement_simulator <- R6Class("movement_simulator",
             nbhd_full <<- make_nbhd(i = seq_len(ncell(land_i)), 
                               sz = step_size, r = land_i, rdf = rdf)
             
-            pp_model$propagation_steps <- self$config$propagation_steps
+            pp_model$propagation_steps <- self$config$propagation_steps()
 
             # Fit both models
             ss_result <- ss_model$fit(trajectory, max_dist, rdf = rdf, 
                         par_start, sim = TRUE, env_raster = land_i)
+            
             pp_result <- pp_model$fit(trajectory, max_dist, rdf = rdf,
-                        par_start, sim = TRUE, env_raster = land_i)
+              par_start, sim = TRUE, env_raster = land_i, step_size = step_size)
             
             return(list(
               step_selection = ss_result,
               path_propagation = pp_result,
               landscape = land_i
             ))
-        }
-        } else {
-          
+        }} else { 
           results <- list()
           for (i in 1:self$config$n_individuals) {
               message(paste0("Fitting individual #: ", i))
@@ -499,7 +534,6 @@ movement_simulator <- R6Class("movement_simulator",
                   s = autocorr_strength,
                   r = autocorr_range
               )   
-              
               rdf <- raster_to_df(land_i)
               # Prepare trajectory
               trajectory_df <- cbind(path_i$x, path_i$y)
@@ -512,6 +546,7 @@ movement_simulator <- R6Class("movement_simulator",
               nbhd_full <<- make_nbhd(i = seq_len(ncell(land_i)), 
                                     sz = self$config$step_size, 
                                     r = land_i, rdf = rdf)
+              
               # Fit both models
               ss_result <- ss_model$fit(trajectory, max_dist, rdf = rdf, 
                          par_start = par_start, sim = TRUE, env_raster = land_i)
@@ -577,8 +612,7 @@ simulation_config <- R6Class("simulation_config",
         },
 
         # Derived properties
-        # max_dist = function() max(2, self$step_size * (self$obs_interval + 1)),
-        max_dist = function() self$step_size * (self$obs_interval + 1),
+        max_dist = function() max(2, self$step_size * (self$obs_interval + 1)),
         propagation_steps = function() self$obs_interval + 2,
 
         save = function(filepath) {
@@ -610,32 +644,26 @@ simulation_batch <- R6Class("simulation_batch",
     # Run all simulations in the batch
     run_all = function(parallel = TRUE, n_cores = NULL) {
       self$results <- list()
-      
       for (config in self$configs) {
         message(paste("=" %>% rep(50) %>% paste(collapse = "")))
         message(paste("RUNNING SIMULATION:", config$name))
         message(paste("=" %>% rep(50) %>% paste(collapse = "")))
-        
         # Create simulator
         sim <- movement_simulator$new(config)
         n_cores <- n_cores %||% config$n_cores
-
         # Generate paths
         paths <- sim$simulate_paths()
-        
+        saveRDS(paths, "data/output/sim_paths.rds")
         # Fit models
         fit_results <- sim$fit_models(paths, parallel, n_cores)
-        
         # Store results
         self$results[[config$name]] <- list(
             config = config,
             paths = paths,
             fits = fit_results
         )
-        
         message(paste("COMPLETED:", config$name))
       }
-      
       return(self$results)
     },
     
@@ -679,10 +707,10 @@ simulation_batch <- R6Class("simulation_batch",
     
     plot_fragmentation_effect = function() {
       saveRDS(self$get_results()[[1]], 
-              paste0("data/fragmentation_study_results_", Sys.Date(), ".rds"))
+              paste0("data/fragmentation_study_results_", Sys.time(), ".rds"))
       summary_df <- self$get_results()[[2]]
       
-      plotpdf(nm = paste0("figs/fragmentation_study_", Sys.Date(), ".pdf"), 
+      plotpdf(nm = paste0("figs/fragmentation_study_", Sys.time(), ".pdf"), 
              x = 8, y = 4)
       par(mfrow = c(1, 2))
       
@@ -702,7 +730,6 @@ simulation_batch <- R6Class("simulation_batch",
            main = "Variability in path propagation advantage",
            pch = 19, cex = 1.5)
       dev.off()
-      
       return(summary_df)
     }
   )

@@ -24,10 +24,10 @@ epsg5880 <- "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000
 
 # Jaguar movement data, ID numbers, and metadata
 jag_move <- readRDS("data/jag_data_BR.rds")
-jag_id   <- readRDS("data/jag_list.rds")
-njag     <- nrow(jag_id)
+jag_id   <- readRDS("data/jag_list.rds"); njag <- nrow(jag_id)
 jag_meta0 <- data.table(read.csv("data/input/jaguars/jaguar_metadata2.csv"))
 jag_meta  <- readRDS("data/jag_meta2.rds")
+jag_meta2 <- merge(jag_meta, jag_meta0[, c("ID", "Collar.Type", "Collar.Brand", "Planned.Schedule", "Project.Leader", "Contact")], by = "ID")
 
 # RasterStack of environmental variables -- see 01_generate_data.R for details
 brazil_ras <- rast("data/env_layers.grd")
@@ -205,13 +205,17 @@ env_function <- function(env, par, nbhd = NULL, sim = FALSE) {
     # env <- scale(env)
     if (any(is.na(env))) env[which(is.na(env))] <- 0
     # First order with intercept
-    attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-                            par[3] * env[, 3] + par[4] * env[, 4] + 
-                            par[5] * env[, 5] + par[6] * env[, 6] + par[7]))
+    attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 1]^2 +
+                            par[3] * env[, 2] + par[4] * env[, 2]^2 +
+                            par[5] * env[, 3] + par[6] * env[, 3]^2 +
+                            par[7] * env[, 4] + par[8] * env[, 4]^2 +
+                            par[9] * env[, 5] + par[10] * env[, 5]^2 +
+                            par[11] * env[, 6] + par[12] * env[, 6]^2 +
+                            par[13]))
   } else {
     attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
   }
-
+  
   if (is.null(nbhd)) {
     return(attract)
   } else {
@@ -225,7 +229,11 @@ apply_kernel <- function(attract0, kernel, bg_rate = 0) {
   kernel <- kernel / sum(kernel, na.rm = T)
   na_mask <- is.na(attract0)
   attract0[na_mask] <- 0
-  p <- attract0 * rep(kernel, each = nrow(attract0))
+  if (is.null(nrow(attract0))) {
+    p <- attract0 * kernel
+  } else {
+    p <- attract0 * rep(kernel, each = nrow(attract0))
+  }
   p <- p + bg_rate - p * bg_rate
   p <- p / rowSums(p, na.rm = TRUE)
   p[na_mask] <- NA
@@ -457,7 +465,7 @@ gen_landscape <- function(size = 100, beta = 1, s = 0.03, r = 10, n = 0,
 
 # Generate a jaguar path of n steps starting from (x0, y0) with environmental
 # preference parameters par[] and search neighborhood size neighb
-jag_path <- function(x0, y0, n_step, par, neighb, env_raster) {
+jag_path <- function(x0, y0, n_step, par, neighb = 1, env_raster) {
   
   # Pre-compute neighborhood lookup for entire raster
   rdf <- raster_to_df(env_raster)
@@ -468,14 +476,18 @@ jag_path <- function(x0, y0, n_step, par, neighb, env_raster) {
   path <- matrix(NA, nrow = n_step, ncol = 4)
   current_cell <- cellFromRowCol(env_raster, x0, y0)
   path[1, ] <- c(x0, y0, current_cell, NA)
-
+  k_exp <- exp(as.numeric(par[length(par)]))
+  kernel <- calculate_dispersal_kernel(max_dispersal_dist = neighb,
+                                    kfun = function(x) dexp(x, k_exp))
   for (i in 2:n_step) {
       nbhd_cells <- nbhd_lookup[current_cell, ]
 
       env_vals <- env_values[nbhd_cells]
       attract <- 1 / (1 + exp(par[1] + par[2] * env_vals + par[3] * env_vals^2))
+      # should probably just be using env_function for consistency
       attract[is.na(attract)] <- 0
       attract <- attract / sum(attract)
+      attract <- apply_kernel(attract, kernel)
 
       # Sample and update
       step_idx <- sample(length(attract), 1, prob = attract)

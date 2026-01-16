@@ -200,9 +200,19 @@ path_propagation_model <- R6Class("path_propagation_model",
       dest <- matrix(0, nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
       
       unique_cells <- unique(nbhd_0) %>% na.exclude %>% as.numeric
-      env_s <- if (sim) scale(rdf$sim1[nbhd_0]) else scale(rdf[unique_cells, ])
-      env_i <- env_s[match(nbhd_0, unique_cells), ]
+      # env_s <- if (sim) scale(rdf$sim1[nbhd_0]) else scale(rdf[unique_cells, ])
+      # env_i <- env_s[match(nbhd_0, unique_cells), ]
+      if (sim) {
+        env_table <- scale(rdf$sim1[unique_cells])
+        env_s <- as.vector(env_table)
+        names(env_s) <- as.character(unique_cells)
+        env_i <- env_s[as.character(nbhd_0)]
+      } else {
+        env_s <- scale(rdf[unique_cells, ])
+        env_i <- env_s[match(nbhd_0, unique_cells), ]
+      }
       if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
+      
       # Return path propagation specific objects
       result <- list(
         env_i = env_i,
@@ -428,7 +438,11 @@ movement_simulator <- R6Class("movement_simulator",
               land_i <- gen_landscape(
                   size = self$config$env_size,
                   s = self$config$autocorr_strength,
-                  r = self$config$autocorr_range
+                  r = self$config$autocorr_range,
+                  b_density = self$config$b_density,
+                  b_length = self$config$b_length,
+                  b_width = self$config$b_width,
+                  b_value = self$config$b_value
               )
               
               message(paste0("Path #: ", i, " / ", self$config$n_individuals))
@@ -439,6 +453,15 @@ movement_simulator <- R6Class("movement_simulator",
                                 par = self$config$env_response, 
                                 neighb = self$config$step_size,
                                 env_raster = land_i)
+
+              # Plot path on landscape
+              plotpdf(nm = paste0("figs/sims/p", i, "_b", self$config$b_density,
+                        "_r", self$config$autocorr_range, ".pdf"), x = 6, y = 6)
+              terra::plot(land_i, xlim = c(100, 300), ylim = c(100, 300),
+                main = paste0("Path ", i, " (", self$config$name, ")"))
+              points(path_i$x, path_i$y, col = rgb(1, 1, 1, 0.3), pch = 19, cex = 0.5)
+              lines(path_i$x, path_i$y, col = rgb(1, 1, 1, 0.3), lwd = 1.5)
+              dev.off()
               
               results[[i]] <- list(path = path_i)
             }            
@@ -461,6 +484,10 @@ movement_simulator <- R6Class("movement_simulator",
         env_size <- self$config$env_size
         autocorr_strength <- self$config$autocorr_strength
         autocorr_range <- self$config$autocorr_range
+        b_density <- self$config$b_density
+        b_length <- self$config$b_length
+        b_width <- self$config$b_width
+        b_value <- self$config$b_value
 
         ss_model <- step_selection_model$new()
         pp_model <- path_propagation_model$new()
@@ -483,7 +510,8 @@ movement_simulator <- R6Class("movement_simulator",
                           # Parameters
                           "max_dist", "propagation_steps", "par_start", 
                           "step_size", "env_size", "autocorr_strength", 
-                          "autocorr_range", "obs_interval")) %dopar% {            
+                          "autocorr_range", "obs_interval", "b_density", 
+                          "b_length", "b_width", "b_value")) %dopar% {            
 
             message(paste0("Fitting individual #: ", i))
 
@@ -493,8 +521,12 @@ movement_simulator <- R6Class("movement_simulator",
             land_i <- gen_landscape(
                 size = env_size,
                 s = autocorr_strength,
-                r = autocorr_range
-            )                  
+                r = autocorr_range,
+                b_density = b_density,
+                b_length = b_length,
+                b_width = b_width,
+                b_value = b_value
+            )                
 
             rdf <- raster_to_df(land_i)
             trajectory_df <- cbind(path_i$x, path_i$y)
@@ -518,10 +550,10 @@ movement_simulator <- R6Class("movement_simulator",
             
             return(list(
               step_selection = ss_result,
-              path_propagation = pp_result,
-              landscape = land_i
+              path_propagation = pp_result
             ))
-        }} else { 
+          }
+        } else { 
           results <- list()
           for (i in 1:self$config$n_individuals) {
               message(paste0("Fitting individual #: ", i))
@@ -530,10 +562,14 @@ movement_simulator <- R6Class("movement_simulator",
               # Regenerate landscape deterministically
               set.seed(i + 4001)
               land_i <- gen_landscape(
-                  size = env_size,
-                  s = autocorr_strength,
-                  r = autocorr_range
-              )   
+                size = env_size,
+                s = autocorr_strength,
+                r = autocorr_range,
+                b_density = b_density,
+                b_length = b_length,
+                b_width = b_width,
+                b_value = b_value
+            )                 
               rdf <- raster_to_df(land_i)
               # Prepare trajectory
               trajectory_df <- cbind(path_i$x, path_i$y)
@@ -577,6 +613,7 @@ simulation_config <- R6Class("simulation_config",
         autocorr_strength = NULL,
         autocorr_range = NULL,
         b_density = NULL,
+        b_width = NULL,
         b_length = NULL,
         b_value = NULL,
 
@@ -594,11 +631,11 @@ simulation_config <- R6Class("simulation_config",
         name = NULL, 
 
         initialize = function(name = "default", autocorr_range = 50, 
-                            n_individuals = 10, env_size = 200, 
-                            autocorr_strength = 5, n_cores = 15,
-                            env_response = c(-1.5, 1.5, -0.2),
-                            b_density = 0, b_width = 2, b_length = 20,
-                            step_size = 1, obs_interval = 1, n_steps = 1000) {
+                        n_individuals = 10, env_size = 200, 
+                        autocorr_strength = 5, n_cores = 15,
+                        env_response = c(-1.5, 1.5, -0.2, exp(1)),
+                        b_density = 0, b_width = 2, b_length = 20, b_value = 99,
+                        step_size = 1, obs_interval = 1, n_steps = 1000) {
             self$name <- name
             self$env_size <- env_size
             self$autocorr_range <- autocorr_range
@@ -609,10 +646,14 @@ simulation_config <- R6Class("simulation_config",
             self$n_individuals <- n_individuals
             self$n_steps <- n_steps
             self$n_cores <- n_cores
+            self$b_density <- b_density
+            self$b_length <- b_length
+            self$b_width <- b_width
+            self$b_value <- b_value
         },
 
         # Derived properties
-        max_dist = function() max(2, self$step_size * (self$obs_interval + 1)),
+        max_dist = function() self$step_size * (self$obs_interval + 1),
         propagation_steps = function() self$obs_interval + 2,
 
         save = function(filepath) {
@@ -641,7 +682,7 @@ simulation_batch <- R6Class("simulation_batch",
     configs = list(),
     results = list(),
     
-    # Run all simulations in the batch
+    # run_all ==================================================================
     run_all = function(parallel = TRUE, n_cores = NULL) {
       self$results <- list()
       for (config in self$configs) {
@@ -667,7 +708,7 @@ simulation_batch <- R6Class("simulation_batch",
       return(self$results)
     },
     
-    # Extract performance comparison for plotting
+    # get_results ==============================================================
     get_results = function() {
       summary_list <- list()
       results_list <- list()
@@ -680,7 +721,7 @@ simulation_batch <- R6Class("simulation_batch",
         ll_step <- sapply(fits, 
                         function(x) if (is.na(x[1])) NA else x$step_selection$ll)
         ll_pp <- sapply(fits, 
-                      function(x) if (is.na(x[1])) NA else x$path_propagation$ll)
+                      function(x) if (is.na(x[2])) NA else x$path_propagation$ll)  
 
         results_list[[name]] <- data.frame(
           individual = seq_along(ll_step),
@@ -694,9 +735,10 @@ simulation_batch <- R6Class("simulation_batch",
         summary_list[[name]] <- data.frame(
           config_name = name,
           autocorr_range = config$autocorr_range,
+          barrier_density = config$b_density,
+          obs_interval = config$obs_interval,
           mean_aic_diff = mean(aic_diff, na.rm = TRUE),
           median_aic_diff = median(aic_diff, na.rm = TRUE),
-          sd_aic_diff = sd(aic_diff, na.rm = TRUE),
           prop_pp_better = mean(aic_diff > 0, na.rm = TRUE),
           n_successful = sum(!is.na(aic_diff))
         )
@@ -704,34 +746,65 @@ simulation_batch <- R6Class("simulation_batch",
       
       return(list(do.call(rbind, results_list), do.call(rbind, summary_list)))
     },
-    
-    plot_fragmentation_effect = function() {
+
+    # plot_2d_sweep ============================================================
+    plot_2d_sweep = function() {
+      summary_df <- self$get_results()[[2]]
+      p <- ggplot(summary_df, aes(x = obs_interval, y = autocorr_range,
+                                  fill = median_aic_diff)) +
+                geom_tile() +
+                geom_text(aes(label = round(median_aic_diff, 1)), size = 3) +
+                scale_fill_viridis_c(name = "Median ΔAIC\n(PP - SS)") +
+                labs(x = "Observation interval", y = "Range of autocorrelation",
+                    title = "Advantage across scales") +
+                theme_minimal()
+
+      ggsave(paste0("figs/sims/2d_sweep_", Sys.time(), ".pdf"), p,
+                width = 8, height = 6)
+      return(p)
+    },
+
+    # plot_fragmentation =======================================================
+    plot_fragmentation = function() {
       saveRDS(self$get_results()[[1]], 
               paste0("data/fragmentation_study_results_", Sys.time(), ".rds"))
       summary_df <- self$get_results()[[2]]
       
+      # AIC difference vs fragmentation
       plotpdf(nm = paste0("figs/fragmentation_study_", Sys.time(), ".pdf"), 
              x = 8, y = 4)
-      par(mfrow = c(1, 2))
-      
-      # Plot 1: AIC difference vs fragmentation
-      plot(summary_df$autocorr_range, summary_df$median_aic_diff,
+      plot(summary_df$autocorr_range, summary_df$mean_aic_diff,
            xlab = "Autocorrelation range (r1)", 
-           ylab = "Median AIC difference (PP - SS)",
+           ylab = "Mean AIC difference (PP - SS)",
            main = "Path propagation advantage vs fragmentation",
            pch = 19, cex = 1.5)
       abline(h = 0, lty = 2)
-      text(summary_df$autocorr_range, summary_df$median_aic_diff,
+      text(summary_df$autocorr_range, summary_df$mean_aic_diff,
            labels = summary_df$config_name, pos = 3)
-      
-      plot(summary_df$autocorr_range, summary_df$sd_aic_diff,
-           xlab = "Autocorrelation range (r1)", 
-           ylab = "SD of AIC difference (PP - SS)",
-           main = "Variability in path propagation advantage",
-           pch = 19, cex = 1.5)
       dev.off()
       return(summary_df)
-    }
+    },
+
+    # plot_barrier =============================================================
+    plot_barrier = function() {
+          saveRDS(self$get_results()[[1]], 
+                  paste0("data/fragmentation_study_results_", Sys.time(), ".rds"))
+          summary_df <- self$get_results()[[2]]
+          
+          # AIC difference vs fragmentation
+          plotpdf(nm = paste0("figs/fragmentation_study_", Sys.time(), ".pdf"), 
+                x = 8, y = 4)
+          plot(summary_df$barrier_density, summary_df$mean_aic_diff,
+              xlab = "Barrier density per n cells", 
+              ylab = "Mean AIC difference (PP - SS)",
+              main = "Path propagation advantage vs fragmentation",
+              pch = 19, cex = 1.5)
+          abline(h = 0, lty = 2)
+          text(summary_df$autocorr_range, summary_df$mean_aic_diff,
+              labels = summary_df$config_name, pos = 3)
+          dev.off()          
+          return(summary_df)
+        }
   )
 )
 

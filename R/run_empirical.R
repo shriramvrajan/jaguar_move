@@ -1,6 +1,6 @@
 rm(list = setdiff(ls(), "nbhd_full"))
-source("R_backup/functions.R")     # Existing functions
-source("R_backup/classes.R")       # New classes
+source("R/functions.R")     # Existing functions
+source("R/classes.R")       # New classes
 
 set.seed(7)
 

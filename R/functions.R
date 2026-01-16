@@ -419,7 +419,7 @@ thicken_line <- function(line_cells, width, grid_size) {
 # Generates a random field with a given correlation structure
 # beta: beta parameter for gstat, s: sill, r: range, n: nugget
 gen_landscape <- function(size = 100, beta = 1, s = 0.03, r = 10, n = 0,
-                      b_density = 0, b_length = 20, b_value = 2, b_width = 2) {   
+                      b_density = 0, b_length = 20, b_value = 99, b_width = 2) {   
 
     # Autocorrelation model - base field
     xy <- expand.grid(1:size, 1:size)

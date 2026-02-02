@@ -2,10 +2,119 @@ rm(list = ls())
 source("R/functions.R")  
 source("R/classes.R")       
 
-test_barrier    <- TRUE
-test_fragment   <- FALSE
+test_barrier    <- FALSE
+test_2dsweep    <- TRUE
 
-## Barrier study
+## Plotting functions ==========================================================
+
+plot_2d_sweep <- function(batch) {
+    summary_df <- batch$get_results()[[2]]
+    # 2D heatmap of median LL difference per observation
+    p <- ggplot(summary_df, aes(x = obs_interval, y = autocorr_range,
+                                fill = ll_diff_per_obs)) +
+        geom_tile() +
+        geom_text(aes(label = round(ll_diff_per_obs, 3)), size = 3) +
+        scale_fill_viridis_c(name = "Median ΔLL\n(SS - PP) per obs") +
+        labs(x = "Observation interval", y = "Autocorrelation range") +
+        theme_minimal()
+    ggsave(paste0("figs/sims/2d_sweep_", Sys.time(), ".pdf"), p,
+            width = 8, height = 6)
+    print(p)
+    return(summary_df)
+}
+
+plot_fragmentation <- function(batch) {
+    summary_df <- batch$get_results()[[2]]
+    # AIC difference vs fragmentation
+    plot_pdf(nm = paste0("figs/fragmentation_study_", Sys.time(), ".pdf"), 
+            x = 8, y = 4)
+    plot(summary_df$autocorr_range, summary_df$mean_aic_diff,
+        xlab = "Autocorrelation range (r1)", 
+        ylab = "Mean AIC difference (PP - SS)",
+        main = "Path propagation advantage vs fragmentation",
+        pch = 19, cex = 1.5)
+    abline(h = 0, lty = 2)
+    text(summary_df$autocorr_range, summary_df$mean_aic_diff,
+        labels = summary_df$config_name, pos = 3)
+    dev.off()
+    return(summary_df)
+}
+
+plot_barrier <- function(batch) {
+        summary_df <- batch$get_results()[[2]]
+        # AIC difference vs barrier density
+        plot_pdf(nm = paste0("figs/barrier_study", Sys.time(), ".pdf"), 
+            x = 8, y = 4)
+        plot(summary_df$barrier_density, summary_df$mean_aic_diff,
+            xlab = "Barrier density per n cells", 
+            ylab = "Mean AIC difference (PP - SS)",
+            main = "Path propagation advantage vs fragmentation",
+            pch = 19, cex = 1.5)
+        abline(h = 0, lty = 2)
+        text(summary_df$autocorr_range, summary_df$mean_aic_diff,
+            labels = summary_df$config_name, pos = 3)
+        dev.off()          
+        return(summary_df)
+}
+
+## Autocorrelation range / observation interval study ==========================
+if (test_2dsweep) {
+    batch <- simulation_batch$new()
+    param_grid <- expand.grid(
+        r1 = seq(1, 21, by = 2), obs_interval = 1:10,
+        stringsAsFactors = FALSE
+    )
+    batch$configs <- lapply(seq_len(nrow(param_grid)), function(i) {
+        r1  <- param_grid$r1[i]
+        o_i <- param_grid$obs_interval[i]
+
+        simulation_config$new(
+            # Simulation parameters
+            name            = paste0("r1_", r1, "obs_", o_i),
+            obs_interval    = o_i,                # Observation interval in time steps
+            n_steps         = 1000,              # Number of steps to simulate
+            n_individuals   = 30,                # Number of individuals to simulate
+            env_response = c(-1.5, 1.5, -0.2, 0),  # Environmental response parameters
+
+            # Landscape parameters
+            b_density         = 0,              # No barriers
+            env_size          = 400,            # Square side length in pixels
+            autocorr_range    = r1,             # Autocorrelation range
+            autocorr_strength = 10,             # Autocorrelation strength
+
+            # Model fitting parameters
+            step_size       = 1,        # Minimum step size in pixels
+            n_cores         = 5         # Number of cores for parallel processing
+        )
+    })
+      
+    done_files <- list.files("data/output", pattern = "^sim_.*\\.rds$")
+    batch$done <- gsub("^sim_|\\.rds$", "", done_files)
+    output <- batch$run_all(parallel = TRUE)
+    saveRDS(batch, paste0("simulations/r1_obs_sweep_", Sys.time(), ".rds"))
+    print(batch$get_results()[[2]])
+    plot_2d_sweep(batch)
+    # res <- readRDS("simulations/r1_obs_sweep_2026-01-20 23:13:38.282027.rds")
+    # b1 <- simulation_batch$new()
+    # b1$results <- res$results; b1$configs <- res$configs    
+    # r1 <- b1$get_results()[[2]]
+
+    # meanlld <- tapply(r1$ll_diff_per_obs, r1$config_name, function(x) median(x, na.rm = TRUE))
+    # oi <- tapply(r1$obs_interval, r1$config_name, mean)
+    # ac <- tapply(r1$autocorr_range, r1$config_name, mean)
+
+    # plot_pdf("figs/sim_obsint_lld.pdf")
+    # plot(oi, meanlld, pch = 19, cex = 0.5, xlab = "Observation interval", 
+    #     ylab = "Mean ΔLL per observation")
+    # dev.off()
+
+    # plot_pdf("figs/sim_acrange_lld.pdf")
+    # plot(ac, meanlld, pch = 19, cex = 0.5, xlab = "Autocorrelation range",
+    #     ylab = "Mean ΔLL per observation")
+    # dev.off()
+}
+
+## Barrier density study =======================================================
 if (test_barrier) {
     batch <- simulation_batch$new()
     # b_density_values <- c(0, 15, 30, 45, 60, 75)
@@ -38,44 +147,7 @@ if (test_barrier) {
     batch$plot_barrier()
 }
 
-## Autocorrelation range / observation interval study
-if (test_fragment) {
-    batch <- simulation_batch$new()
-    param_grid <- expand.grid(
-        r1 = c(1, 5, 10, 20, 40), obs_interval = c(0, 1, 2, 3, 5, 8, 10),
-        stringsAsFactors = FALSE
-    )
-    batch$configs <- lapply(seq_len(nrow(param_grid)), function(i) {
-        r1  <- param_grid$r1[i]
-        o_i <- param_grid$obs_interval[i]
-
-        simulation_config$new(
-            # Simulation parameters
-            name            = paste0("r1_", r1, "obs_", o_i),
-            obs_interval    = o_i,                # Observation interval in time steps
-            n_steps         = 2000,              # Number of steps to simulate
-            n_individuals   = 30,                # Number of individuals to simulate
-            env_response = c(-1.5, 1.5, -0.2, 0),  # Environmental response parameters
-
-            # Landscape parameters
-            b_density         = 0,              # No barriers
-            env_size          = 400,            # Square side length in pixels
-            autocorr_range    = r1,             # Autocorrelation range
-            autocorr_strength = 10,             # Autocorrelation strength
-            # No barriers
-
-            # Model fitting parameters
-            step_size       = 1,        # Minimum step size in pixels
-            n_cores         = 10         # Number of cores for parallel processing
-        )
-    })
-
-    output <- batch$run_all(parallel = TRUE)
-    saveRDS(batch, paste0("simulations/r1_obs_sweep_", Sys.time(), ".rds"))
-    batch$plot_2d_sweep()
-    print(batch$get_results()[[2]])
-}
-
+## Parameter recovery plots and results tables =================================
 if (FALSE) {
     plot_parameter_recovery <- function(fits) {
         par_ss <- lapply(fits, function(i) i$step_selection$par) 
@@ -94,7 +166,7 @@ if (FALSE) {
     }
 
     bat <- readRDS("simulations/r1sim_r1_1_1_1000.rds")
-    plotpdf(x = 8, y = 4)
+    plot_pdf(x = 8, y = 4)
     plot_parameter_recovery(bat$r1_1$fits)
     dev.off()
 
@@ -134,7 +206,7 @@ if (FALSE) {
     res2 <- res_table(out2)
 
     plot_res <- function(res, nm = "") {
-        plotpdf(nm = paste0("figs/r1plot_", nm, ".pdf"))
+        plot_pdf(nm = paste0("figs/r1plot_", nm, ".pdf"))
         y <- tapply(res$ll_ss - res$ll_pp, res$r1, function(x) median(x, na.rm = TRUE))
         x <- sort(unique(res2$r1))
         plot(x, y, pch = 19, cex = 1.3)

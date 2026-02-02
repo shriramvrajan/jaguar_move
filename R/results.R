@@ -1,11 +1,11 @@
 rm(list = ls())
-source("R_backup/functions.R")
-source("R_backup/classes.R")
+source("R/functions.R")
+source("R/classes.R")
 
 # library(gridExtra)
 
-file_ss <- "data/output/empirical_results_ss_2025-11-26.rds"
-file_pp <- "data/output/empirical_results_pp_2025-11-29.rds"
+file_ss <- "data/output/empirical_results_ss_2026-01-28.rds"
+file_pp <- "data/output/empirical_results_pp_2026-01-27.rds"
 
 # Empirical batch results ======================================================
 

@@ -12,13 +12,10 @@ library(R6)
 step_selection_model <- R6Class("step_selection_model",
   public = list(  
     ## prepare_objects ---------------------------------------------------------
-    prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE,
-                               env_raster = NULL) {
+    prepare_objects = function(trajectory, max_dist, rdf, sim = FALSE) {
       message("Preparing step selection objects")
-      # Get environment data
-      env_ras <- if (sim) env_raster else brazil_ras
       # Neighborhoods for step selection
-      nbhd_ss <- make_nbhd(i = trajectory, sz = max_dist, r = env_ras, rdf = rdf)
+      nbhd_ss <- make_nbhd(rdf = rdf, i = trajectory, sz = max_dist)
 
       # Build observations for step selection
       obs <- sapply(2:nrow(nbhd_ss), function(r) {
@@ -90,9 +87,8 @@ step_selection_model <- R6Class("step_selection_model",
 
     ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, 
-                   env_raster = NULL, outliers = integer(0)) {
-
-      objects <- self$prepare_objects(trajectory, max_dist, rdf, sim, env_raster)
+                  outliers = integer(0)) {
+      objects <- self$prepare_objects(trajectory, max_dist, rdf, sim)
       objects$outliers <- outliers
       print(paste("PAR START:", as.character(par_start), ","))
       # Fit model
@@ -154,14 +150,11 @@ path_propagation_model <- R6Class("path_propagation_model",
     propagation_steps = 10,  # Default, should be set externally
 
     ## prepare_objects ---------------------------------------------------------
-    prepare_objects = function(trajectory, max_dist, step_size, rdf, sim = FALSE,
-                               env_raster = NULL) {
+    prepare_objects = function(trajectory, max_dist, step_size, rdf, sim = FALSE) {
       ## This is where the magic happens. Indexing is everything!
       message("Preparing path propagation objects")   
-      
-      env_ras <- if (sim) env_raster else brazil_ras
       # Extended neighborhoods
-      nbhd_0 <- make_nbhd(i = trajectory, sz = max_dist, r = env_ras, rdf = rdf)
+      nbhd_0 <- make_nbhd(rdf = rdf, i = trajectory, sz = max_dist)
 
       # Get observations as cell numbers within full neighborhood
       obs <- sapply(2:nrow(nbhd_0), function(r) {
@@ -302,10 +295,9 @@ path_propagation_model <- R6Class("path_propagation_model",
 
     ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, step_size, rdf, par_start, sim = FALSE, 
-                  env_raster = NULL, outliers = integer(0), dt) {
+                  outliers = integer(0), dt) {
                     
-      objects <- self$prepare_objects(trajectory, max_dist, step_size, rdf, sim, 
-                                      env_raster)
+      objects <- self$prepare_objects(trajectory, max_dist, step_size, rdf, sim)
       objects$outliers <- outliers
       lbound <- if (sim) {
         c(rep(-Inf, length(par_start)))
@@ -346,7 +338,7 @@ path_propagation_model <- R6Class("path_propagation_model",
 
 
     dispersal_from = function(init_point, par, step_size, n_steps, rdf = brdf,
-                              raster = brazil_ras, threshold = 1e-6) {
+                              threshold = 1e-6) {
       
       # FIX BG RATE ISSUE
       k_exp <- exp(par[length(par)]) %>% as.numeric()
@@ -364,7 +356,7 @@ path_propagation_model <- R6Class("path_propagation_model",
           if (p < threshold) next
 
           cell <- as.numeric(cell)
-          nbhd <- make_nbhd(i = cell, sz = step_size, r = raster, rdf = rdf)[1, ]
+          nbhd <- make_nbhd(rdf = rdf, i = cell, sz = step_size)[1, ]
           nbhd <- nbhd[!is.na(nbhd)]
           
           dists <- sqrt((rdf$row[nbhd] - rdf$row[cell])^2 + 
@@ -385,8 +377,7 @@ path_propagation_model <- R6Class("path_propagation_model",
         p_current <- p_current[p_current >= threshold]
       }
 
-      nbhd_full <- make_nbhd(i = init_point, sz = max_displacement, r = raster, 
-                             rdf = rdf)
+      nbhd_full <- make_nbhd(rdf = rdf, i = init_point, sz = max_displacement)
       p_vector <- numeric(length(nbhd_full))
       for (name in names(p_current)) {
         cell <- as.numeric(name)
@@ -434,7 +425,8 @@ movement_simulator <- R6Class("movement_simulator",
         
             results <- list()
             for (i in 1:self$config$n_individuals) {
-              set.seed(i + 4001)
+              config_seed <- sum(utf8ToInt(self$config$name))
+              set.seed(i + 4001 + config_seed)
               land_i <- gen_landscape(
                   size = self$config$env_size,
                   s = self$config$autocorr_strength,
@@ -444,7 +436,7 @@ movement_simulator <- R6Class("movement_simulator",
                   b_width = self$config$b_width,
                   b_value = self$config$b_value
               )
-              
+              rdf <- raster_to_df(land_i)
               message(paste0("Path #: ", i, " / ", self$config$n_individuals))
               x0 <- ceiling(self$config$env_size / 2)
               y0 <- ceiling(self$config$env_size / 2)
@@ -452,18 +444,18 @@ movement_simulator <- R6Class("movement_simulator",
               path_i <- jag_path(x0, y0, self$config$n_steps, 
                                 par = self$config$env_response, 
                                 neighb = self$config$step_size,
-                                env_raster = land_i)
+                                rdf = rdf)
 
               # Plot path on landscape
-              plotpdf(nm = paste0("figs/sims/p", i, "_b", self$config$b_density,
-                        "_r", self$config$autocorr_range, ".pdf"), x = 6, y = 6)
+              plot_pdf(nm = paste0("figs/sims/current", self$config$name, "_path_", i,
+                  ".pdf"), x = 6, y = 6)
               terra::plot(land_i, xlim = c(100, 300), ylim = c(100, 300),
                 main = paste0("Path ", i, " (", self$config$name, ")"))
               points(path_i$x, path_i$y, col = rgb(1, 1, 1, 0.3), pch = 19, cex = 0.5)
               lines(path_i$x, path_i$y, col = rgb(1, 1, 1, 0.3), lwd = 1.5)
               dev.off()
               
-              results[[i]] <- list(path = path_i)
+              results[[i]] <- list(path = path_i, rdf = rdf)
             }            
             return(results)
     },
@@ -499,7 +491,7 @@ movement_simulator <- R6Class("movement_simulator",
                                               function(x) is.function(get(x)))]
           
           results <- foreach(i = seq_len(n_individuals),
-            .packages = c("terra", "gstat"),
+            .packages = c("gstat"),
             .export = c(  # Model classes
                           "step_selection_model", "path_propagation_model",
                           "ss_model", "pp_model",
@@ -516,37 +508,26 @@ movement_simulator <- R6Class("movement_simulator",
             message(paste0("Fitting individual #: ", i))
 
             path_i <- paths[[i]]$path
-            # Deterministic regeneration to avoid parallel terra nonsense
-            set.seed(i + 4001)
-            land_i <- gen_landscape(
-                size = env_size,
-                s = autocorr_strength,
-                r = autocorr_range,
-                b_density = b_density,
-                b_length = b_length,
-                b_width = b_width,
-                b_value = b_value
-            )                
-
-            rdf <- raster_to_df(land_i)
+            rdf    <- paths[[i]]$rdf
             trajectory_df <- cbind(path_i$x, path_i$y)
             ind <- seq(1, nrow(trajectory_df), obs_interval + 1)
             trajectory_df <- trajectory_df[ind, ]
-            trajectory <- terra::cellFromRowCol(land_i, 
-                            trajectory_df[, 1], trajectory_df[, 2])
+            nrow_ras <- max(rdf$row)
+            ncol_ras <- max(rdf$col)
+            trajectory <- (trajectory_df[, 1] - 1) * ncol_ras + trajectory_df[, 2]
             
             # Build individual neighborhood
-            nbhd_full <<- make_nbhd(i = seq_len(ncell(land_i)), 
-                              sz = step_size, r = land_i, rdf = rdf)
+            nbhd_full <<- make_nbhd(rdf = rdf, i = seq_len(nrow(rdf)), 
+                              sz = step_size)
             
             pp_model$propagation_steps <- self$config$propagation_steps()
 
             # Fit both models
             ss_result <- ss_model$fit(trajectory, max_dist, rdf = rdf, 
-                        par_start, sim = TRUE, env_raster = land_i)
+                        par_start, sim = TRUE)
             
             pp_result <- pp_model$fit(trajectory, max_dist, rdf = rdf,
-              par_start, sim = TRUE, env_raster = land_i, step_size = step_size)
+              par_start, sim = TRUE, step_size = step_size)
             
             return(list(
               step_selection = ss_result,
@@ -559,40 +540,27 @@ movement_simulator <- R6Class("movement_simulator",
               message(paste0("Fitting individual #: ", i))
               
               path_i <- paths[[i]]$path
-              # Regenerate landscape deterministically
-              set.seed(i + 4001)
-              land_i <- gen_landscape(
-                size = env_size,
-                s = autocorr_strength,
-                r = autocorr_range,
-                b_density = b_density,
-                b_length = b_length,
-                b_width = b_width,
-                b_value = b_value
-            )                 
-              rdf <- raster_to_df(land_i)
+              rdf    <- paths[[i]]$rdf
               # Prepare trajectory
               trajectory_df <- cbind(path_i$x, path_i$y)
               ind <- seq(1, nrow(trajectory_df), self$config$obs_interval + 1)
               trajectory_df <- trajectory_df[ind, ]
-              trajectory <- terra::cellFromRowCol(land_i, 
-                                    trajectory_df[, 1], trajectory_df[, 2])
+              nrow_ras <- max(rdf$row)
+              ncol_ras <- max(rdf$col)
+              trajectory <- (trajectory_df[, 1] - 1) * ncol_ras + trajectory_df[, 2]
               
               # Build individual neighborhood
-              nbhd_full <<- make_nbhd(i = seq_len(ncell(land_i)), 
-                                    sz = self$config$step_size, 
-                                    r = land_i, rdf = rdf)
+              nbhd_full <<- make_nbhd(rdf = rdf, i = seq_len(nrow(rdf)), 
+                                    sz = self$config$step_size)
               
               # Fit both models
               ss_result <- ss_model$fit(trajectory, max_dist, rdf = rdf, 
-                         par_start = par_start, sim = TRUE, env_raster = land_i)
+                         par_start = par_start, sim = TRUE)
               pp_result <- pp_model$fit(trajectory, max_dist, rdf = rdf, 
-                         par_start = par_start, sim = TRUE, env_raster = land_i,
-                         step_size = step_size)
+                         par_start = par_start, sim = TRUE, step_size = step_size)
               results[[i]] <- list(
                 step_selection = ss_result,
-                path_propagation = pp_result,
-                landscape = land_i
+                path_propagation = pp_result
               )
           }
         }
@@ -681,29 +649,34 @@ simulation_batch <- R6Class("simulation_batch",
   public = list(
     configs = list(),
     results = list(),
+    done = NA,
     
     # run_all ==================================================================
     run_all = function(parallel = TRUE, n_cores = NULL) {
-      self$results <- list()
+
+      self$results <- list()  
       for (config in self$configs) {
-        message(paste("=" %>% rep(50) %>% paste(collapse = "")))
-        message(paste("RUNNING SIMULATION:", config$name))
-        message(paste("=" %>% rep(50) %>% paste(collapse = "")))
+        if (config$name %in% self$done) {
+          message(paste("Skipping, already run:", config$name))
+          self$results[[config$name]] <- readRDS(
+            paste0("data/output/sim_", config$name, ".rds")
+          )
+          next
+        }
+        message(paste("Running simulation:", config$name))
         # Create simulator
         sim <- movement_simulator$new(config)
         n_cores <- n_cores %||% config$n_cores
-        # Generate paths
-        paths <- sim$simulate_paths()
-        saveRDS(paths, "data/output/sim_paths.rds")
-        # Fit models
-        fit_results <- sim$fit_models(paths, parallel, n_cores)
-        # Store results
-        self$results[[config$name]] <- list(
+        paths <- sim$simulate_paths()                          # Generate paths
+        fit_results <- sim$fit_models(paths, parallel, n_cores) # Fit models
+        self$results[[config$name]] <- list(                    # Store results
             config = config,
             paths = paths,
             fits = fit_results
         )
-        message(paste("COMPLETED:", config$name))
+        saveRDS(self$results[[config$name]], 
+                paste0("data/output/sim_", config$name, ".rds"))
+        message(paste("Completed:", config$name))
       }
       return(self$results)
     },
@@ -718,10 +691,15 @@ simulation_batch <- R6Class("simulation_batch",
         config <- self$results[[name]]$config
 
         # Extract log-likelihoods for each individual
-        ll_step <- sapply(fits, 
-                        function(x) if (is.na(x[1])) NA else x$step_selection$ll)
-        ll_pp <- sapply(fits, 
-                      function(x) if (is.na(x[2])) NA else x$path_propagation$ll)  
+        n_obs <- floor(config$n_steps / (config$obs_interval + 1))
+        ll_step <- sapply(fits, function(x) {
+          if (is.na(x[1]) || length(x[1]) == 0) NA else x$step_selection$ll
+        })
+        ll_pp <- sapply(fits, function(x) {
+          if (is.na(x[2]) || length(x[2]) == 0) NA else x$path_propagation$ll
+        })
+        ll_diff <- (ll_step - ll_pp)  # Log-likelihood difference
+        ll_diff_per_obs <- ll_diff / (n_obs - 1)  # Per observation
 
         results_list[[name]] <- data.frame(
           individual = seq_along(ll_step),
@@ -739,74 +717,15 @@ simulation_batch <- R6Class("simulation_batch",
           obs_interval = config$obs_interval,
           mean_aic_diff = mean(aic_diff, na.rm = TRUE),
           median_aic_diff = median(aic_diff, na.rm = TRUE),
+          ll_diff_per_obs = ll_diff_per_obs,
           prop_pp_better = mean(aic_diff > 0, na.rm = TRUE),
           n_successful = sum(!is.na(aic_diff))
         )
       }
       
       return(list(do.call(rbind, results_list), do.call(rbind, summary_list)))
-    },
-
-    # plot_2d_sweep ============================================================
-    plot_2d_sweep = function() {
-      summary_df <- self$get_results()[[2]]
-      p <- ggplot(summary_df, aes(x = obs_interval, y = autocorr_range,
-                                  fill = median_aic_diff)) +
-                geom_tile() +
-                geom_text(aes(label = round(median_aic_diff, 1)), size = 3) +
-                scale_fill_viridis_c(name = "Median ΔAIC\n(PP - SS)") +
-                labs(x = "Observation interval", y = "Range of autocorrelation",
-                    title = "Advantage across scales") +
-                theme_minimal()
-
-      ggsave(paste0("figs/sims/2d_sweep_", Sys.time(), ".pdf"), p,
-                width = 8, height = 6)
-      return(p)
-    },
-
-    # plot_fragmentation =======================================================
-    plot_fragmentation = function() {
-      saveRDS(self$get_results()[[1]], 
-              paste0("data/fragmentation_study_results_", Sys.time(), ".rds"))
-      summary_df <- self$get_results()[[2]]
-      
-      # AIC difference vs fragmentation
-      plotpdf(nm = paste0("figs/fragmentation_study_", Sys.time(), ".pdf"), 
-             x = 8, y = 4)
-      plot(summary_df$autocorr_range, summary_df$mean_aic_diff,
-           xlab = "Autocorrelation range (r1)", 
-           ylab = "Mean AIC difference (PP - SS)",
-           main = "Path propagation advantage vs fragmentation",
-           pch = 19, cex = 1.5)
-      abline(h = 0, lty = 2)
-      text(summary_df$autocorr_range, summary_df$mean_aic_diff,
-           labels = summary_df$config_name, pos = 3)
-      dev.off()
-      return(summary_df)
-    },
-
-    # plot_barrier =============================================================
-    plot_barrier = function() {
-          saveRDS(self$get_results()[[1]], 
-                  paste0("data/fragmentation_study_results_", Sys.time(), ".rds"))
-          summary_df <- self$get_results()[[2]]
-          
-          # AIC difference vs fragmentation
-          plotpdf(nm = paste0("figs/fragmentation_study_", Sys.time(), ".pdf"), 
-                x = 8, y = 4)
-          plot(summary_df$barrier_density, summary_df$mean_aic_diff,
-              xlab = "Barrier density per n cells", 
-              ylab = "Mean AIC difference (PP - SS)",
-              main = "Path propagation advantage vs fragmentation",
-              pch = 19, cex = 1.5)
-          abline(h = 0, lty = 2)
-          text(summary_df$autocorr_range, summary_df$mean_aic_diff,
-              labels = summary_df$config_name, pos = 3)
-          dev.off()          
-          return(summary_df)
-        }
-  )
-)
+    }
+))
 
 ## Empirical data fitting ======================================================
 
@@ -978,8 +897,8 @@ empirical_batch <- R6Class("empirical_batch",
       n_obs <- length(track_cells)
 
       dt_scaled <- track$dt[2:length(track$dt)] / median(na.exclude(track$dt))
-      dt_discrete <- pmax(1, round(dt_scaled))
-      outliers <- which(dt_discrete > 1)
+      dt_discrete <- round(dt_scaled)
+      outliers <- which(dt_discrete != 1)
 
       if (length(outliers) > 0) dt_discrete <- dt_discrete[-outliers]
       
@@ -998,9 +917,6 @@ empirical_batch <- R6Class("empirical_batch",
       pp_model$propagation_steps <- 8
       sl_emp <- na.exclude(track$sl[-outliers])
       max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
-      print(max_dist)
-      print(paste(max_dist, pp_model$propagation_steps))
-      print(quantile(dt_discrete))
             
       # Starting parameters
       par_start <- c(rep(0, self$config$npar - 2), # no environment preferences
@@ -1097,7 +1013,7 @@ individual_analysis <- R6Class("individual_analysis",
 
       ########## PLOTTING STARTS HERE (probably move somewhere else) ###########
 
-      plotpdf(nm = paste0("figs/indiv_test_", Sys.Date(), ".pdf"), x = 8, y = 8)
+      plot_pdf(nm = paste0("figs/indiv_test_", Sys.Date(), ".pdf"), x = 8, y = 8)
       par(mfrow = c(1, 2))
       # Extract probability distributions
       p_ss <- self$ss_disp$probs

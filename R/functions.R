@@ -1,15 +1,13 @@
-## Basic functions and libraries 
+## Libraries, data, basic functions
+## see 00_data_preparation.R for data preparation steps
 
 # Libraries ====================================================================
 library(terra)
 library(tidyverse)
 library(data.table)
-library(gstat)
 library(ctmm)
 library(amt) 
-library(lubridate)
 library(metaRange)
-library(pryr)
 library(foreach)
 library(doParallel)
 library(viridis)
@@ -24,22 +22,15 @@ epsg5880 <- "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000
 
 # Jaguar movement data, ID numbers, and metadata
 jag_move <- readRDS("data/jag_data_BR.rds")
-jag_id   <- readRDS("data/jag_list.rds"); njag <- nrow(jag_id)
-jag_meta0 <- data.table(read.csv("data/input/jaguars/jaguar_metadata2.csv"))
-jag_meta  <- readRDS("data/jag_meta2.rds")
-jag_meta2 <- merge(jag_meta, jag_meta0[, c("ID", "Collar.Type", "Collar.Brand", "Planned.Schedule", "Project.Leader", "Contact")], by = "ID")
+jag_id   <- readRDS("data/jag_list.rds")
+jag_meta <- read.csv("data/input/jaguars/jaguar_metadata.csv") %>% data.table()
 
-# RasterStack of environmental variables -- see 01_generate_data.R for details
+# RasterStack of environmental variables 
 brazil_ras <- rast("data/env_layers.grd")
-# load("data/env_layers.RData") # same information as a dataframe ('brdf')
 brdf <- readRDS("data/env_layers.rds")
-# brdf <- brdf[, -1]  # Remove human footprint
 
 # Brazil biomes shapefile
 biome <- vect("data/input/Brazil_biomes/Brazil_biomes.shp")
-
-# Empirical results
-# e_results <- readRDS("data/output/oldresults_empirical.rds")
 
 # Functions ====================================================================
 
@@ -50,19 +41,6 @@ message <- function(m, f = "data/output/run_log.txt") {
     m <- paste(format(Sys.time(), "%d.%m.%y  %R"), m)
     print(m)
     cat(m, file = f, append = TRUE, sep = "\n")
-}
-
-# Object size list
-memory <- function() {
-    for(x in ls(envir = .GlobalEnv)) {
-        paste(object.size(get(x)) %>% format(units = "Mb"), x) %>% print()
-    }
-    print(paste("Total:", as.numeric(mem_used()) / 1e9))
-}
-
-# Output last n lines of logfile
-log_tail <- function(n = 10, f = "data/output/run_log.txt") {
-    tail(readLines(f), n)
 }
 
 # Set up parallel processing
@@ -80,22 +58,12 @@ raster_to_df <- function(r) {
     return(outdf)
 }
 
-# Plot to pdf (for SSH)
-plotpdf <- function(nm = "plot1.pdf", x = 4, y = 4) {
+# Plot to pdf
+plot_pdf <- function(nm = "figs/plot.pdf", x = 4, y = 4) {
   pdf(nm, width = x, height = y)
 }
 
-# Return 9-cell neighborhood of cell in raster r
-rast9 <- function(r, cell) {
-    # cell: cell number in raster
-    # r: raster object
-    row <- rowFromCell(r, cell)
-    col <- colFromCell(r, cell)
-    expand <- expand.grid((row - 1):(row + 1), (col - 1):(col + 1))
-    cell9 <- ext(r, cells = terra::cellFromRowCol(r, expand$Var1, expand$Var2))
-    zoom(r, cell9)
-}
-
+# Plot a satellite map given bounding box coordinates (see ggmap::get_map)
 plot_satellite <- function(bbox) {
     tryCatch({
         satellite_map <- ggmap::get_map(location = bbox, maptype = "satellite")
@@ -108,6 +76,204 @@ plot_satellite <- function(bbox) {
     })
 }
 
+# 1. Movement model ============================================================
+
+# Output neighborhood as matrix
+# r:    Raster object
+# i:    Index of cell in raster
+# sz:   Size of neighborhood
+make_nbhd <- function(rdf, i, sz) {  
+  n_cells <- length(i)
+  n_offsets <- (2 * sz + 1)^2
+  
+  # Infer raster dimensions from dataframe
+  nrow_ras <- max(rdf$row)
+  ncol_ras <- max(rdf$col)
+  offsets_row <- t(rep(-sz:sz, each = 2 * sz + 1))
+  offsets_col <- t(rep(-sz:sz, times = 2 * sz + 1))
+  rows_all <- rep(rdf$row[i], each = n_offsets) + rep(offsets_row, times = n_cells)
+  cols_all <- rep(rdf$col[i], each = n_offsets) + rep(offsets_col, times = n_cells)
+
+  # Convert row/col to cell numbers, set out-of-bounds cells to NA
+  valid <- rows_all >= 1 & rows_all <= nrow_ras & 
+           cols_all >= 1 & cols_all <= ncol_ras
+  cells_all <- ifelse(valid, (rows_all - 1) * ncol_ras + cols_all, NA)
+  
+  mat <- matrix(cells_all, nrow = n_cells, ncol = n_offsets, byrow = TRUE)
+  return(mat)
+}
+
+# Attractiveness function for movement model
+# env:      Environmental variable values
+# par:      Parameters for functional form
+# format:   TRUE to return as matrix, FALSE to return as vector
+env_function <- function(env, par, nbhd = NULL, sim = FALSE) {
+
+  par <- as.numeric(par)
+  if (!sim) {
+    # env <- scale(env)
+    if (any(is.na(env))) env[which(is.na(env))] <- 0
+    # First order with intercept
+    attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
+                            par[3] * env[, 3] + par[4] * env[, 4] +
+                            par[5] * env[, 5] + par[6] * env[, 6] +
+                            par[7]))
+    # Second order with intercept
+    # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 1]^2 +
+    #                         par[3] * env[, 2] + par[4] * env[, 2]^2 +
+    #                         par[5] * env[, 3] + par[6] * env[, 3]^2 +
+    #                         par[7] * env[, 4] + par[8] * env[, 4]^2 +
+    #                         par[9] * env[, 5] + par[10] * env[, 5]^2 +
+    #                         par[11] * env[, 6] + par[12] * env[, 6]^2 +
+    #                         par[13]))
+  } else {
+    attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+  }
+  
+  if (is.null(nbhd)) {
+    return(attract)
+  } else {
+    attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
+    attract <- attract / rowSums(attract, na.rm = TRUE)
+    return(attract)  
+  }
+}
+
+apply_kernel <- function(attract0, kernel, bg_rate = 0) {
+  # kernel <- kernel / sum(kernel, na.rm = T)
+  na_mask <- is.na(attract0)
+  attract0[na_mask] <- 0
+  if (is.null(nrow(attract0))) {
+    p <- attract0 * kernel
+  } else {
+    p <- attract0 * rep(kernel, each = nrow(attract0))
+  }
+  p <- p + bg_rate - p * bg_rate
+  p <- p / rowSums(p, na.rm = TRUE)
+  p[na_mask] <- NA
+  return(p)
+}
+
+# 2. Simulation ---------------------------------------------------------------
+
+# Generates random field with autocorrelation structure (fast Fourier transform)
+# size: size of square edge, beta: beta parameter, s: sill, r: range, n: nugget,
+# b_density: barrier density per 10k cells, b_length: mean barrier length,
+# b_value: barrier pixel value, b_width: barrier width in cells
+gen_landscape <- function(size = 100, beta = 1, s = 0.03, r = 10, n = 0,
+                      b_density = 0, b_length = 20, b_value = 99, b_width = 2) {   
+
+    # Frequency coordinates (with wraparound, centered on 0)
+    freqs <- 0:(size-1)
+    freqs[freqs > size/2] <- freqs[freqs > size/2] - size
+    # 
+    freq_grid <- expand.grid(fx = freqs/size, fy = freqs/size)
+    freq_dist <- sqrt(freq_grid$fx^2 + freq_grid$fy^2)
+    
+    # Exponential covariance spectral density
+    # S(f) = variance * range^2 / (1 + (2π × range × f)^2)^(3/2)
+    spectral <- s * r^2 / (1 + (2 * pi * r * freq_dist)^2)^1.5
+    spectral_mat <- matrix(spectral, size, size)
+    
+    # Generate white noise and filter
+    noise_real <- matrix(rnorm(size^2), size, size)
+    noise_imag <- matrix(rnorm(size^2), size, size)
+    noise_complex <- noise_real + 1i * noise_imag
+    
+    # Apply spectral filter
+    filtered <- fft(noise_complex) * sqrt(spectral_mat)
+    field <- Re(fft(filtered, inverse = TRUE)) / size
+    
+    # Standardize and scale
+    field <- field * sqrt(s) / sd(as.vector(field))
+    out_mat <- field + beta
+    
+    # Add nugget
+    if (n > 0) out_mat <- out_mat + matrix(rnorm(size^2, 0, sqrt(n)), size, size)
+    if (any(out_mat < 0)) out_mat[out_mat < 0] <- 0
+
+    # Add barriers
+    if (b_density > 0) {
+      # Number of barriers per 10k cells
+      n_barriers <- ceiling(b_density * (size ^ 2) / 10000)
+
+      for (b in seq_len(n_barriers)) {
+        x0 <- sample(1:size, 1)
+        y0 <- sample(1:size, 1)
+        angle <- runif(1, 0, 2 * pi)
+
+        length <- rgamma(1, shape = 4, scale = b_length / 4)
+        x1 <- x0 + length * cos(angle)
+        y1 <- y0 + length * sin(angle)
+
+        line_xy <- bresenham(x0, y0, x1, y1, size)
+        thick_cells <- thicken_line(line_xy, b_width, size)
+
+        for(i in seq_len(nrow(thick_cells))) {
+          out_mat[thick_cells[i, 1], thick_cells[i, 2]] <- b_value
+        }
+      }
+    }
+
+    # Output as raster 
+    out <- data.frame(x = rep(1:size, each = size), y = rep(1:size, times = size),
+                      sim1 = as.vector(t(out_mat))) %>% rast
+    plot_pdf(nm = "figs/current_landscape.pdf")
+    terra::plot(out)
+    dev.off()
+    return(out)
+}
+
+# Generate a jaguar path of n steps starting from (x0, y0) with environmental
+# preference parameters par[] and search neighborhood size neighb
+jag_path <- function(x0, y0, n_step, par, neighb = 1, rdf) {
+  # Pre-compute neighborhood lookup for entire raster
+  env_values <- rdf$sim1
+  nrow_ras <- max(rdf$row)
+  ncol_ras <- max(rdf$col)
+
+  k_exp <- exp(as.numeric(par[length(par)]))
+  kernel <- calculate_dispersal_kernel(max_dispersal_dist = neighb,
+                                    kfun = function(x) dexp(x, k_exp))
+
+  n_offsets <- (2 * neighb + 1)^2
+  offsets_row <- rep(-neighb:neighb, each = 2 * neighb + 1)
+  offsets_col <- rep(-neighb:neighb, times = 2 * neighb + 1)
+
+  path <- matrix(NA, nrow = n_step, ncol = 4)
+  current_cell <- (x0 - 1) * ncol_ras + y0
+  path[1, ] <- c(x0, y0, current_cell, NA)
+
+  for (i in 2:n_step) {
+      current_row <- rdf$row[current_cell]
+      current_col <- rdf$col[current_cell]
+      nbhd_rows <- current_row + offsets_row
+      nbhd_cols <- current_col + offsets_col
+      valid <- nbhd_rows >= 1 & nbhd_rows <= nrow_ras & 
+               nbhd_cols >= 1 & nbhd_cols <= ncol_ras
+      nbhd_cells <- ifelse(valid, (nbhd_rows - 1) * ncol_ras + nbhd_cols, NA)
+
+      env_vals <- env_values[nbhd_cells]
+      attract <- 1 / (1 + exp(par[1] + par[2] * env_vals + par[3] * env_vals^2))
+      # should probably just be using env_function for consistency
+      attract[is.na(attract)] <- 0
+      attract <- attract / sum(attract)
+      attract <- attract * kernel
+      attract <- attract / sum(attract)
+
+      # Sample and update
+      step_idx <- sample.int(length(attract), 1, prob = attract)
+      current_cell <- nbhd_cells[step_idx]
+      pos_row <- (current_cell - 1) %/% ncol_ras + 1  # %/% is integer division
+      pos_col <- (current_cell - 1) %% ncol_ras + 1
+      path[i, ] <- c(pos_row, pos_col, current_cell, attract[step_idx])
+  }
+  path <- as.data.frame(path)
+  names(path) <- c("x", "y", "cell", "att")
+  return(path)
+}
+# (Markov version of jag_path is in scratch file, not used for now)
+
 # Bresenham line algorithm
 bresenham <- function(x0, y0, x1, y1, grid_size) {
   # Clip to grid boundaries
@@ -118,8 +284,8 @@ bresenham <- function(x0, y0, x1, y1, grid_size) {
   dx <- abs(x1 - x0)
   dy <- abs(y1 - y0)
   err <- dx - dy # ?
-  sx <- if(x0 < x1) 1 else -1
-  sy <- if(y0 < y1) 1 else -1
+  sx <- if (x0 < x1) 1 else -1
+  sy <- if (y0 < y1) 1 else -1
 
   cells <- matrix(ncol = 2, nrow = 0)
   x <- x0
@@ -143,105 +309,121 @@ bresenham <- function(x0, y0, x1, y1, grid_size) {
   return(cells)
 }
 
-# 1. Movement model ============================================================
+thicken_line <- function(line_cells, width, grid_size) {
+    if (width <= 1) return(line_cells)
+    # Start with original line
+    all_cells <- line_cells
+    
+    # For width=2, add immediate 8-connected neighbors
+    # For width=3, add neighbors within distance 1, etc.
+    radius <- floor(width / 2)
+    
+    for (i in seq_len(nrow(line_cells))) {
+        x <- line_cells[i, 1]
+        y <- line_cells[i, 2]
+        # Add all cells within radius
+        for (dx in 0:radius) {
+            for (dy in 0:radius) {
+                new_x <- x + dx
+                new_y <- y + dy
+                # Check bounds
+                if (new_x >= 1 && new_x <= grid_size && 
+                    new_y >= 1 && new_y <= grid_size) {
+                    all_cells <- rbind(all_cells, c(new_x, new_y))
+                }
+            }
+        }
+    }
+    return(unique(all_cells))
+}
+# Plot landscape r with jaguar path and vgram
+plot_path <- function(path, int = obs_interval, vgram = FALSE, 
+                      type = 1, new = TRUE, ...) {
+    # par(mfrow = c(1, ifelse(vgram, 2, 1)))
+    # par(mfrow = c(1, 2))
+    path <- path[seq(1, nrow(path), int + 1), ]
 
-# Output neighborhood as matrix
-# r:    Raster object
-# i:    Index of cell in raster
-# sz:   Size of neighborhood
-make_nbhd <- function(r = brazil_ras, rdf = brdf, i, sz) {
-  n_cells <- length(i)
-  n_offsets <- (2 * sz + 1)^2
+    col1 <- rgb(1, 0, 0, .5)
+    col2 <- rgb(0, 0, 1, .8)
+    
+    col1 <- magma(nrow(path))
 
-  offsets_row <- t(rep(-sz:sz, each = 2 * sz + 1))
-  offsets_col <- t(rep(-sz:sz, times = 2 * sz + 1))
-  rows_all <- rep(rdf$row[i], each = n_offsets) + rep(offsets_row, times = n_cells)
-  cols_all <- rep(rdf$col[i], each = n_offsets) + rep(offsets_col, times = n_cells)
+    # Plotting environmental variables + path
+    if (new) terra::plot(env_raster)
 
-  cells_all <- terra::cellFromRowCol(r, rows_all, cols_all)
-  mat <- matrix(cells_all, nrow = n_cells, ncol = n_offsets, byrow = TRUE)
-  return(mat)
+    if (type == 2) {
+      points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)
+      for (i in 1:(length(path$state) - 1)) {
+          segments(path$x[i], path$y[i], path$x[i + 1], path$y[i + 1], 
+                  col = c(col1, col2)[path$state[i]])
+      }
+      terra::plot(env02[[1]])
+      points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)
+      for (i in 1:(length(path$state) - 1)) {
+          segments(path$x[i], path$y[i], path$x[i + 1], path$y[i + 1], 
+                  col = c(col1, col2)[path$state[i]])
+      }
+    } else if (type == 1) {
+      # points(path, col = col1, pch = 19, cex = 0.5)
+      points(path, col = rgb(1, 1, 1, 0.3), pch = 19, cex = 0.5)
+      lines(path, col = rgb(1, 1, 1, 0.3), lwd = 2)
+    }
+    # Plotting variogram
+    # if (!vgram) return(NULL)
+    # plot(vgram(path, ...), type = "l", xlab = "Time lag", ylab = "Variance")
 }
 
-make_movement_kernel <- function(n = 10000, sl_emp, ta_emp, max_dist, 
-                                 minimum = 0, scale = 1000) {
+# 3. Output analysis -----------------------------------------------------------
+
+results_table <- function(file_ss, file_pp) {
+  r_ss <- readRDS(file_ss)
+  r_pp <- readRDS(file_pp)
   
-  avail <- data.frame(sl = sample(sl_emp, n, replace = TRUE),
-                      ta = sample(ta_emp, n, replace = TRUE))
-  avail$x <- avail$sl * cos(avail$ta) / scale # scales from meters to km
-  avail$y <- avail$sl * sin(avail$ta) / scale 
-  avail$xi <- sapply(avail$x, function(x) ifelse(x > 0, floor(x), ceiling(x)))
-  avail$yi <- sapply(avail$y, function(y) ifelse(y > 0, floor(y), ceiling(y)))
-  density <- tapply(avail$x, list(avail$yi, avail$xi), length)
-  density <- reshape2::melt(density)
-  names(density) <- c("x", "y", "n")
-  size <- max_dist * 2 + 1
-  out <- data.frame(x = rep(-max_dist:max_dist, times = size),
-                    y = rep(-max_dist:max_dist, each = size))
-
-  out <- merge(out, density, by = c("x", "y"), all.x = TRUE)
-  out$n[is.na(out$n)] <- 0
-  out$n <- out$n + minimum
-  out$n <- out$n / sum(out$n)
-  
-  return(out$n)
-}
-
-# Normalize probabilities across neighbors of each cell
-# v: vector of cell values
-normalize_nbhd <- function(v, nbhd) {
-  out <- matrix(v[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
-  out <- out / rowSums(out, na.rm = TRUE)
-}
-
-# Attractiveness function for movement model
-# env:      Environmental variable values
-# par:      Parameters for functional form
-# format:   TRUE to return as matrix, FALSE to return as vector
-env_function <- function(env, par, nbhd = NULL, sim = FALSE) {
-
-  par <- as.numeric(par)
-  if (!sim) {
-    # env <- scale(env)
-    if (any(is.na(env))) env[which(is.na(env))] <- 0
-    # First order with intercept
-    attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 1]^2 +
-                            par[3] * env[, 2] + par[4] * env[, 2]^2 +
-                            par[5] * env[, 3] + par[6] * env[, 3]^2 +
-                            par[7] * env[, 4] + par[8] * env[, 4]^2 +
-                            par[9] * env[, 5] + par[10] * env[, 5]^2 +
-                            par[11] * env[, 6] + par[12] * env[, 6]^2 +
-                            par[13]))
-  } else {
-    attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
+  ncol_ss <- length(unlist(r_ss[[1]]))
+  ncol_pp <- length(unlist(r_pp[[1]]))
+  out_df <- matrix(nrow = nrow(jag_meta), ncol = ncol_ss + ncol_pp + 2)
+  for (i in seq_len(nrow(out_df))) {
+    if (all(is.na(r_ss[[i]]))) {
+      out_df[i, 1:ncol_ss] <- NA
+    } else {
+      out_df[i, 1:ncol_ss] <- unlist(r_ss[[i]])
+      # aic based on likelihood
+      out_df[i, ncol_ss + 1] <- 2 * out_df[i, ncol_ss - 1] + 2 * (ncol_ss - 2)
+    }
+    if (all(is.na(r_pp[[i]]))) {
+      out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- NA
+    } else {
+      out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- unlist(r_pp[[i]])
+      # aic based on likelihood
+      out_df[i, ncol_ss + ncol_pp + 2] <- 2 * out_df[i, ncol_ss + ncol_pp] +
+                                           2 * (ncol_pp - 2)
+    }
   }
-  
-  if (is.null(nbhd)) {
-    return(attract)
-  } else {
-    attract <- matrix(attract[nbhd], nrow = nrow(nbhd), ncol = ncol(nbhd))
-    attract <- attract / rowSums(attract, na.rm = TRUE)
-    return(attract)  
-  }
-}
-
-apply_kernel <- function(attract0, kernel, bg_rate = 0) {
-  kernel <- kernel / sum(kernel, na.rm = T)
-  na_mask <- is.na(attract0)
-  attract0[na_mask] <- 0
-  if (is.null(nrow(attract0))) {
-    p <- attract0 * kernel
-  } else {
-    p <- attract0 * rep(kernel, each = nrow(attract0))
-  }
-  p <- p + bg_rate - p * bg_rate
-  p <- p / rowSums(p, na.rm = TRUE)
-  p[na_mask] <- NA
-  return(p)
+  out <- cbind(jag_meta[, c("ID", "biome")], out_df) %>% as.data.frame()
+  names(out) <- c("ID", "biome", 
+                      paste0("ss_par", 1:9), "ss_ll", "ss_conv", "ss_aic",
+                      paste0("pp_par", 1:9), "pp_ll", "pp_conv", "pp_aic")
+  return(out)
 }
 
 
-# 2. Data exploration ----------------------------------------------------------
+# 4. Data visualization --------------------------------------------------------
+
+# Calculate variogram of jaguar path
+vgram <- function(path, cut = 10, window = 14, start = 1) {
+    date0 <- as.Date(path$t_[start])
+    date1 <- date0 + window
+    path <- path[which(path$t_ >= date0 & path$t_ <= date1), ]
+    var <- sapply(1:cut, function(t) {
+        p1 <- path[1:(nrow(path) - t), 1:2]
+        p2 <- path[(t + 1):nrow(path), 1:2]
+
+        out <- sqrt((p1[, 1] - p2[, 1])^2 + (p1[, 2] - p2[, 2])^2)
+        return(mean(unlist(out)))
+    })
+    plot(var, type = "l")
+    return(var)
+}
 
 # Plot kernel for movement model
 plot_circle_kernel <- function(max_dist, k_par, bg_rate) {
@@ -306,7 +488,7 @@ map_track <- function(i, grad = 20, type = 2, file = FALSE) {
     path <- sp::SpatialPoints(coords = moves[, 3:4], sp::CRS("+init=epsg:4326"))
     # path2 <- as.data.frame(sp::spTransform(path, OpenStreetMap::osm()))
 
-    if (file) plotpdf(nm = "track.pdf", x = 8, y = 4)
+    if (file) plot_pdf(nm = "track.pdf", x = 8, y = 4)
     if (type == 1) {
         bboxgg <- bbox[c(1, 3, 2, 4)]
         names(bboxgg) <- c("left", "bottom", "right", "top")
@@ -384,212 +566,9 @@ plot_curve <- function(par, mu = 0, sd = 1, bounds = c(0, 10), values = FALSE) {
     abline(v = 0, lty = 2)
 }
 
-
-# 2b. Simulation ---------------------------------------------------------------
-
-thicken_line <- function(line_cells, width, grid_size) {
-    if (width <= 1) return(line_cells)
-    
-    # Start with original line
-    all_cells <- line_cells
-    
-    # For width=2, add immediate 8-connected neighbors
-    # For width=3, add neighbors within distance 1, etc.
-    radius <- floor(width / 2)
-    
-    for (i in seq_len(nrow(line_cells))) {
-        x <- line_cells[i, 1]
-        y <- line_cells[i, 2]
-        # Add all cells within radius
-        for (dx in 0:radius) {
-            for (dy in 0:radius) {
-                new_x <- x + dx
-                new_y <- y + dy
-                # Check bounds
-                if (new_x >= 1 && new_x <= grid_size && 
-                    new_y >= 1 && new_y <= grid_size) {
-                    all_cells <- rbind(all_cells, c(new_x, new_y))
-                }
-            }
-        }
-    }
-    return(unique(all_cells))
-}
-
-# Generates a random field with a given correlation structure
-# beta: beta parameter for gstat, s: sill, r: range, n: nugget
-gen_landscape <- function(size = 100, beta = 1, s = 0.03, r = 10, n = 0,
-                      b_density = 0, b_length = 20, b_value = 99, b_width = 2) {   
-
-    # Autocorrelation model - base field
-    xy <- expand.grid(1:size, 1:size)
-    names(xy) <- c("x", "y")
-    model <- gstat(formula = z ~ 1, locations = ~x + y, dummy = TRUE, beta = beta, 
-                   model = vgm(psill = s, range = r, model = "Exp", nugget = n), 
-                   nmax = 20)
-    out <- predict(model, newdata = xy, nsim = 1)
-    if (any(out < 0)) out[out < 0] <- 0
-    out_mat <- matrix(out$sim1, nrow = size, ncol = size, byrow = TRUE)
-
-    # Add barriers
-    if (b_density > 0) {
-      # Number of barriers per 10k cells
-      n_barriers <- ceiling(b_density * (size ^ 2) / 10000)
-
-      for (b in seq_len(n_barriers)) {
-        x0 <- sample(1:size, 1)
-        y0 <- sample(1:size, 1)
-        angle <- runif(1, 0, 2 * pi)
-
-        length <- rgamma(1, shape = 4, scale = b_length / 4)
-        x1 <- x0 + length * cos(angle)
-        y1 <- y0 + length * sin(angle)
-
-        line_xy <- bresenham(x0, y0, x1, y1, size)
-        thick_cells <- thicken_line(line_xy, b_width, size)
-
-        for(i in seq_len(nrow(thick_cells))) {
-          out_mat[thick_cells[i, 1], thick_cells[i, 2]] <- b_value
-        }
-      }
-    }
-
-    # Output as raster 
-    out <- data.frame(x = rep(1:size, each = size), y = rep(1:size, times = size),
-                      sim1 = as.vector(t(out_mat))) %>% rast
-    plotpdf(nm = "figs/current_landscape.pdf")
-    terra::plot(out)
-    dev.off()
-    return(out)
-}
-
-# Generate a jaguar path of n steps starting from (x0, y0) with environmental
-# preference parameters par[] and search neighborhood size neighb
-jag_path <- function(x0, y0, n_step, par, neighb = 1, env_raster) {
-  
-  # Pre-compute neighborhood lookup for entire raster
-  rdf <- raster_to_df(env_raster)
-  env_values <- rdf$sim1
-  all_cells <- seq_len(nrow(rdf))
-  nbhd_lookup <- make_nbhd(i =  all_cells, sz = neighb, r = env_raster, rdf = rdf)
-
-  path <- matrix(NA, nrow = n_step, ncol = 4)
-  current_cell <- cellFromRowCol(env_raster, x0, y0)
-  path[1, ] <- c(x0, y0, current_cell, NA)
-  k_exp <- exp(as.numeric(par[length(par)]))
-  kernel <- calculate_dispersal_kernel(max_dispersal_dist = neighb,
-                                    kfun = function(x) dexp(x, k_exp))
-  for (i in 2:n_step) {
-      nbhd_cells <- nbhd_lookup[current_cell, ]
-
-      env_vals <- env_values[nbhd_cells]
-      attract <- 1 / (1 + exp(par[1] + par[2] * env_vals + par[3] * env_vals^2))
-      # should probably just be using env_function for consistency
-      attract[is.na(attract)] <- 0
-      attract <- attract / sum(attract)
-      attract <- apply_kernel(attract, kernel)
-
-      # Sample and update
-      step_idx <- sample(length(attract), 1, prob = attract)
-      current_cell <- nbhd_cells[step_idx]
-      pos <- rowColFromCell(env_raster, current_cell)
-      path[i, ] <- c(pos[1], pos[2], current_cell, attract[step_idx])
-  }
-  path <- as.data.frame(path)
-  names(path) <- c("x", "y", "cell", "att")
-  return(path)
-}
-# (Markov version of jag_path is in scratch file, not used for now)
-
-# Calculate variogram of jaguar path
-vgram <- function(path, cut = 10, window = 14, start = 1) {
-    date0 <- as.Date(path$t_[start])
-    date1 <- date0 + window
-    path <- path[which(path$t_ >= date0 & path$t_ <= date1), ]
-    var <- sapply(1:cut, function(t) {
-        p1 <- path[1:(nrow(path) - t), 1:2]
-        p2 <- path[(t + 1):nrow(path), 1:2]
-
-        out <- sqrt((p1[, 1] - p2[, 1])^2 + (p1[, 2] - p2[, 2])^2)
-        return(mean(unlist(out)))
-    })
-    plot(var, type = "l")
-    return(var)
-}
-
-# Plot landscape r with jaguar path and vgram
-plot_path <- function(path, int = obs_interval, vgram = FALSE, 
-                      type = 1, new = TRUE, ...) {
-    # par(mfrow = c(1, ifelse(vgram, 2, 1)))
-    # par(mfrow = c(1, 2))
-    path <- path[seq(1, nrow(path), int + 1), ]
-
-    col1 <- rgb(1, 0, 0, .5)
-    col2 <- rgb(0, 0, 1, .8)
-    
-    col1 <- magma(nrow(path))
-
-    # Plotting environmental variables + path
-    if (new) terra::plot(env_raster)
-
-    if (type == 2) {
-      points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)
-      for (i in 1:(length(path$state) - 1)) {
-          segments(path$x[i], path$y[i], path$x[i + 1], path$y[i + 1], 
-                  col = c(col1, col2)[path$state[i]])
-      }
-      terra::plot(env02[[1]])
-      points(path, col = c(col1, col2)[path$state], pch = 19, cex = 0.5)
-      for (i in 1:(length(path$state) - 1)) {
-          segments(path$x[i], path$y[i], path$x[i + 1], path$y[i + 1], 
-                  col = c(col1, col2)[path$state[i]])
-      }
-    } else if (type == 1) {
-      # points(path, col = col1, pch = 19, cex = 0.5)
-      points(path, col = rgb(1, 1, 1, 0.3), pch = 19, cex = 0.5)
-      lines(path, col = rgb(1, 1, 1, 0.3), lwd = 2)
-    }
-    # Plotting variogram
-    # if (!vgram) return(NULL)
-    # plot(vgram(path, ...), type = "l", xlab = "Time lag", ylab = "Variance")
-}
-
-# 3. Output analysis -----------------------------------------------------------
-
-results_table <- function(file_ss, file_pp) {
-  r_ss <- readRDS(file_ss)
-  r_pp <- readRDS(file_pp)
-  
-  ncol_ss <- length(unlist(r_ss[[1]]))
-  ncol_pp <- length(unlist(r_pp[[1]]))
-  out_df <- matrix(nrow = nrow(jag_meta), ncol = ncol_ss + ncol_pp + 2)
-  for (i in seq_len(nrow(out_df))) {
-    if (all(is.na(r_ss[[i]]))) {
-      out_df[i, 1:ncol_ss] <- NA
-    } else {
-      out_df[i, 1:ncol_ss] <- unlist(r_ss[[i]])
-      # aic based on likelihood
-      out_df[i, ncol_ss + 1] <- 2 * out_df[i, ncol_ss - 1] + 2 * (ncol_ss - 2)
-    }
-    if (all(is.na(r_pp[[i]]))) {
-      out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- NA
-    } else {
-      out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- unlist(r_pp[[i]])
-      # aic based on likelihood
-      out_df[i, ncol_ss + ncol_pp + 2] <- 2 * out_df[i, ncol_ss + ncol_pp] +
-                                           2 * (ncol_pp - 2)
-    }
-  }
-  out <- cbind(jag_meta[, c("ID", "biome")], out_df) %>% as.data.frame()
-  names(out) <- c("ID", "biome", 
-                      paste0("ss_par", 1:9), "ss_ll", "ss_conv", "ss_aic",
-                      paste0("pp_par", 1:9), "pp_ll", "pp_conv", "pp_aic")
-  return(out)
-}
-
 plot_dispersal_comparison <- function(p_ss, p_pp, max_displacement, id) {
                 
-      plotpdf(nm = paste0("figs/dispersal_tests/indiv_test_", id, "_", 
+      plot_pdf(nm = paste0("figs/dispersal_tests/indiv_test_", id, "_", 
                           Sys.Date(), ".pdf"), x = 6, y = 6)
       par(mfrow = c(2, 2))
 

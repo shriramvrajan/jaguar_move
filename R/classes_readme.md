@@ -1,6 +1,4 @@
-# Classes 
-
-
+# Classes
 
 ## 1. path_propagation_model
 
@@ -47,5 +45,3 @@ output: simulated paths
 
 input: paths, parallel, n_cores
 output: fitted models
-
-## 

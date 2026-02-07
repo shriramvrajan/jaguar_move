@@ -15,22 +15,24 @@ library(ggplot2)
 
 # Data =========================================================================
 
-# CRS definitions
-wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
-epsg5880 <- "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000 
-+ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs"
+if (!exists("skip_data")) {
+  # CRS definitions
+  wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
+  epsg5880 <- "+proj=poly +lat_0=0 +lon_0=-54 +x_0=5000000 +y_0=10000000 
+  +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs"
 
-# Jaguar movement data, ID numbers, and metadata
-jag_move <- readRDS("data/jag_data_BR.rds")
-jag_id   <- readRDS("data/jag_list.rds")
-jag_meta <- read.csv("data/input/jaguars/jaguar_metadata.csv") %>% data.table()
+  # Jaguar movement data, ID numbers, and metadata
+  jag_move <- readRDS("data/jag_data_BR.rds")
+  jag_id   <- readRDS("data/jag_list.rds")
+  jag_meta <- read.csv("data/input/jaguars/jaguar_metadata.csv") %>% data.table()
 
-# RasterStack of environmental variables 
-brazil_ras <- rast("data/env_layers.grd")
-brdf <- readRDS("data/env_layers.rds")
+  # RasterStack of environmental variables 
+  brazil_ras <- rast("data/env_layers.grd")
+  brdf <- readRDS("data/env_layers.rds")
 
-# Brazil biomes shapefile
-biome <- vect("data/input/Brazil_biomes/Brazil_biomes.shp")
+  # Brazil biomes shapefile
+  biome <- vect("data/input/Brazil_biomes/Brazil_biomes.shp")
+}
 
 # Functions ====================================================================
 
@@ -61,19 +63,6 @@ raster_to_df <- function(r) {
 # Plot to pdf
 plot_pdf <- function(nm = "figs/plot.pdf", x = 4, y = 4) {
   pdf(nm, width = x, height = y)
-}
-
-# Plot a satellite map given bounding box coordinates (see ggmap::get_map)
-plot_satellite <- function(bbox) {
-    tryCatch({
-        satellite_map <- ggmap::get_map(location = bbox, maptype = "satellite")
-        p <- ggmap(satellite_map) + labs(title = "Dispersal kernel area") +
-        theme_void()
-        print(p)
-    }, error = function(e) {
-        message("Satellite map not available.")
-        return(NULL)
-    })
 }
 
 # 1. Movement model ============================================================
@@ -161,67 +150,94 @@ apply_kernel <- function(attract0, kernel, bg_rate = 0) {
 # b_density: barrier density per 10k cells, b_length: mean barrier length,
 # b_value: barrier pixel value, b_width: barrier width in cells
 gen_landscape <- function(size = 100, beta = 1, s = 0.03, r = 10, n = 0,
-                      b_density = 0, b_length = 20, b_value = 99, b_width = 2) {   
-
-    # Frequency coordinates (with wraparound, centered on 0)
-    freqs <- 0:(size-1)
-    freqs[freqs > size/2] <- freqs[freqs > size/2] - size
-    # 
-    freq_grid <- expand.grid(fx = freqs/size, fy = freqs/size)
-    freq_dist <- sqrt(freq_grid$fx^2 + freq_grid$fy^2)
+                      b_density = 0, b_length = 20, b_value = 99, b_width = 2,
+                      min_connectivity = 0.02, max_attempts = 10) {   
     
-    # Exponential covariance spectral density
-    # S(f) = variance * range^2 / (1 + (2π × range × f)^2)^(3/2)
-    spectral <- s * r^2 / (1 + (2 * pi * r * freq_dist)^2)^1.5
-    spectral_mat <- matrix(spectral, size, size)
-    
-    # Generate white noise and filter
-    noise_real <- matrix(rnorm(size^2), size, size)
-    noise_imag <- matrix(rnorm(size^2), size, size)
-    noise_complex <- noise_real + 1i * noise_imag
-    
-    # Apply spectral filter
-    filtered <- fft(noise_complex) * sqrt(spectral_mat)
-    field <- Re(fft(filtered, inverse = TRUE)) / size
-    
-    # Standardize and scale
-    field <- field * sqrt(s) / sd(as.vector(field))
-    out_mat <- field + beta
-    
-    # Add nugget
-    if (n > 0) out_mat <- out_mat + matrix(rnorm(size^2, 0, sqrt(n)), size, size)
-    if (any(out_mat < 0)) out_mat[out_mat < 0] <- 0
+    attempt <- 0  # Avoiding degenerate cases where it starts on barrier
+    repeat {
+      # Frequency coordinates (with wraparound, centered on 0)
+      freqs <- 0:(size-1)
+      freqs[freqs > size/2] <- freqs[freqs > size/2] - size
+      freq_grid <- expand.grid(fx = freqs/size, fy = freqs/size)
+      freq_dist <- sqrt(freq_grid$fx^2 + freq_grid$fy^2)
+      
+      # Exponential covariance, spectral density
+      # S(f) = variance * range^2 / (1 + (2pi * range * f)^2)^(3/2)
+      spectral <- s * r^2 / (1 + (2 * pi * r * freq_dist)^2)^1.5
+      spectral_mat <- matrix(spectral, size, size)
+      
+      # Generate white noise and filter
+      noise_real <- matrix(rnorm(size^2), size, size)
+      noise_imag <- matrix(rnorm(size^2), size, size)
+      noise_complex <- noise_real + 1i * noise_imag
+      
+      # Apply spectral filter
+      filtered <- fft(noise_complex) * sqrt(spectral_mat)
+      field <- Re(fft(filtered, inverse = TRUE)) / size
+      
+      # Standardize and scale
+      field <- field * sqrt(s) / sd(as.vector(field))
+      out_mat <- field + beta
+      
+      # Add nugget
+      if (n > 0) out_mat <- out_mat + matrix(rnorm(size^2, 0, sqrt(n)), size, size)
+      if (any(out_mat < 0)) out_mat[out_mat < 0] <- 0
 
-    # Add barriers
-    if (b_density > 0) {
-      # Number of barriers per 10k cells
-      n_barriers <- ceiling(b_density * (size ^ 2) / 10000)
+      # Add barriers
+      if (b_density > 0) {
+        # Number of barriers per 10k cells
+        n_barriers <- ceiling(b_density * (size ^ 2) / 10000)
 
-      for (b in seq_len(n_barriers)) {
-        x0 <- sample(1:size, 1)
-        y0 <- sample(1:size, 1)
-        angle <- runif(1, 0, 2 * pi)
+        for (b in seq_len(n_barriers)) {
+          x0 <- sample(1:size, 1)
+          y0 <- sample(1:size, 1)
+          angle <- runif(1, 0, 2 * pi)
 
-        length <- rgamma(1, shape = 4, scale = b_length / 4)
-        x1 <- x0 + length * cos(angle)
-        y1 <- y0 + length * sin(angle)
+          length <- rgamma(1, shape = 4, scale = b_length / 4)
+          x1 <- x0 + length * cos(angle)
+          y1 <- y0 + length * sin(angle)
 
-        line_xy <- bresenham(x0, y0, x1, y1, size)
-        thick_cells <- thicken_line(line_xy, b_width, size)
+          line_xy <- bresenham(x0, y0, x1, y1, size)
+          thick_cells <- thicken_line(line_xy, b_width, size)
 
-        for(i in seq_len(nrow(thick_cells))) {
-          out_mat[thick_cells[i, 1], thick_cells[i, 2]] <- b_value
+          for (i in seq_len(nrow(thick_cells))) {
+            out_mat[thick_cells[i, 1], thick_cells[i, 2]] <- b_value
+          }
         }
+      }
+
+      # Output as raster 
+      out <- data.frame(x = rep(1:size, each = size), y = rep(1:size, times = size),
+                        sim1 = as.vector(t(out_mat))) %>% rast
+
+      c <- calc_connectivity(out, barrier_threshold = 0.99 * b_value)
+      if (b_density == 0 || c >= min_connectivity) break # success
+      if (attempt >= max_attempts) {
+        warning(paste("Failed to meet connectivity threshold after", 
+          max_attempts, "attempts."))
       }
     }
 
-    # Output as raster 
-    out <- data.frame(x = rep(1:size, each = size), y = rep(1:size, times = size),
-                      sim1 = as.vector(t(out_mat))) %>% rast
     plot_pdf(nm = "figs/current_landscape.pdf")
     terra::plot(out)
     dev.off()
     return(out)
+}
+
+# Calculate landscape connectivity using proportion of passable cells in central 
+# patch (where individual starts) as metric.
+calc_connectivity <- function(landscape_rast, barrier_threshold = 50) {
+  passable <- landscape_rast > 0 & landscape_rast < barrier_threshold
+  n_passable <- sum(values(passable), na.rm = TRUE)
+  if (n_passable == 0) return(0)
+  patches_r <- patches(passable, directions = 8, zeroAsNA = TRUE)
+  center <- ceiling(nrow(landscape_rast) / 2) * ncol(landscape_rast) -
+            floor(ncol(landscape_rast) / 2)
+  center_patch <- values(patches_r)[center]
+  if (is.na(center_patch)) return(0)
+  patch_freq <- freq(patches_r)
+  center_size <- patch_freq$count[patch_freq$value == center_patch]
+  center_size / n_passable
 }
 
 # Generate a jaguar path of n steps starting from (x0, y0) with environmental
@@ -240,9 +256,10 @@ jag_path <- function(x0, y0, n_step, par, neighb = 1, rdf) {
   offsets_row <- rep(-neighb:neighb, each = 2 * neighb + 1)
   offsets_col <- rep(-neighb:neighb, times = 2 * neighb + 1)
 
-  path <- matrix(NA, nrow = n_step, ncol = 4)
+  path <- matrix(NA, nrow = n_step, ncol = 5)
   current_cell <- (x0 - 1) * ncol_ras + y0
-  path[1, ] <- c(x0, y0, current_cell, NA)
+  # current_cell <- (nrow_ras - y0) * ncol_ras + x0
+  path[1, ] <- c(x0, y0, current_cell, NA, rdf$sim1[current_cell])
 
   for (i in 2:n_step) {
       current_row <- rdf$row[current_cell]
@@ -266,10 +283,10 @@ jag_path <- function(x0, y0, n_step, par, neighb = 1, rdf) {
       current_cell <- nbhd_cells[step_idx]
       pos_row <- (current_cell - 1) %/% ncol_ras + 1  # %/% is integer division
       pos_col <- (current_cell - 1) %% ncol_ras + 1
-      path[i, ] <- c(pos_row, pos_col, current_cell, attract[step_idx])
+      path[i, ] <- c(pos_row, pos_col, current_cell, attract[step_idx], rdf$sim1[current_cell])
   }
   path <- as.data.frame(path)
-  names(path) <- c("x", "y", "cell", "att")
+  names(path) <- c("x", "y", "cell", "att", "env")
   return(path)
 }
 # (Markov version of jag_path is in scratch file, not used for now)
@@ -425,6 +442,19 @@ vgram <- function(path, cut = 10, window = 14, start = 1) {
     return(var)
 }
 
+# Plot a satellite map given bounding box coordinates (see ggmap::get_map)
+plot_satellite <- function(bbox) {
+    tryCatch({
+        satellite_map <- ggmap::get_map(location = bbox, maptype = "satellite")
+        p <- ggmap(satellite_map) + labs(title = "Dispersal kernel area") +
+        theme_void()
+        print(p)
+    }, error = function(e) {
+        message("Satellite map not available.")
+        return(NULL)
+    })
+}
+
 # Plot kernel for movement model
 plot_circle_kernel <- function(max_dist, k_par, bg_rate) {
     kern <- calculate_dispersal_kernel(max_dispersal_dist = max_dist,
@@ -555,14 +585,19 @@ calc_move_freq <- function(dat) {
 }
 
 # Plot movement kernel
-plot_curve <- function(par, mu = 0, sd = 1, bounds = c(0, 10), values = FALSE) {
+plot_curve <- function(par, mu = 0, sd = 1, bounds = c(0, 10), add = FALSE, 
+                       values = FALSE, col = "black") {
     # Plot functional form for 2op, mu/sd reverse normalization of env variable.
     x <- seq(bounds[1], bounds[2], 0.1)
     x0 <- (x - mu) / sd
     y <- 1 / (1 + exp(par[1] + par[2] * x0 + par[3] * x0^2))
     if (values) return(y)
-    plot(x, y, type = "l", xlab = "Environmental variable", 
-         ylab = "Attraction")
+    if (add) {
+      lines(x, y, col = col)
+    } else {
+      plot(x, y, type = "l", col = col, 
+          xlab = "Environmental variable", ylab = "Attraction")
+    }
     abline(v = 0, lty = 2)
 }
 

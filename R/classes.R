@@ -74,12 +74,12 @@ step_selection_model <- R6Class("step_selection_model",
       like <- sapply(indices, function(i) {
         return(attract[i, obs[i]])
       })
-      out <- -sum(log(like), na.rm = TRUE)
+      out <- -sum(log(pmax(like, .Machine$double.eps)), na.rm = TRUE)
 
       # if (is.infinite(out) || is.na(out)) out <- 0
 
-      print(paste("Current LL:", round(-out, 4)))
-      print(paste("SS parameters:", paste(round(par, 4), collapse = ", ")))
+      # print(paste("Current SSLL:", round(-out, 4)))
+      # print(paste("SS parameters:", paste(round(par, 4), collapse = ", ")))
       # saveRDS(list(out = out, array = like, par = par, o = objects),
       #         "data/output/current_iter_ss.rds")
       return(out)
@@ -90,7 +90,6 @@ step_selection_model <- R6Class("step_selection_model",
                   outliers = integer(0)) {
       objects <- self$prepare_objects(trajectory, max_dist, rdf, sim)
       objects$outliers <- outliers
-      print(paste("PAR START:", as.character(par_start), ","))
       # Fit model
       # Starting parameters & bounds defined separately for both models, fix when possible
       lbound <- if (sim) {
@@ -285,10 +284,11 @@ path_propagation_model <- R6Class("path_propagation_model",
         }
         predictions[, i] <- current[obs[i], i, ]
       }      
-      log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
+      # log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
+      log_likelihood <- rowSums(log(pmax(predictions, .Machine$double.eps)), na.rm = TRUE)
       out            <- -max(log_likelihood, na.rm = TRUE)
-      print(paste("Current LL:", round(-out, 4)))
-      print(paste("PP parameters:", paste(round(par, 4), collapse = ", ")))
+      # print(paste("Current PPLL:", round(-out, 4)))
+      # print(paste("PP parameters:", paste(round(par, 4), collapse = ", ")))
       # if (is.infinite(out) || is.na(out)) out <- 0
       return(out)
     },
@@ -446,18 +446,15 @@ movement_simulator <- R6Class("movement_simulator",
                                 neighb = self$config$step_size,
                                 rdf = rdf)
 
-              # Plot path on landscape
-              # plot_pdf(nm = paste0("figs/sims/currentpaths/", self$config$name, "_path_", i,
-              #     ".pdf"), x = 6, y = 6)
-              # terra::plot(land_i, xlim = c(100, 300), ylim = c(100, 300),
-              #   main = paste0("Path ", i, " (", self$config$name, ")"))
-              # points(path_i$x, path_i$y, col = rgb(1, 1, 1, 0.3), pch = 19, cex = 0.1)
-              # lines(path_i$x, path_i$y, col = rgb(1, 1, 1, 0.3), lwd = 1.5)
-              # dev.off()
-              
+              # Proportion of barriers encountered
+              nbhd <- make_nbhd(rdf = rdf, i = path_i$cell, sz = self$config$step_size)
+              barrier_cells <- which(rdf$sim1 == self$config$b_value)
+              prop_barrier <- sum(apply(nbhd, 1, function(x) sum(x %in% barrier_cells))) / length(nbhd)
+
               results[[i]] <- list(path = path_i, rdf = rdf, 
                                    connect = calc_connectivity(land_i,
-                                 barrier_threshold = 0.9 * self$config$b_value))
+                                 barrier_threshold = 0.9 * self$config$b_value),
+                                   prop_barrier = prop_barrier)
             }            
             return(results)
     },
@@ -596,8 +593,11 @@ movement_simulator <- R6Class("movement_simulator",
     # plot_fits ----------------------------------------------------------------
     plot_fits = function(results) {
       for (i in seq_along(results)) {
+        print(i)
         result <- results[[i]]
-        if (is.na(result[1])) next
+        # print(result)
+        if (!is.list(result) || identical(result$step_selection, NA) ||
+              identical(result$path_propagation, NA)) next
         plot_pdf(nm = paste0("figs/sims/currentpaths/fit_", self$config$name, 
                 "_ind_", i, ".pdf"), x = 10, y = 5)
         par(mfrow = c(1, 2))
@@ -632,7 +632,11 @@ movement_simulator <- R6Class("movement_simulator",
         visible <- make_nbhd(rdf = result$rdf, i = unique(result$path$cell),
                             sz = self$config$max_dist()) %>% as.vector()
         visible_env <- result$rdf$sim1[visible]
-        visible_env <- visible_env[-which(visible_env == self$config$b_value)]
+        if (any(visible_env == self$config$b_value)) {
+          visible_env <- visible_env[-which(visible_env == self$config$b_value)]
+        }
+        env_used <- result$rdf$sim1[result$path$cell]
+        
         env_range <- range(visible_env)
         x_vals <- seq(env_range[1], env_range[2], 0.1)
         y_true <- 1 / (1 + exp(self$config$env_response[1] + 
@@ -644,6 +648,8 @@ movement_simulator <- R6Class("movement_simulator",
             xlab = "Environmental variable", ylab = "Relative attraction")
 
         points(visible_env, jitter(rep(0.05, length(visible_env)), amount = 0.02), 
+             col = rgb(0.7, 0.7, 0.7, 0.5), pch = 16, cex = 0.5)
+        points(env_used, jitter(rep(0.1, length(env_used)), amount = 0.02), 
              col = rgb(0, 0, 0, 0.5), pch = 16, cex = 0.5)
 
         x_scaled <- (x_vals - result$env_mu) / result$env_sd
@@ -769,7 +775,7 @@ simulation_batch <- R6Class("simulation_batch",
         n_cores <- n_cores %||% config$n_cores
         paths <- sim$simulate_paths()                           # Generate paths
         fit_results <- sim$fit_models(paths, parallel, n_cores)     # Fit models
-        sim$plot_fits(fit_results)                  # Plot fits for diagnostics
+        sim$plot_fits(fit_results)                   # Plot fits for diagnostics
         self$results[[config$name]] <- list(                     # Store results
             config = config,
             paths = paths,
@@ -799,11 +805,25 @@ simulation_batch <- R6Class("simulation_batch",
         ll_pp <- sapply(fits, function(x) {
           if (is.na(x[2]) || length(x[2]) == 0) NA else x$path_propagation$ll
         })
-        ll_diff <- (ll_step - ll_pp)  # Log-likelihood difference
+        ll_diff <- sapply(seq_along(ll_step), function(x) {
+          if (is.na(ll_step[x]) || is.na(ll_pp[x]) || ll_pp[x] == 0 || ll_step[x] == 0) {
+            return(NA) 
+          } else {
+            return(ll_step[x] - ll_pp[x])
+          }
+        })
         ll_diff_per_obs <- ll_diff / (n_obs - 1)  # Per observation
+
+        # Connectivity metric
         connectivity <- sapply(seq_along(fits), function(i) {
           paths_i <- self$results[[name]]$paths
           if (!is.null(paths_i[[i]]$connect)) paths_i[[i]]$connect else NA
+        })
+
+        # Proportion of barriers encountered
+        prop_barrier <- sapply(seq_along(fits), function(i) {
+          paths_i <- self$results[[name]]$paths
+          if (!is.null(paths_i[[i]]$prop_barrier)) paths_i[[i]]$prop_barrier else NA
         })
 
         # Calculate AIC difference (positive means path propagation better)
@@ -816,6 +836,7 @@ simulation_batch <- R6Class("simulation_batch",
           ll_pp = ll_pp,
           ll_diff_per_obs = ll_diff_per_obs,
           connect = connectivity,
+          prop_barrier = prop_barrier,
           autocorr_range = config$autocorr_range,
           obs_interval = config$obs_interval,
           b_density = config$b_density,
@@ -934,6 +955,7 @@ empirical_batch <- R6Class("empirical_batch",
       self$config <- config
     },
 
+    ## run_all -----------------------------------------------------------------
     run_all = function() {
       # Determine which individuals to process
       if (is.null(self$config$individuals)) {
@@ -957,7 +979,7 @@ empirical_batch <- R6Class("empirical_batch",
       # Set up global neighborhood if needed
       if (!exists("nbhd_full")) {
         message("Generating global neighborhood matrix")
-        nbhd_full <<- make_nbhd(i = seq_len(nrow(brdf)), sz = self$config$step_size)
+        nbhd_full <<- make_nbhd(rdf = brdf, i = seq_len(nrow(brdf)), sz = self$config$step_size)
       }
       
       # Set up parallel processing
@@ -972,30 +994,31 @@ empirical_batch <- R6Class("empirical_batch",
       pp_model$propagation_steps <- self$config$propagation_steps 
       
       # Main processing loop
-      if (self$config$parallel) {
-        results <- foreach(i = i_todo, .packages = c("terra", "ctmm", "amt")) %dopar% {
-          self$process_individual(i, ss_model, pp_model)
-        }
-      } else {
-        results <- list()
-        for (i in i_todo) {
-          results[[length(results) + 1]] <- self$process_individual(i, ss_model, pp_model)
+      max_attempts <- 10
+      for (attempt in seq_len(max_attempts)) {
+        done <- private$get_completed_ids()
+        i_todo <- setdiff(individuals_to_process, done)
+        if (length(i_todo) == 0) break
+        message(paste0("Attempt ", attempt, ": ", length(i_todo), " individuals remaining"))
+
+        if (self$config$parallel) {
+          results <- foreach(i = i_todo, .packages = c("terra", "ctmm", "amt"),
+                            .errorhandling = "pass") %dopar% {
+            self$process_individual(i, ss_model, pp_model)
+          }
+        } else {
+          results <- list()
+          for (i in i_todo) {
+            results[[length(results) + 1]] <- self$process_individual(i, ss_model, pp_model)
+          }
         }
       }
       
       # If there are already completed results, load and combine
-      if (length(done) > 0) {
-        existing_results <- list()
-        for (i in done) {
-          if (file.exists(paste0("data/output/out_", i, ".rds"))) {
-            existing_results[[length(existing_results) + 1]] <- 
-              readRDS(paste0("data/output/out_", i, ".rds"))
-          } else {
-            existing_results[[length(existing_results) + 1]] <- NA
-          }
-        }
-        results <- c(existing_results, results)
-      }
+      results <- lapply(individuals_to_process, function(i) {
+        f <- paste0("data/output/out_", i, ".rds")
+        if (file.exists(f)) readRDS(f) else NA
+      })
       self$results <- results
 
       # Clean up temporary output files 
@@ -1006,6 +1029,7 @@ empirical_batch <- R6Class("empirical_batch",
       return(results)
     },
     
+    ## process_individual ------------------------------------------------------
     process_individual = function(i, ss_model, pp_model) {
       message(paste0("Processing jaguar #", i))
       # Create jaguar instance and get data
@@ -1061,6 +1085,17 @@ empirical_batch <- R6Class("empirical_batch",
       }
       
       return(result)
+    }
+  ),
+  
+  private = list(
+    get_completed_ids = function() {
+      outfiles <- list.files("data/output", pattern = "^out_.*\\.rds$") 
+      ids <- gsub(".rds", "", outfiles) %>% 
+        gsub("out_", "", .) %>% 
+        as.numeric
+      if (any(is.na(ids))) ids <- ids[!is.na(ids)]
+      return(ids)
     }
   ))
 

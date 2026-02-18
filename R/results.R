@@ -4,8 +4,8 @@ source("R/classes.R")
 
 # library(gridExtra)
 
-file_ss <- "data/output/empirical_results_ss_2026-01-28.rds"
-file_pp <- "data/output/empirical_results_pp_2026-01-27.rds"
+file_ss <- "data/output/empirical_results_ss_2026-02-18.rds"
+file_pp <- "data/output/empirical_results_pp_2026-02-18.rds"
 
 # Empirical batch results ======================================================
 
@@ -23,13 +23,13 @@ res$nmove1 <- sapply(as.vector(jag_id)$jag_id, function(i) {
   outliers <- which(dt_discrete > 1)
   return(n_obs - length(outliers))
 })
-res2 <- res[-which(res$pp_conv != 0 | res$nmove1 <= 200), ]
-res2$perf <- as.numeric(res2$ss_aic > res2$pp_aic)
+res2 <- res[-which(res$pp_conv != 0 | res$nmove1 <= 30), ]
+res2$good <- as.numeric(res2$ss_aic > res2$pp_aic)
 
-plotpdf(nm = "figs/aic.pdf", x = 6, y = 4)
-p1 <- ggplot(res, aes(x = ss_aic, y = pp_aic, label = ID)) +
-  geom_point(aes(size = nmove1, col = as.numeric(ss_aic > pp_aic))) +
-  # geom_text() +
+plot_pdf(nm = "figs/aic.pdf", x = 6, y = 4)
+p1 <- ggplot(res2, aes(x = ss_aic, y = pp_aic, label = ID)) +
+  geom_point(aes(size = nmove1, col = good)) +
+  geom_text(aes(label = ID), size = 3, check_overlap = TRUE) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
   labs(x = "Step selection AIC", y = "Path propagation AIC") 
 p1

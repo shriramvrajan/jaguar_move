@@ -21,7 +21,7 @@ config <- list(
 
     # Parallel processing parameters
     parallel = TRUE,          # Whether to use parallel processing (T/F)
-    n_cores  = 5,             # Number of cores to use if parallel
+    n_cores  = 6,             # Number of cores to use if parallel
 
     # Model fitting options
     fit_model      = TRUE,    # Whether to fit the model (T/F)

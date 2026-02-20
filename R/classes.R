@@ -336,7 +336,7 @@ path_propagation_model <- R6Class("path_propagation_model",
       })
     },
 
-
+    ## dispersal_from ----------------------------------------------------------
     dispersal_from = function(init_point, par, step_size, n_steps, rdf = brdf,
                               threshold = 1e-6) {
       
@@ -392,6 +392,67 @@ path_propagation_model <- R6Class("path_propagation_model",
                   n_steps = n_steps,
                   step_size = step_size
       ))
+    },
+
+    ## stationary_surface ------------------------------------------------------
+    stationary_surface = function(par, region_cells, rdf = brdf, step_size = 1,
+                                  scale_from = NULL) {
+      k_exp <- exp(par[length(par) - 1]) %>% as.numeric()
+      bg_rate <- plogis(par[length(par)]) %>% as.numeric()
+
+      # Scale environment exactly like in prepare_objects
+      ref <- if (is.null(scale_from)) region_cells else scale_from
+      env_scaled <- scale(rdf[region_cells, 1:6],
+                      center = colMeans(rdf[ref, 1:6]),
+                      scale  = apply(rdf[ref, 1:6], 2, sd))
+      env_scaled[is.na(env_scaled)] <- 0
+
+      # Precompute phi for region cells
+      phi_all <- env_function(env_scaled, par, sim = FALSE)
+      names(phi_all) <- as.character(region_cells)
+
+      cell_to_index <- setNames(seq_along(region_cells), as.character(region_cells))
+      region_set <- as.character(region_cells)
+
+      ti <- c()  # row indices (from)
+      tj <- c()  # column indices (to)
+      tx <- c()  # transition probs
+      for (k in seq_along(region_cells)) {
+        message(paste("Calculating transitions for cell", k, "of", length(region_cells)))
+        cell <- region_cells[k]
+        nbhd <- make_nbhd(rdf = rdf, i = cell, sz = step_size)[1, ]
+        nbhd <- nbhd[!is.na(nbhd)]
+
+        in_region <- as.character(nbhd) %in% region_set
+        nbhd <- nbhd[in_region]
+        if (length(nbhd) == 0) next
+
+        # same weights as dispersal_from
+        dists <- sqrt((rdf$row[nbhd] - rdf$row[cell])^2 + 
+                      (rdf$col[nbhd] - rdf$col[cell])^2)
+        dist_kernel <- dexp(dists, k_exp)
+        env_kernel  <- phi_all[as.character(nbhd)]
+        weights     <- dist_kernel * env_kernel /
+                       sum(dist_kernel * env_kernel, na.rm = TRUE)
+        if (any(is.na(weights))) weights[is.na(weights)] <- 0
+        sum_w <- sum(weights)
+        if (sum_w == 0) next
+        weights <- weights / sum_w
+        weights <- weights + bg_rate - weights * bg_rate
+        weights <- weights / sum(weights, na.rm = TRUE)
+
+        ti <- c(ti, rep(k, length(nbhd)))
+        tj <- c(tj, cell_to_index[as.character(nbhd)])
+        tx <- c(tx, weights)
+      }
+
+      N <- length(region_cells)
+      T_mat <- sparseMatrix(i = ti, j = tj, x = tx, dims = c(N, N))
+      eig <- eigs(t(T_mat), k = 1, which = "LM")
+      pi_vec <- abs(Re(eig$vectors[, 1]))
+      pi_vec <- pi_vec / sum(pi_vec, na.rm = TRUE)
+      setNames(pi_vec, as.character(region_cells))
+      return(pi_vec)
     }
   )
 )
@@ -1146,7 +1207,7 @@ individual_analysis <- R6Class("individual_analysis",
       max_displacement <- step_size * n_steps
 
       fitted_pars_ss <- self$results[3:10]
-      fitted_pars_pp <- self$results[14:21]
+      fitted_pars_pp <- self$results[15:22]
 
       ss_model <- path_propagation_model$new()
       pp_model <- path_propagation_model$new() # Going to unify classes dw

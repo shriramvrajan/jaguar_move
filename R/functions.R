@@ -12,6 +12,8 @@ library(foreach)
 library(doParallel)
 library(viridis)
 library(ggplot2)
+library(Matrix)
+library(RSpectra)
 
 # Data =========================================================================
 
@@ -52,6 +54,13 @@ parallel_setup <- function(n_cores = 4) {
     message(paste0("Parallel processing set up with ", n_cores, " cores."))
 }
 
+# Convert vector of cell numbers to raster with values at those cells and NAs
+to_raster <- function(vals, cells, template) {
+  r <- template * NA
+  values(r)[cells] <- vals
+  return(r)
+}
+
 # Turn raster into a 3-column dataframe with row, col, and value
 raster_to_df <- function(r) {
     outdf <- as.data.frame(r)
@@ -62,7 +71,7 @@ raster_to_df <- function(r) {
 
 # Plot to pdf
 plot_pdf <- function(nm = "figs/plot.pdf", x = 4, y = 4) {
-  pdf(nm, width = x, height = y)
+  cairo_pdf(filename = nm, width = x, height = y)
 }
 
 # 1. Movement model ============================================================
@@ -141,6 +150,25 @@ apply_kernel <- function(attract0, kernel, bg_rate = 0) {
   p <- p / rowSums(p, na.rm = TRUE)
   p[na_mask] <- NA
   return(p)
+}
+
+pointwise_env <- function(par, cells, rdf, scale_from = NULL) {
+  # scale_from: cells used for fitting, to replicate scaling
+  ref <- if (!is.null(scale_from)) scale_from else cells
+  env_scaled <- scale(rdf[cells, 1:6],
+                      center = colMeans(rdf[ref, 1:6], na.rm = TRUE),
+                      scale = apply(rdf[ref, 1:6], 2, sd, na.rm = TRUE))
+  env_scaled[is.na(env_scaled)] <- 0
+  phi <- env_function(env_scaled, par, sim = FALSE)
+  setNames(phi, cells)
+  return(phi)
+}
+
+get_local_region <- function(track_Cells, rdf, buffer = 20) {
+  rows <- rdf$row[track_Cells]
+  cols <- rdf$col[track_Cells]
+  return(which(rdf$row >= min(rows) - buffer & rdf$row <= max(rows) + buffer &
+         rdf$col >= min(cols) - buffer & rdf$col <= max(cols) + buffer))
 }
 
 # 2. Simulation ---------------------------------------------------------------

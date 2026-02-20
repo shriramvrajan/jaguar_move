@@ -5,7 +5,7 @@ source("R/classes.R")       # New classes
 set.seed(7)
 
 # 1 for step selection, 2 for path propagation
-model_type <- 1
+model_type <- 2
 
 config <- list(   
     # Model parameters
@@ -16,7 +16,7 @@ config <- list(
     individuals       = NULL, # NULL = all individuals, or vector of IDs
 
     # Holdout set parameters
-    holdout_set  = FALSE,     # Whether to use holdout set for evaluation (T/F)
+    holdout_set  = TRUE,     # Whether to use holdout set for evaluation (T/F)
     holdout_frac = 0.7,       # Fraction of data to use for training
 
     # Parallel processing parameters

@@ -31,6 +31,7 @@ config <- list(
 batch <- empirical_batch$new(config)
 results <- batch$run_all()
 
+message("Saving results...")
 saveRDS(results, paste0("data/output/empirical_results_", 
                         switch(config$model_type, "ss", "pp"), "_",
                         Sys.Date(), ".rds"))

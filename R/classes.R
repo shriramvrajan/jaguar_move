@@ -151,7 +151,6 @@ path_propagation_model <- R6Class("path_propagation_model",
     ## prepare_objects ---------------------------------------------------------
     prepare_objects = function(trajectory, max_dist, step_size, rdf, sim = FALSE) {
       ## This is where the magic happens. Indexing is everything!
-      message("Preparing path propagation objects")   
       # Extended neighborhoods
       nbhd_0 <- make_nbhd(rdf = rdf, i = trajectory, sz = max_dist)
 
@@ -220,6 +219,7 @@ path_propagation_model <- R6Class("path_propagation_model",
         # sd_env = attributes(env_i)[[3]]
       )
       
+      message("Path propagation objects prepared.")   
       return(result)
     },
 
@@ -249,20 +249,30 @@ path_propagation_model <- R6Class("path_propagation_model",
 
       # 3D array for propagating probabilities forward
       # At step 1, all probs initialized at 1 at the center cell of each nbhd
-      current <- array(0, dim = c(ncell_local, n_obs, self$propagation_steps))
-      center <- ncell_local / 2 + 0.5
-      current[center, , 1] <- 1 
+      
+      current <- propagate_cpp(
+        attract_vec  = as.vector(attract),
+        to_dest_vec  = objects$to_dest_vec,
+        ncell        = ncell_local,
+        nobs         = n_obs,
+        nsteps       = self$propagation_steps,
+        bg_rate      = bg_rate,
+        ncol_dest    = ncol(objects$dest)
+      )
 
-      # Propagation loop
-      for (j in 1:(self$propagation_steps - 1)) {
-        step_prob <- as.vector(current[, , j]) * attract[]
-        dest[] <- step_prob[objects$to_dest_vec]
-        p_step <- rowSums(dest, na.rm = TRUE)
-        p_with_bg <- p_step + bg_rate - p_step * bg_rate %>%
-          matrix(nrow = ncell_local, ncol = n_obs)
-        col_totals <- colSums(p_with_bg)
-        current[, , j + 1] <- p_with_bg / rep(col_totals, each = ncell_local)
-      }
+      # current <- array(0, dim = c(ncell_local, n_obs, self$propagation_steps))
+      # center <- ncell_local / 2 + 0.5
+      # current[center, , 1] <- 1 
+      # for (j in 1:(self$propagation_steps - 1)) {             # Propagation loop
+      #   step_prob <- as.vector(current[, , j]) * attract[]
+      #   dest[] <- step_prob[objects$to_dest_vec]
+      #   p_step <- rowSums(dest, na.rm = TRUE)
+      #   p_with_bg <- p_step + bg_rate - p_step * bg_rate %>%
+      #     matrix(nrow = ncell_local, ncol = n_obs)
+      #   col_totals <- colSums(p_with_bg)
+      #   current[, , j + 1] <- p_with_bg / rep(col_totals, each = ncell_local)
+      # }
+
       return(current)
     },
 
@@ -1060,7 +1070,7 @@ empirical_batch <- R6Class("empirical_batch",
         done <- private$get_completed_ids()
         i_todo <- setdiff(individuals_to_process, done)
         if (length(i_todo) == 0) break
-        message(paste0("Attempt ", attempt, ": ", length(i_todo), " individuals remaining"))
+        # message(paste0("Attempt ", attempt, ": ", length(i_todo), " individuals remaining"))
 
         if (self$config$parallel) {
           results <- foreach(i = i_todo, .packages = c("terra", "ctmm", "amt"),

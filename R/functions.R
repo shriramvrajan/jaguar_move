@@ -14,6 +14,9 @@ library(viridis)
 library(ggplot2)
 library(Matrix)
 library(RSpectra)
+library(Rcpp)
+
+Rcpp::sourceCpp("R/propagate.cpp")
 
 # Data =========================================================================
 
@@ -41,8 +44,9 @@ if (!exists("skip_data")) {
 # 0. Basic ---------------------------------------------------------------------
 
 # Output message m both in console and in logfile f
+options(digits.secs = 3)
 message <- function(m, f = "data/output/run_log.txt") {
-    m <- paste(format(Sys.time(), "%d.%m.%y  %R"), m)
+    m <- paste(format(Sys.time(), "%d.%m.%y  %H:%M:%OS3"), m)
     print(m)
     cat(m, file = f, append = TRUE, sep = "\n")
 }
@@ -61,7 +65,7 @@ to_raster <- function(vals, cells, template) {
   return(r)
 }
 
-# Turn raster into a 3-column dataframe with row, col, and value
+# Convert raster into a 3-column dataframe with row, col, and value
 raster_to_df <- function(r) {
     outdf <- as.data.frame(r)
     outdf <- cbind(outdf, rowColFromCell(r, seq_len(nrow(outdf))))

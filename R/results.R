@@ -5,7 +5,7 @@ source("R/classes.R")
 # library(gridExtra)
 
 file_ss <- "data/output/empirical_ss_qcbs.rds"
-file_pp <- "data/output/empirical_pp_qcbs.rds"
+file_pp <- "data/output/empirical_pp_qcbs_rcpp.rds"
 res <- results_table(file_ss = file_ss, file_pp = file_pp)
 res <- cbind(res, jag_meta[, -c("ID", "biome")])
 
@@ -22,14 +22,14 @@ res$nmove1 <- sapply(as.vector(jag_id)$jag_id, function(i) {
 })
 res <- res[-which(res$pp_conv != 0 | res$nmove1 <= 30), ]
 
-batch_aic      <- FALSE
+batch_aic      <- TRUE
 batch_holdout  <- FALSE
-individual <- TRUE
+individual     <- FALSE
 
 # Empirical batch results ======================================================
 
 if (batch_aic) {
-  plot_pdf(nm = "figs/aic.pdf", x = 6, y = 4)
+  plot_pdf(nm = "figs/aic2.pdf", x = 6, y = 4)
   ggplot(res, aes(x = ss_aic, y = pp_aic, label = ID)) +
     geom_point(aes(col = biome)) +
     geom_text(aes(label = ID, x = ss_aic + 500), size = 2) +

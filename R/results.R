@@ -2,49 +2,43 @@ rm(list = ls())
 source("R/functions.R")
 source("R/classes.R")
 
-# library(gridExtra)
-
 file_ss <- "data/output/empirical_ss_qcbs.rds"
-file_pp <- "data/output/empirical_pp_qcbs_rcpp.rds"
+file_pp <- "data/output/empirical_pp_qcbs.rds"
+name <- paste0(gsub("data/output/empirical_|.rds", "", file_ss), "___",
+               gsub("data/output/empirical_|.rds", "", file_pp))
+
 res <- results_table(file_ss = file_ss, file_pp = file_pp)
 res <- cbind(res, jag_meta[, -c("ID", "biome")])
+res <- res[-which(res$pp_conv != 0 | res$ss_conv != 0 | res$regular_moves <= 30), ]
 
-# get nmove without outliers - I don't need to be rerunning this every time!!
-res$nmove1 <- sapply(as.vector(jag_id)$jag_id, function(i) {
-  print(i)
-  jag <- jaguar$new(as.numeric(i))
-  track <- jag$get_track()
-  n_obs <- length(jag$get_track_cells())
-  dt_scaled <- track$dt[2:length(track$dt)] / median(na.exclude(track$dt))
-  dt_discrete <- pmax(1, round(dt_scaled))
-  outliers <- which(dt_discrete > 1)
-  return(n_obs - length(outliers))
-})
-res <- res[-which(res$pp_conv != 0 | res$nmove1 <= 30), ]
-
-batch_aic      <- TRUE
+batch_aic      <- FALSE
 batch_holdout  <- FALSE
-individual     <- FALSE
+individual     <- TRUE
 
 # Empirical batch results ======================================================
 
 if (batch_aic) {
-  plot_pdf(nm = "figs/aic2.pdf", x = 6, y = 4)
+  plot_pdf(nm = paste0("figs/aic_", name, ".pdf"), x = 6, y = 4)
   ggplot(res, aes(x = ss_aic, y = pp_aic, label = ID)) +
     geom_point(aes(col = biome)) +
-    geom_text(aes(label = ID, x = ss_aic + 500), size = 2) +
+    # geom_text(aes(label = ID, x = ss_aic + 500), size = 2) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
     labs(x = "Step selection AIC", y = "Path propagation AIC") 
   dev.off()
 }
 
 if (batch_holdout) {
-  ll_holdout <- sapply(seq_len(nrow(res)), function(i) {
-    print(paste0("Holdout analysis for individual ", jag_id[i]))
-    par_ss_i <- as.numeric(res[i, 3:11])
-    par_pp_i <- as.numeric(res[i, 15:23])
-    
-  })
+  ll_holdout <- readRDS(paste0("data/output/holdout_", name, ".rds"))
+  names(ll_holdout) <- c("ll_ss_hold", "ll_pp_hold", "ID")
+  res <- merge(res, ll_holdout, by = "ID", all.x = TRUE)
+
+  plot_pdf(nm = paste0("figs/holdout_ll_", name, ".pdf"), x = 6, y = 4)
+  ggplot(res, aes(x = ll_ss_hold - ll_pp_hold, y = ss_aic - pp_aic, label = ID)) +
+    geom_point(aes(col = biome)) +
+    # geom_text(aes(label = ID, x = ll_ss + 0.1), size = 2) +
+    # geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+    labs(x = "deltaAIC", y = "deltaHoldout")
+  dev.off()
 }
 
 # Empirical individual analysis ================================================
@@ -75,8 +69,7 @@ if (individual) {
     ## Pointwise surfaces
     phi_ss <- pointwise_env(par_ss, region, brdf, scale_ref) %>% rescale01()
     phi_pp <- pointwise_env(par_pp, region, brdf, scale_ref) %>% rescale01()
-    phi_dist <- phi_pp / sum(phi_pp, na.rm = TRUE) %>% rescale01()
-    browser()
+    phi_dist <- rescale01(phi_pp / sum(phi_pp, na.rm = TRUE))
     pp_model <- path_propagation_model$new()
     pi_pp <- pp_model$stationary_surface(par_pp, region, brdf, step_size = 1,
                                             scale_from = scale_ref) %>% rescale01()
@@ -108,6 +101,3 @@ if (individual) {
     dev.off()
   }
 }
-
-
-res2 <- readRDS("simulations/r1_obs_sweep_2026-02-13 13:20:41.184713.rds")$results

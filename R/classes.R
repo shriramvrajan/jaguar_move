@@ -164,11 +164,16 @@ path_propagation_model <- R6Class("path_propagation_model",
       # Build inner neighborhood structure. Each entry in the list is the 
       # immediate neighborhood of each cell in the extended neighborhood,
       # as represented by a cell number of raster env_ras
+      all_cells <- unique(as.vector(nbhd_0)) %>% na.exclude %>% as.numeric
+      nbhd_local <- make_nbhd(rdf = rdf, i = all_cells, sz = step_size)
+      cell_to_local <- setNames(seq_along(all_cells), as.character(all_cells))
       nbhd_list <- lapply(seq_len(nrow(nbhd_0)), function(i) {                
         row_inds <- seq_len(ncol(nbhd_0)) + (i - 1) * ncol(nbhd_0)
         names(row_inds) <- nbhd_0[i, ]
-        out <- matrix(row_inds[as.character(nbhd_full[nbhd_0[i, ], ])], 
-                      nrow = length(row_inds), ncol = ncol(nbhd_full))
+        cells_i <- nbhd_0[i, ]
+        local_rows <- cell_to_local[as.character(cells_i)]
+        out <- matrix(row_inds[as.character(nbhd_local[local_rows, ])], 
+                      nrow = length(row_inds), ncol = ncol(nbhd_local))
         return(out)
       })
       nbhd_i <- do.call(rbind, nbhd_list)
@@ -1047,12 +1052,6 @@ empirical_batch <- R6Class("empirical_batch",
       
       message(paste0("Processing ", length(i_todo), " individuals"))
       
-      # Set up global neighborhood if needed
-      if (!exists("nbhd_full")) {
-        message("Generating global neighborhood matrix")
-        nbhd_full <<- make_nbhd(rdf = brdf, i = seq_len(nrow(brdf)), sz = self$config$step_size)
-      }
-      
       # Set up parallel processing
       if (self$config$parallel) {
         registerDoParallel(self$config$n_cores)
@@ -1062,7 +1061,6 @@ empirical_batch <- R6Class("empirical_batch",
       # Create model instances
       ss_model <- step_selection_model$new()
       pp_model <- path_propagation_model$new()
-      pp_model$propagation_steps <- self$config$propagation_steps 
       
       # Main processing loop
       max_attempts <- 10
@@ -1142,10 +1140,30 @@ empirical_batch <- R6Class("empirical_batch",
         result <- ss_model$fit(track_cells, max_dist, rdf = brdf, 
                                par_start = par_start, outliers = outliers)
       } else if (self$config$model_type == 2) {
-        # Path propagation  
-        result <- pp_model$fit(track_cells, max_dist, self$config$step_size, 
-                            rdf = brdf, par_start = par_start,
-                            outliers = outliers)
+        # Iterate over n_jump values and select best based on log likelihood
+        best_result <- NULL
+        best_ll     <- Inf
+        best_n_jump <- 0
+
+        for (n_jump in self$config$n_jump_range) {
+          inner_size <- n_jump + 1
+          pp_model$propagation_steps <- max(1, ceiling(8 / inner_size)) # Adjust propagation steps based on n_jump
+          message(paste0("Trying n_jump = ", n_jump, 
+            " with propagation_steps = ", pp_model$propagation_steps))
+          result_n <- pp_model$fit(track_cells, max_dist, rdf = brdf, 
+                               par_start = par_start, outliers = outliers, 
+                               step_size = inner_size)
+          if (!is.na(result_n[1]) && result_n$ll < best_ll) {
+            best_ll <- result_n$ll
+            best_result <- result_n
+            best_n_jump <- n_jump
+          }
+        }
+
+        if (!is.null(best_result)) {
+          best_result$n_jump <- best_n_jump
+        }
+        result <- best_result
       }
       
       # Save individual result

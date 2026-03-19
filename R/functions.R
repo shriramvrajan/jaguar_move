@@ -12,8 +12,6 @@ library(foreach)
 library(doParallel)
 library(viridis)
 library(ggplot2)
-library(Matrix)
-library(RSpectra)
 library(Rcpp)
 
 Rcpp::sourceCpp("R/propagate.cpp")

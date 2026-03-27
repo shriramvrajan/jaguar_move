@@ -208,7 +208,12 @@ path_propagation_model <- R6Class("path_propagation_model",
         env_i <- env_s[match(nbhd_0, unique_cells), ]
       }
       if (any(is.na(env_i))) env_i[which(is.na(env_i))] <- 0
-      
+
+      # Precompute Euclidean distance for each cell in inner neighborhood
+      offsets_row <- rep(-step_size:step_size, each = 2 * step_size + 1)
+      offsets_col <- rep(step_size:-step_size, times = 2 * step_size + 1)
+      inner_dists <- sqrt(offsets_row^2 + offsets_col^2)
+
       # Return path propagation specific objects
       result <- list(
         env_i = env_i,
@@ -219,7 +224,8 @@ path_propagation_model <- R6Class("path_propagation_model",
         obs = obs,
         max_dist = max_dist,
         step_size = step_size,
-        outliers = integer(0)  # set externally if needed
+        outliers = integer(0),  # set externally if needed
+        inner_dists = inner_dists
         # mu_env = attributes(env_i)[[2]],
         # sd_env = attributes(env_i)[[3]]
       )
@@ -283,6 +289,45 @@ path_propagation_model <- R6Class("path_propagation_model",
 
     ## log_likelihood ----------------------------------------------------------
     log_likelihood = function(par, objects, sim, debug = FALSE) {
+      
+      obs <- objects$obs
+      outliers <- objects$outliers
+      n_obs <- length(obs) + 1
+      
+      if (sim) {
+        current <- self$build_kernel(par, objects, sim)
+        predictions <- matrix(0, nrow = self$propagation_steps, ncol = n_obs)
+        for (i in 1:n_obs) {
+          if (i %in% outliers || is.na(obs[i])) {
+            predictions[, i] <- rep(NA, self$propagation_steps)
+            next
+          }
+          predictions[, i] <- current[obs[i], i, ]
+        }
+        log_likelihood <- rowSums(log(pmax(predictions, .Machine$double.eps)), 
+                                    na.rm = TRUE)
+        return(-max(log_likelihood, na.rm = TRUE))
+      }
+
+      # Empirical case: C++ call replaces R loop for likelihood calculation
+      ncell_local <- (2 * objects$max_dist + 1)^2
+      path_propagation_ll_cpp(
+        par = par,
+        env_i = objects$env_i,
+        nbhd_i = objects$nbhd_i,
+        to_dest_vec = as.integer(objects$to_dest_vec),
+        obs = as.integer(objects$obs),
+        outliers = as.integer(objects$outliers),
+        inner_dists = objects$inner_dists,
+        ncell_local = as.integer(ncell_local),
+        n_obs = as.integer(n_obs),
+        n_steps = as.integer(self$propagation_steps),
+        npar = as.integer(length(par)),
+        n_env = 6L
+      )
+    },
+
+    log_likelihood_old = function(par, objects, sim, debug = FALSE) {
 
       obs        <- objects$obs
       outliers   <- objects$outliers
@@ -1146,8 +1191,10 @@ empirical_batch <- R6Class("empirical_batch",
         best_n_jump <- 0
 
         for (n_jump in self$config$n_jump_range) {
+          # Adjust propagation steps based on n_jump - might need to think about this more!
           inner_size <- n_jump + 1
-          pp_model$propagation_steps <- max(1, ceiling(8 / inner_size)) # Adjust propagation steps based on n_jump
+          pp_model$propagation_steps <- max(1, ceiling(max_dist / inner_size)) 
+
           message(paste0("Trying n_jump = ", n_jump, 
             " with propagation_steps = ", pp_model$propagation_steps))
           result_n <- pp_model$fit(track_cells, max_dist, rdf = brdf, 

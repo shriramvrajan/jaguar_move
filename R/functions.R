@@ -2,6 +2,7 @@
 ## see 00_data_preparation.R for data preparation steps
 
 # Libraries ====================================================================
+
 library(terra)
 library(tidyverse)
 library(data.table)
@@ -422,9 +423,7 @@ plot_path <- function(path, int = obs_interval, vgram = FALSE,
 
 # 3. Output analysis -----------------------------------------------------------
 
-results_table <- function(file_ss, file_pp) {
-  r_ss <- readRDS(file_ss)
-  r_pp <- readRDS(file_pp)
+results_table <- function(r_ss, r_pp) {
   
   ncol_ss <- length(unlist(r_ss[[1]]))
   ncol_pp <- length(unlist(r_pp[[1]]))
@@ -441,15 +440,15 @@ results_table <- function(file_ss, file_pp) {
       out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- NA
     } else {
       out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- unlist(r_pp[[i]])
-      # aic based on likelihood
-      out_df[i, ncol_ss + ncol_pp + 2] <- 2 * out_df[i, ncol_ss + ncol_pp] +
-                                           2 * (ncol_pp - 2)
+      # for aic, also considering n_jump and the max likelihood step as parameters
+      out_df[i, ncol_ss + ncol_pp + 2] <- 2 * out_df[i, ncol_ss + ncol_pp - 1] +
+                                           2 * (ncol_pp - 1) 
     }
   }
   out <- cbind(jag_meta[, c("ID", "biome")], out_df) %>% as.data.frame()
   names(out) <- c("ID", "biome", 
-                      paste0("ss_par", 1:9), "ss_ll", "ss_conv", "ss_aic",
-                      paste0("pp_par", 1:9), "pp_ll", "pp_conv", "pp_aic")
+                paste0("ss_par", 1:9), "ss_ll", "ss_conv", "ss_aic",
+                paste0("pp_par", 1:9), "pp_ll", "pp_conv", "pp_njump", "pp_aic")
   return(out)
 }
 

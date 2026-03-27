@@ -17,14 +17,16 @@ if (fit_individuals) {
         npar              = switch(model_type, 9, 9),    # Number of parameters
         step_size         = 1,    # Minimum step size (inner neighborhood) in pixels
         n_jump_range      = 0:4,  # Range of jump sizes to consider
-        individuals       = 12, # NULL = all individuals, or vector of IDs
+
+        # NULL = all individuals, or vector of IDs
+        individuals       = jag_id$jag_id[!(jag_id$jag_id %in% c(22, 81, 82, 114))], 
 
         # Holdout set parameters
         holdout_set  = FALSE,     # Whether to reserve holdout set (T/F)
         holdout_frac = 0.7,       # Proportion of data to use for training
 
         # Parallel processing parameters
-        parallel = FALSE,          # Whether to use parallel processing (T/F)
+        parallel = TRUE,          # Whether to use parallel processing (T/F)
         n_cores  = 6,             # Number of cores to use if parallel
 
         # Model fitting options

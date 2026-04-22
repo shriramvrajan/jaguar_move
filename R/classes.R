@@ -1118,6 +1118,8 @@ empirical_batch <- R6Class("empirical_batch",
         if (self$config$parallel) {
           results <- foreach(i = i_todo, .packages = c("terra", "ctmm", "amt"),
                             .errorhandling = "pass") %dopar% {
+            # brazil_ras <- terra::rast("data/env_layers.grd")
+            assign("brazil_ras", terra::rast("data/env_layers.grd"), envir = .GlobalEnv)
             self$process_individual(i, ss_model, pp_model)
           }
         } else {
@@ -1190,10 +1192,14 @@ empirical_batch <- R6Class("empirical_batch",
         best_ll     <- Inf
         best_n_jump <- 0
 
-        for (n_jump in self$config$n_jump_range) {
+        max_jump <- min(max_dist - 1, 8) # Limit max n_jump to 8 (compute)
+        max_steps <- 8              # Cap propagation steps to 8 (also compute)
+
+        for (n_jump in 0:max_jump) {
           # Adjust propagation steps based on n_jump - might need to think about this more!
           inner_size <- n_jump + 1
-          pp_model$propagation_steps <- max(1, ceiling(max_dist / inner_size)) 
+          pp_model$propagation_steps <- min(max(1, ceiling(max_dist / inner_size)), 
+                                          max_steps) # Cap at 8 for computational reasons
 
           message(paste0("Trying n_jump = ", n_jump, 
             " with propagation_steps = ", pp_model$propagation_steps))

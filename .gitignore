@@ -11,7 +11,8 @@ data/*
 figs/*
 gis/*
 simulations/*
-C1_writing/*
+c1_writing/*
+.vscode/*
 vasco.sh
 R/old
 R/scratch.R

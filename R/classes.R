@@ -183,16 +183,28 @@ path_propagation_model <- R6Class("path_propagation_model",
       # Build connectivity matrix. Rows are each cell of nbhd_i, columns are
       # row numbers from nbhd_i that can be reached in one step. All row lengths
       # standardized to ncol(nbhd_i) with NAs
-      to_dest <- tapply(seq_len(length(nbhd_i)), nbhd_i, function(x) {  
-        if (length(x) <= ncol(nbhd_i)) {
-          out <- c(x, rep(NA, ncol(nbhd_i) - length(x)))
-        } else {
-          out <- x[seq_len(ncol(nbhd_i))]
-        }
-        return(out)
-      })
-      to_dest <- t(matrix(unlist(to_dest), nrow = ncol(nbhd_i), 
-                                           ncol = nrow(nbhd_i)))
+      # to_dest <- tapply(seq_len(length(nbhd_i)), nbhd_i, function(x) {  
+      #   if (length(x) <= ncol(nbhd_i)) {
+      #     out <- c(x, rep(NA, ncol(nbhd_i) - length(x)))
+      #   } else {
+      #     out <- x[seq_len(ncol(nbhd_i))]
+      #   }
+      #   return(out)
+      # })
+      # to_dest <- t(matrix(unlist(to_dest), nrow = ncol(nbhd_i), 
+      #                                      ncol = nrow(nbhd_i)))
+      nbhd_flat <- as.integer(nbhd_i)
+      positions <- seq_len(length(nbhd_flat))
+      valid <- !is.na(nbhd_flat)
+      groups <- split(positions[valid], nbhd_flat[valid])
+      ncol_td <- ncol(nbhd_i)
+      to_dest <- matrix(NA_integer_, nrow = nrow(nbhd_i), ncol = ncol_td)
+      for (g in names(groups)) {
+        row_idx <- as.integer(g)
+        vals <- groups[[g]]
+        n <- min(length(vals), ncol_td)
+        to_dest[row_idx, seq_len(n)] <- vals[seq_len(n)]
+      }
       dest <- matrix(0, nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
       
       unique_cells <- unique(nbhd_0) %>% na.exclude %>% as.numeric
@@ -1099,7 +1111,15 @@ empirical_batch <- R6Class("empirical_batch",
       
       # Set up parallel processing
       if (self$config$parallel) {
-        registerDoParallel(self$config$n_cores)
+        # registerDoParallel(self$config$n_cores)
+        # message(paste0("Using ", self$config$n_cores, " cores"))
+        c1 <- parallel::makeCluster(self$config$n_cores)
+        registerDoParallel(c1)
+
+        parallel::clusterEvalQ(c1, {
+          source("R/functions.R")
+          source("R/classes.R")
+        })
         message(paste0("Using ", self$config$n_cores, " cores"))
       }
       
@@ -1116,11 +1136,18 @@ empirical_batch <- R6Class("empirical_batch",
         # message(paste0("Attempt ", attempt, ": ", length(i_todo), " individuals remaining"))
 
         if (self$config$parallel) {
-          results <- foreach(i = i_todo, .packages = c("terra", "ctmm", "amt"),
-                            .errorhandling = "pass") %dopar% {
+          # results <- foreach(i = i_todo, .packages = c("terra", "ctmm", "amt"),
+          #                   .errorhandling = "pass") %dopar% {
+          batch_config <- self$config
+          results <- foreach(i = i_todo, .export = "batch_config", 
+            .errorhandling = "pass") %dopar% {
             # brazil_ras <- terra::rast("data/env_layers.grd")
-            assign("brazil_ras", terra::rast("data/env_layers.grd"), envir = .GlobalEnv)
-            self$process_individual(i, ss_model, pp_model)
+            # assign("brazil_ras", terra::rast("data/env_layers.grd"), envir = .GlobalEnv)
+            ss_model <- step_selection_model$new()
+            pp_model <- path_propagation_model$new()
+            
+            batch <- empirical_batch$new(batch_config)
+            batch$process_individual(i, ss_model, pp_model)
           }
         } else {
           results <- list()
@@ -1130,6 +1157,11 @@ empirical_batch <- R6Class("empirical_batch",
         }
       }
       
+      if (self$config$parallel) {
+        parallel::stopCluster(c1)
+        message("Parallel processing complete")
+      }
+
       # If there are already completed results, load and combine
       results <- lapply(individuals_to_process, function(i) {
         f <- paste0("data/output/out_", i, ".rds")

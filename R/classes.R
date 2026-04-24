@@ -519,8 +519,16 @@ path_propagation_model <- R6Class("path_propagation_model",
       }
 
       N <- length(region_cells)
-      T_mat <- sparseMatrix(i = ti, j = tj, x = tx, dims = c(N, N))
-      eig <- eigs(t(T_mat), k = 1, which = "LM")
+      T_mat <- Matrix::sparseMatrix(i = ti, j = tj, x = tx, dims = c(N, N))
+      eig <- tryCatch({
+        RSpectra::eigs(t(T_mat), k = 1, which = "LM")
+      }, error = function(e) {
+        return(NULL) # Return NULL if no convergence
+      })
+      if (is.null(eig) || length(eig$values) < 1) {
+        message("Skipping individual: Eigenvalues failed to converge.")
+        return(NA)
+      }
       pi_vec <- abs(Re(eig$vectors[, 1]))
       pi_vec <- pi_vec / sum(pi_vec, na.rm = TRUE)
       setNames(pi_vec, as.character(region_cells))
@@ -960,7 +968,7 @@ simulation_batch <- R6Class("simulation_batch",
         })
 
         # Calculate AIC difference (positive means path propagation better)
-        aic_diff <- 2 * (ll_step - ll_pp)
+        aic_diff <- 2 * (ll_step - ll_pp) # - 4? (2 parameters, 2k - 2LL)
         
         results_list[[name]] <- data.frame(
           config_name = name,
@@ -1287,20 +1295,20 @@ individual_analysis <- R6Class("individual_analysis",
     landscape = NULL,
     results = NULL,
 
-    file_ss = NULL,
-    file_pp = NULL,
+    r_ss = NULL,
+    r_pp = NULL,
 
     ss_disp = NULL,
     pp_disp = NULL,
 
-    initialize = function(id = NULL, file_ss, file_pp) {
+    initialize = function(id = NULL, r_ss, r_pp) {
       self$id <- as.numeric(id)
       self$jaguar <- jaguar$new(id)
       self$track <- self$jaguar$get_track()
       self$track_cells <- self$jaguar$get_track_cells()
       self$landscape <- self$jaguar$get_landscape()
-      self$file_ss <- file_ss
-      self$file_pp <- file_pp
+      self$r_ss <- r_ss
+      self$r_pp <- r_pp
       self$results <- self$load_results(id = self$id)
     },
 
@@ -1308,7 +1316,7 @@ individual_analysis <- R6Class("individual_analysis",
       if (!is.null(id)) {
         self$id <- as.numeric(id)
       }
-      all_results <- results_table(self$file_ss, self$file_pp)
+      all_results <- results_table(r_ss = self$r_ss, r_pp = self$r_pp)
       return(all_results[all_results$ID == self$id, ])
     },
 

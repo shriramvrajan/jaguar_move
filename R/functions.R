@@ -14,6 +14,8 @@ library(doParallel)
 library(viridis)
 library(ggplot2)
 library(Rcpp)
+library(Matrix)
+library(RSpectra)
 
 Rcpp::sourceCpp("R/propagate.cpp")
 
@@ -115,18 +117,18 @@ env_function <- function(env, par, nbhd = NULL, sim = FALSE) {
     # env <- scale(env)
     if (any(is.na(env))) env[which(is.na(env))] <- 0
     # First order with intercept
-    attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-                            par[3] * env[, 3] + par[4] * env[, 4] +
-                            par[5] * env[, 5] + par[6] * env[, 6] +
-                            par[7]))
+    # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
+    #                         par[3] * env[, 3] + par[4] * env[, 4] +
+    #                         par[5] * env[, 5] + par[6] * env[, 6] +
+    #                         par[7]))
     # Second order with intercept
-    # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 1]^2 +
-    #                         par[3] * env[, 2] + par[4] * env[, 2]^2 +
-    #                         par[5] * env[, 3] + par[6] * env[, 3]^2 +
-    #                         par[7] * env[, 4] + par[8] * env[, 4]^2 +
-    #                         par[9] * env[, 5] + par[10] * env[, 5]^2 +
-    #                         par[11] * env[, 6] + par[12] * env[, 6]^2 +
-    #                         par[13]))
+    attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 1]^2 +
+                            par[3] * env[, 2] + par[4] * env[, 2]^2 +
+                            par[5] * env[, 3] + par[6] * env[, 3]^2 +
+                            par[7] * env[, 4] + par[8] * env[, 4]^2 +
+                            par[9] * env[, 5] + par[10] * env[, 5]^2 +
+                            par[11] * env[, 6] + par[12] * env[, 6]^2 +
+                            par[13]))
   } else {
     attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
   }
@@ -447,8 +449,8 @@ results_table <- function(r_ss, r_pp) {
   }
   out <- cbind(jag_meta[, c("ID", "biome")], out_df) %>% as.data.frame()
   names(out) <- c("ID", "biome", 
-                paste0("ss_par", 1:9), "ss_ll", "ss_conv", "ss_aic",
-                paste0("pp_par", 1:9), "pp_ll", "pp_conv", "pp_njump", "pp_aic")
+               paste0("ss_par", 1:15), "ss_ll", "ss_conv", "ss_aic",
+               paste0("pp_par", 1:15), "pp_ll", "pp_conv", "pp_njump", "pp_aic")
   return(out)
 }
 

@@ -10,13 +10,12 @@ name <- paste0(gsub("data/output/empirical_|.rds", "", file_ss), "___",
 r_ss <- readRDS(file_ss)
 r_pp0 <- readRDS(file_pp)
 
-pp_missing <- which(jag_id$jag_id %in% c(22, 81, 82, 114))
+pp_missing <- NA
 pp_exists <- setdiff(seq_len(82), pp_missing)
 ## add NA entries to r_pp list for missing individuals
 r_pp <- vector("list", length = length(r_ss))
 r_pp[pp_exists] <- r_pp0
-r_pp[pp_missing] <- NA
-
+if (length(pp_missing) > 0) r_pp[pp_missing] <- NA
 
 res <- results_table(r_ss = r_ss, r_pp = r_pp)
 res <- cbind(res, jag_meta[, -c("ID", "biome")])
@@ -24,7 +23,7 @@ res <- res[-which(res$pp_conv != 0 | res$ss_conv != 0 | res$regular_moves <= 50)
 
 batch_aic      <- FALSE
 batch_holdout  <- FALSE
-individual     <- TRUE
+individual     <- FALSE
 
 # Empirical batch results ======================================================
 
@@ -55,15 +54,15 @@ if (batch_holdout) {
 # Empirical individual analysis ================================================
 
 if (individual) {
-  # ids <- unlist(jag_id)
-  ids <- c(20, 81)
+  ids <- unlist(jag_id)[pp_exists]
+  # ids <- c(20, 81)
   for (id in ids) {
     print(paste0("Analyzing individual ", id)) 
     if (file.exists(paste0("figs/empirical/", id, ".pdf"))) {
       message(paste0("Figure for individual ", id, " already exists. Skipping..."))
       next
     }
-    jag_i <- individual_analysis$new(id = id, file_ss = file_ss, file_pp = file_pp)
+    jag_i <- individual_analysis$new(id = id, r_ss = r_ss, r_pp = r_pp)
     par_ss <- as.numeric(jag_i$results[3:11])
     par_pp <- as.numeric(jag_i$results[15:23])
     region <- get_local_region(jag_i$track_cells, brdf, buffer = 10)
@@ -100,13 +99,13 @@ if (individual) {
     )
 
     plot_pdf(nm = paste0("figs/empirical/", id, ".pdf"), x = 12, y = 4)
-    par(mfrow = c(1, 3))
+    par(mfrow = c(1, 2))
     terra::plot(crop(rast_phi_ss, crop_ext), main = "SSF: pointwise environment")
     points(cbind(jag_i$track$longitude, jag_i$track$latitude), pch = 16, cex = 0.6, col = rgb(0, 0, 0, 0.3))
     terra::plot(crop(rast_phi_dist, crop_ext), main = "PP: pointwise environment")
     points(cbind(jag_i$track$longitude, jag_i$track$latitude), pch = 16, cex = 0.6, col = rgb(0, 0, 0, 0.3))
-    terra::plot(crop(rast_pi,     crop_ext), main = "PP: stationary distribution")
-    points(cbind(jag_i$track$longitude, jag_i$track$latitude), pch = 16, cex = 0.6, col = rgb(0, 0, 0, 0.3))
+    # terra::plot(crop(rast_pi,     crop_ext), main = "PP: stationary distribution")
+    # points(cbind(jag_i$track$longitude, jag_i$track$latitude), pch = 16, cex = 0.6, col = rgb(0, 0, 0, 0.3))
     # terra::plot(crop(rast_log_ratio, crop_ext), main = id)
     # points(cbind(jag_i$track$longitude, jag_i$track$latitude), pch = 16, cex = 0.3, col = rgb(0, 0, 0, 0.3))
     dev.off()

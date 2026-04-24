@@ -14,12 +14,12 @@ if (fit_individuals) {
     config <- list(   
         # Model parameters
         model_type        = model_type,
-        npar              = switch(model_type, 9, 9),    # Number of parameters
+        npar              = switch(model_type, 15, 15),    # Number of parameters
         step_size         = 1,    # Minimum step size (inner neighborhood) in pixels
         # n_jump_range      = 0:4,  # Range of jump sizes to consider (now in classes.R!)
 
         # NULL = all individuals, or vector of IDs
-        individuals       = jag_id$jag_id[!(jag_id$jag_id %in% c(22, 81, 82, 114))], 
+        individuals       = NULL, 
 
         # Holdout set parameters
         holdout_set  = FALSE,     # Whether to reserve holdout set (T/F)
@@ -27,7 +27,7 @@ if (fit_individuals) {
 
         # Parallel processing parameters
         parallel = TRUE,          # Whether to use parallel processing (T/F)
-        n_cores  = 10,             # Number of cores to use if parallel
+        n_cores  = 15,             # Number of cores to use if parallel
 
         # Model fitting options
         fit_model      = TRUE,    # Whether to fit the model (T/F)

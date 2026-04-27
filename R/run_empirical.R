@@ -8,9 +8,10 @@ fit_individuals <- TRUE
 test_holdout    <- FALSE
 
 # 1 for step selection, 2 for path propagation
-model_type <- 2
+model_type <- 1
 
 if (fit_individuals) {
+    files <- list.files("data/output", pattern = "out_\\d+\\.rds")
     config <- list(   
         # Model parameters
         model_type        = model_type,
@@ -20,6 +21,7 @@ if (fit_individuals) {
 
         # NULL = all individuals, or vector of IDs
         individuals       = NULL, 
+        # individuals       = as.numeric(gsub("\\D", "", files)), # Just save results
 
         # Holdout set parameters
         holdout_set  = FALSE,     # Whether to reserve holdout set (T/F)
@@ -27,7 +29,7 @@ if (fit_individuals) {
 
         # Parallel processing parameters
         parallel = TRUE,          # Whether to use parallel processing (T/F)
-        n_cores  = 15,             # Number of cores to use if parallel
+        n_cores  = 20,             # Number of cores to use if parallel
 
         # Model fitting options
         fit_model      = TRUE,    # Whether to fit the model (T/F)

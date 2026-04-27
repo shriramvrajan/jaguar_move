@@ -17,6 +17,7 @@ library(Rcpp)
 library(Matrix)
 library(RSpectra)
 
+# C++ function for path propagation
 Rcpp::sourceCpp("R/propagate.cpp")
 
 # Data =========================================================================
@@ -45,7 +46,7 @@ if (!exists("skip_data")) {
 # 0. Basic ---------------------------------------------------------------------
 
 # Output message m both in console and in logfile f
-options(digits.secs = 3)
+options(digits.secs = 1)
 message <- function(m, f = "data/output/run_log.txt") {
     m <- paste(format(Sys.time(), "%d.%m.%y  %H:%M:%OS3"), m)
     print(m)
@@ -426,7 +427,7 @@ plot_path <- function(path, int = obs_interval, vgram = FALSE,
 # 3. Output analysis -----------------------------------------------------------
 
 results_table <- function(r_ss, r_pp) {
-  
+  # Fix results_table for AIC calculation !!!
   ncol_ss <- length(unlist(r_ss[[1]]))
   ncol_pp <- length(unlist(r_pp[[1]]))
   out_df <- matrix(nrow = nrow(jag_meta), ncol = ncol_ss + ncol_pp + 2)
@@ -453,7 +454,6 @@ results_table <- function(r_ss, r_pp) {
                paste0("pp_par", 1:15), "pp_ll", "pp_conv", "pp_njump", "pp_aic")
   return(out)
 }
-
 
 # 4. Data visualization --------------------------------------------------------
 

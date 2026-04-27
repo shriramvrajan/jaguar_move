@@ -5,7 +5,7 @@
 using namespace Rcpp;
 
 // Compute full path propagation negative log-likelihood in one shot.
-// Replaces old R chain env_function > apply_kernel > propagate_cpp > log_likelihood
+// Replaces R chain env_function > apply_kernel > propagate_cpp > log_likelihood
 // Parameters:
 // par[1:n_env] - environmental attraction parameters (betas)
 // par[n_env+1] - sigmoid intercept for environmental attraction
@@ -34,7 +34,7 @@ double path_propagation_ll_cpp(
     double k_exp = std::exp(par[npar - 2]);
     double bg_rate = 1.0 / (1.0 + std::exp(-par[npar - 1]));
 
-    // Dimension guards
+    // Dimension checks 
     if (env_i.nrow() != n_total)
       Rcpp::stop("env_i has %d rows, expected %d", env_i.nrow(), n_total);
     if (env_i.ncol() < n_env)
@@ -50,10 +50,11 @@ double path_propagation_ll_cpp(
     // 1. Environmental attraction (replaces env_function)
     std::vector<double> attract_raw(n_total);
     for (int k = 0; k < n_total; k++) {
-      double linear = par[n_env];
-      for (int j = 0; j < n_env; j++) {
-        linear += par[j] * env_i(k, j);
-      }
+      double linear = par[2 * n_env];
+        for (int j = 0; j < n_env; j++) {
+            double x = env_i(k, j);
+            linear += par[2 * j] * x + par[2 * j + 1] * x * x;
+        }
       attract_raw[k] = 1.0 / (1.0 + std::exp(linear));
     }
 

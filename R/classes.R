@@ -1119,11 +1119,7 @@ empirical_batch <- R6Class("empirical_batch",
       
       # Set up parallel processing
       if (self$config$parallel) {
-        # registerDoParallel(self$config$n_cores)
-        # message(paste0("Using ", self$config$n_cores, " cores"))
-        c1 <- parallel::makeCluster(self$config$n_cores)
-        registerDoParallel(c1)
-
+        parallel_setup(self$config$n_cores)
         parallel::clusterEvalQ(c1, {
           source("R/functions.R")
           source("R/classes.R")
@@ -1239,10 +1235,10 @@ empirical_batch <- R6Class("empirical_batch",
           # Adjust propagation steps based on n_jump - might need to think about this more!
           inner_size <- n_jump + 1
           pp_model$propagation_steps <- min(max(1, ceiling(max_dist / inner_size)), 
-                                          max_steps) # Cap at 8 for computational reasons
+                                          max_steps)
 
           message(paste0("Trying n_jump = ", n_jump, 
-            " with propagation_steps = ", pp_model$propagation_steps))
+                      " with propagation_steps = ", pp_model$propagation_steps))
           result_n <- pp_model$fit(track_cells, max_dist, rdf = brdf, 
                                par_start = par_start, outliers = outliers, 
                                step_size = inner_size)

@@ -2,10 +2,14 @@ rm(list = ls())
 source("R/functions.R")
 source("R/classes.R")
 
+batch_aic      <- FALSE
+batch_holdout  <- FALSE
+individual     <- TRUE
+
 file_ss <- "data/output/empirical_ss_qcbs.rds"
-file_pp <- "data/output/empirical_results_pp_2026-03-26.rds"
+file_pp <- "data/output/empirical_results_pp_2026-04-27.rds"
 name <- paste0(gsub("data/output/empirical_|.rds", "", file_ss), "___",
-               gsub("data/output/empirical_|.rds", "", file_pp))
+              gsub("data/output/empirical_|.rds", "", file_pp))
 
 r_ss <- readRDS(file_ss)
 r_pp0 <- readRDS(file_pp)
@@ -20,10 +24,6 @@ if (length(pp_missing) > 0) r_pp[pp_missing] <- NA
 res <- results_table(r_ss = r_ss, r_pp = r_pp)
 res <- cbind(res, jag_meta[, -c("ID", "biome")])
 res <- res[-which(res$pp_conv != 0 | res$ss_conv != 0 | res$regular_moves <= 50), ]
-
-batch_aic      <- FALSE
-batch_holdout  <- FALSE
-individual     <- FALSE
 
 # Empirical batch results ======================================================
 

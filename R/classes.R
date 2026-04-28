@@ -1227,25 +1227,34 @@ empirical_batch <- R6Class("empirical_batch",
         best_result <- NULL
         best_ll     <- Inf
         best_n_jump <- 0
+        worse_count <- 0
 
         max_jump <- min(max_dist - 1, 8) # Limit max n_jump to 8 (compute)
         max_steps <- 8              # Cap propagation steps to 8 (also compute)
 
         for (n_jump in 0:max_jump) {
-          # Adjust propagation steps based on n_jump - might need to think about this more!
+          # Adjust propagation steps based on n_jump
           inner_size <- n_jump + 1
           pp_model$propagation_steps <- min(max(1, ceiling(max_dist / inner_size)), 
                                           max_steps)
 
           message(paste0("Trying n_jump = ", n_jump, 
                       " with propagation_steps = ", pp_model$propagation_steps))
+          par_best <- if (!is.null(best_result)) best_result$par else par_start
           result_n <- pp_model$fit(track_cells, max_dist, rdf = brdf, 
-                               par_start = par_start, outliers = outliers, 
+                               par_start = par_best, outliers = outliers, 
                                step_size = inner_size)
           if (!is.na(result_n[1]) && result_n$ll < best_ll) {
             best_ll <- result_n$ll
             best_result <- result_n
             best_n_jump <- n_jump
+            worse_count <- 0
+          } else if (!is.null(best_result)) {
+            worse_count <- worse_count + 1
+            if (worse_count >= 2) {
+              message("Stopping early due to consecutive worse results")
+              break
+            }
           }
         }
 

@@ -8,7 +8,7 @@ fit_individuals <- TRUE
 test_holdout    <- FALSE
 
 # 1 for step selection, 2 for path propagation
-model_type <- 1
+model_type <- 2
 
 if (fit_individuals) {
     files <- list.files("data/output", pattern = "out_\\d+\\.rds")

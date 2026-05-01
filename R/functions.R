@@ -53,13 +53,6 @@ message <- function(m, f = "data/output/run_log.txt") {
     cat(m, file = f, append = TRUE, sep = "\n")
 }
 
-# Set up parallel processing
-parallel_setup <- function(n_cores = 4) {
-    cl <- makeCluster(n_cores)
-    registerDoParallel(cl)
-    message(paste0("Parallel processing set up with ", n_cores, " cores."))
-}
-
 # Convert vector of cell numbers to raster with values at those cells and NAs
 to_raster <- function(vals, cells, template) {
   r <- template * NA
@@ -76,8 +69,10 @@ raster_to_df <- function(r) {
 }
 
 # Plot to pdf
-plot_pdf <- function(nm = "figs/plot.pdf", x = 4, y = 4) {
-  cairo_pdf(filename = nm, width = x, height = y)
+with_pdf <- function(path, expr, x = 5, y = 5) {
+  cairo_pdf(filename = path, width = x, height = y)
+  on.exit(dev.off())
+  force(expr)
 }
 
 # 1. Movement model ============================================================
@@ -430,6 +425,7 @@ results_table <- function(r_ss, r_pp) {
   # Fix results_table for AIC calculation !!!
   ncol_ss <- length(unlist(r_ss[[1]]))
   ncol_pp <- length(unlist(r_pp[[1]]))
+  if (ncol_ss == ncol_pp) ncol_pp <- ncol_pp + 1 # for n_jump parameter
   out_df <- matrix(nrow = nrow(jag_meta), ncol = ncol_ss + ncol_pp + 2)
   for (i in seq_len(nrow(out_df))) {
     if (all(is.na(r_ss[[i]]))) {
@@ -442,7 +438,12 @@ results_table <- function(r_ss, r_pp) {
     if (all(is.na(r_pp[[i]]))) {
       out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- NA
     } else {
-      out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- unlist(r_pp[[i]])
+      if (length(unlist(r_pp[[i]])) == ncol_pp - 1) {
+        r_pp_i <- c(unlist(r_pp[[i]]), NA) # for n_jump parameter
+      } else {
+        r_pp_i <- unlist(r_pp[[i]])
+      }
+      out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- r_pp_i
       # for aic, also considering n_jump and the max likelihood step as parameters
       out_df[i, ncol_ss + ncol_pp + 2] <- 2 * out_df[i, ncol_ss + ncol_pp - 1] +
                                            2 * (ncol_pp - 1) 
@@ -450,8 +451,8 @@ results_table <- function(r_ss, r_pp) {
   }
   out <- cbind(jag_meta[, c("ID", "biome")], out_df) %>% as.data.frame()
   names(out) <- c("ID", "biome", 
-               paste0("ss_par", 1:15), "ss_ll", "ss_conv", "ss_aic",
-               paste0("pp_par", 1:15), "pp_ll", "pp_conv", "pp_njump", "pp_aic")
+               paste0("ss_par", 1:(ncol_ss - 2)), "ss_ll", "ss_conv", "ss_aic",
+               paste0("pp_par", 1:(ncol_pp - 3)), "pp_ll", "pp_conv", "pp_njump", "pp_aic")
   return(out)
 }
 

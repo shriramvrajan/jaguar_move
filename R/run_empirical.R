@@ -1,8 +1,7 @@
 rm(list = ls())
 source("R/functions.R")     # Existing functions
 source("R/classes.R")       # New classes
-
-set.seed(7)
+set.seed(7)                 # For reproducibility
 
 fit_individuals <- TRUE
 test_holdout    <- FALSE
@@ -17,18 +16,17 @@ if (fit_individuals) {
         model_type        = model_type,
         npar              = switch(model_type, 15, 15),    # Number of parameters
         step_size         = 1,    # Minimum step size (inner neighborhood) in pixels
-        # n_jump_range      = 0:4,  # Range of jump sizes to consider (now in classes.R!)
 
         # NULL = all individuals, or vector of IDs
-        individuals       = NULL, 
-        # individuals       = as.numeric(gsub("\\D", "", files)), # Just save results
+        # individuals       = 58, 
+        individuals       = as.numeric(gsub("\\D", "", files)), # Just save results
 
         # Holdout set parameters
         holdout_set  = FALSE,     # Whether to reserve holdout set (T/F)
         holdout_frac = 0.7,       # Proportion of data to use for training
 
         # Parallel processing parameters
-        parallel = TRUE,          # Whether to use parallel processing (T/F)
+        parallel = FALSE,          # Whether to use parallel processing (T/F)
         n_cores  = 20,             # Number of cores to use if parallel
 
         # Model fitting options

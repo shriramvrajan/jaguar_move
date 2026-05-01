@@ -180,19 +180,7 @@ path_propagation_model <- R6Class("path_propagation_model",
       # Reindexing to link row numbers from nbhd_i to cell numbers in env_ras
       nbhd_0 <- as.vector(t(nbhd_0))
       
-      # Build connectivity matrix. Rows are each cell of nbhd_i, columns are
-      # row numbers from nbhd_i that can be reached in one step. All row lengths
-      # standardized to ncol(nbhd_i) with NAs
-      # to_dest <- tapply(seq_len(length(nbhd_i)), nbhd_i, function(x) {  
-      #   if (length(x) <= ncol(nbhd_i)) {
-      #     out <- c(x, rep(NA, ncol(nbhd_i) - length(x)))
-      #   } else {
-      #     out <- x[seq_len(ncol(nbhd_i))]
-      #   }
-      #   return(out)
-      # })
-      # to_dest <- t(matrix(unlist(to_dest), nrow = ncol(nbhd_i), 
-      #                                      ncol = nrow(nbhd_i)))
+      ## Build to_dest and dest for C++ propagation
       nbhd_flat <- as.integer(nbhd_i)
       positions <- seq_len(length(nbhd_flat))
       valid <- !is.na(nbhd_flat)
@@ -207,9 +195,8 @@ path_propagation_model <- R6Class("path_propagation_model",
       }
       dest <- matrix(0, nrow = nrow(nbhd_i), ncol = ncol(nbhd_i))
       
+      ## Scale environmental variables 
       unique_cells <- unique(nbhd_0) %>% na.exclude %>% as.numeric
-      # env_s <- if (sim) scale(rdf$sim1[nbhd_0]) else scale(rdf[unique_cells, ])
-      # env_i <- env_s[match(nbhd_0, unique_cells), ]
       if (sim) {
         env_table <- scale(rdf$sim1[unique_cells])
         env_s <- as.vector(env_table)
@@ -270,9 +257,6 @@ path_propagation_model <- R6Class("path_propagation_model",
       attract0 <- env_function(env_i, par, nbhd = nbhd_i, sim = sim) 
       attract <- apply_kernel(attract0, kernel)
 
-      # 3D array for propagating probabilities forward
-      # At step 1, all probs initialized at 1 at the center cell of each nbhd
-      
       current <- propagate_cpp(
         attract_vec  = as.vector(attract),
         to_dest_vec  = objects$to_dest_vec,
@@ -282,20 +266,6 @@ path_propagation_model <- R6Class("path_propagation_model",
         bg_rate      = bg_rate,
         ncol_dest    = ncol(objects$dest)
       )
-
-      # current <- array(0, dim = c(ncell_local, n_obs, self$propagation_steps))
-      # center <- ncell_local / 2 + 0.5
-      # current[center, , 1] <- 1 
-      # for (j in 1:(self$propagation_steps - 1)) {             # Propagation loop
-      #   step_prob <- as.vector(current[, , j]) * attract[]
-      #   dest[] <- step_prob[objects$to_dest_vec]
-      #   p_step <- rowSums(dest, na.rm = TRUE)
-      #   p_with_bg <- p_step + bg_rate - p_step * bg_rate %>%
-      #     matrix(nrow = ncell_local, ncol = n_obs)
-      #   col_totals <- colSums(p_with_bg)
-      #   current[, , j + 1] <- p_with_bg / rep(col_totals, each = ncell_local)
-      # }
-
       return(current)
     },
 
@@ -339,32 +309,6 @@ path_propagation_model <- R6Class("path_propagation_model",
       )
     },
 
-    log_likelihood_old = function(par, objects, sim, debug = FALSE) {
-
-      obs        <- objects$obs
-      outliers   <- objects$outliers
-      n_obs      <- length(obs) + 1
-
-      current <- self$build_kernel(par, objects, sim)
-
-      # Calculate log likelihood 
-      predictions <- matrix(0, nrow = self$propagation_steps, ncol = n_obs)
-      for (i in 1:n_obs) {
-        if (i %in% outliers || is.na(obs[i])) {
-          predictions[, i] <- rep(NA, self$propagation_steps)
-          next
-        }
-        predictions[, i] <- current[obs[i], i, ]
-      }      
-      # log_likelihood <- rowSums(log(predictions), na.rm = TRUE) 
-      log_likelihood <- rowSums(log(pmax(predictions, .Machine$double.eps)), na.rm = TRUE)
-      out            <- -max(log_likelihood, na.rm = TRUE)
-      # print(paste("Current PPLL:", round(-out, 4)))
-      # print(paste("PP parameters:", paste(round(par, 4), collapse = ", ")))
-      # if (is.infinite(out) || is.na(out)) out <- 0
-      return(out)
-    },
-
     ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, step_size, rdf, par_start, sim = FALSE, 
                   outliers = integer(0), dt) {
@@ -389,7 +333,7 @@ path_propagation_model <- R6Class("path_propagation_model",
                         lower = lbound,
                         upper = ubound,
                         control = list(
-                          maxit = 2000,     # More iterations
+                          maxit = 1000,     # More iterations
                           factr = 1e5
                         ))
                         
@@ -398,7 +342,7 @@ path_propagation_model <- R6Class("path_propagation_model",
         return(list(
           par = par_out$par,
           ll = ll,
-          convergence = par_out$convergence
+          convergence = par_out$convergence,
           # objects = objects
         ))
         
@@ -1119,8 +1063,9 @@ empirical_batch <- R6Class("empirical_batch",
       
       # Set up parallel processing
       if (self$config$parallel) {
-        parallel_setup(self$config$n_cores)
-        parallel::clusterEvalQ(c1, {
+        cl <- makeCluster(self$config$n_cores)
+        registerDoParallel(cl)
+        parallel::clusterEvalQ(cl, {
           source("R/functions.R")
           source("R/classes.R")
         })
@@ -1137,19 +1082,12 @@ empirical_batch <- R6Class("empirical_batch",
         done <- private$get_completed_ids()
         i_todo <- setdiff(individuals_to_process, done)
         if (length(i_todo) == 0) break
-        # message(paste0("Attempt ", attempt, ": ", length(i_todo), " individuals remaining"))
-
         if (self$config$parallel) {
-          # results <- foreach(i = i_todo, .packages = c("terra", "ctmm", "amt"),
-          #                   .errorhandling = "pass") %dopar% {
           batch_config <- self$config
           results <- foreach(i = i_todo, .export = "batch_config", 
             .errorhandling = "pass") %dopar% {
-            # brazil_ras <- terra::rast("data/env_layers.grd")
-            # assign("brazil_ras", terra::rast("data/env_layers.grd"), envir = .GlobalEnv)
             ss_model <- step_selection_model$new()
             pp_model <- path_propagation_model$new()
-            
             batch <- empirical_batch$new(batch_config)
             batch$process_individual(i, ss_model, pp_model)
           }
@@ -1167,9 +1105,9 @@ empirical_batch <- R6Class("empirical_batch",
       }
 
       # If there are already completed results, load and combine
-      results <- lapply(individuals_to_process, function(i) {
-        f <- paste0("data/output/out_", i, ".rds")
-        if (file.exists(f)) readRDS(f) else NA
+      results <- lapply(seq_len(82), function(i) {
+        f <- paste0("data/output/out_", jag_id$jag_id[i], ".rds")
+        if (file.exists(f)) return(readRDS(f)) else return(NA)
       })
       self$results <- results
 
@@ -1288,9 +1226,55 @@ empirical_batch <- R6Class("empirical_batch",
 
 ## Results and analysis ========================================================
 
-# Builds on 'jaguar' to load fitted results and perform analyses
-#    $load_results(): loads results from files
-#    $compare_dispersal(): compares fitted dispersal kernels from both models
+results_set <- R6Class("results_set",
+  public = list(
+    r_ss = NULL,
+    r_pp = NULL,
+    res_table = NULL,
+
+    initialize = function(r_ss, r_pp) {
+      self$r_ss <- r_ss
+      self$r_pp <- r_pp
+      self$res_table <- self$results_table(r_ss = r_ss, r_pp = r_pp)
+    },
+
+    results_table = function(r_ss, r_pp) {
+      # Maybe clean this up?
+      ncol_ss <- length(unlist(r_ss[[1]]))
+      ncol_pp <- length(unlist(r_pp[[1]]))
+      if (ncol_ss == ncol_pp) ncol_pp <- ncol_pp + 1 # for n_jump parameter
+      out_df <- matrix(nrow = nrow(jag_meta), ncol = ncol_ss + ncol_pp + 2)
+      for (i in seq_len(nrow(out_df))) {
+        if (all(is.na(r_ss[[i]]))) {
+          out_df[i, 1:ncol_ss] <- NA
+        } else {
+          out_df[i, 1:ncol_ss] <- unlist(r_ss[[i]])
+          # aic based on likelihood
+          out_df[i, ncol_ss + 1] <- 2 * out_df[i, ncol_ss - 1] + 2 * (ncol_ss - 2)
+        }
+        if (all(is.na(r_pp[[i]]))) {
+          out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- NA
+        } else {
+          if (length(unlist(r_pp[[i]])) == ncol_pp - 1) {
+            r_pp_i <- c(unlist(r_pp[[i]]), NA) # for n_jump parameter
+          } else {
+            r_pp_i <- unlist(r_pp[[i]])
+          }
+          out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- r_pp_i
+          # for aic, also considering n_jump and the max likelihood step as
+          # parameters for path propagation, thus 2 * ncol_pp - 1 totalx
+          out_df[i, ncol_ss + ncol_pp + 2] <- 2 * out_df[i, ncol_ss + ncol_pp - 1] +
+                                              2 * (ncol_pp - 1) 
+        }
+      }
+      out <- cbind(jag_meta[, c("ID", "biome")], out_df) %>% as.data.frame()
+      names(out) <- c("ID", "biome", 
+                  paste0("ss_par", 1:(ncol_ss - 2)), "ss_ll", "ss_conv", "ss_aic",
+                  paste0("pp_par", 1:(ncol_pp - 3)), "pp_ll", "pp_conv", "pp_njump", "pp_aic")
+      return(out)
+    }
+))
+
 individual_analysis <- R6Class("individual_analysis",
   public = list(
     id = NULL,

@@ -193,21 +193,9 @@ path_propagation_model <- R6Class("path_propagation_model",
       nbhd_0 <- as.vector(t(nbhd_0))
       message("  Inner neighborhood structure built.")
       
-      ## Build to_dest and dest for C++ propagation
-      # nbhd_flat <- as.integer(nbhd_i)
-      # positions <- seq_len(length(nbhd_flat))
-      # valid <- !is.na(nbhd_flat)
-      # groups <- split(positions[valid], nbhd_flat[valid])
-      # ncol_td <- ncol(nbhd_i)
-      # to_dest <- matrix(NA_integer_, nrow = nrow(nbhd_i), ncol = ncol_td)
-      # for (g in names(groups)) {
-      #   row_idx <- as.integer(g)
-      #   vals <- groups[[g]]
-      #   n <- min(length(vals), ncol_td)
-      #   to_dest[row_idx, seq_len(n)] <- vals[seq_len(n)]
-      # }
       nbhd_flat <- as.integer(nbhd_i)
-      valid <- which(!is.na(nbhd_flat))
+      valid <- which(!is.na(nbhd_flat) & 
+        nbhd_flat >= 1L & nbhd_flat <= nrow(nbhd_i)) # valid entries in nbhd_i
       dest_ids <- nbhd_flat[valid]
 
       # Sort positions by destination — this groups them
@@ -270,7 +258,6 @@ path_propagation_model <- R6Class("path_propagation_model",
         # mu_env = attributes(env_i)[[2]],
         # sd_env = attributes(env_i)[[3]]
       )
-      
       message("Path propagation objects prepared.")   
       return(result)
     },
@@ -360,12 +347,20 @@ path_propagation_model <- R6Class("path_propagation_model",
                     
       objects <- self$prepare_objects(trajectory, max_dist, step_size, rdf, sim)
       objects$outliers <- outliers
+
+      trace_log <- list()
+      trace_ll <- function(par, objects, sim, lbound, ubound) {
+        ll <- self$log_likelihood(par, objects, sim)
+        trace_log[[length(trace_log) + 1L]] <<- c(par, ll = ll)
+        return(ll)
+      }
+
+      # Bounds for parameters
       lbound <- if (sim) {
         c(rep(-Inf, length(par_start)))
       } else {
         c(rep(-Inf, length(par_start) - 2), -5, -30)
       }
-
       ubound <- if (sim) {
         c(rep(Inf, length(par_start)))
       } else {
@@ -373,7 +368,7 @@ path_propagation_model <- R6Class("path_propagation_model",
       }
       # Fit model
       tryCatch({
-        par_out <- optim(par_start, self$log_likelihood, objects = objects,                         
+        par_out <- optim(par_start, trace_ll, objects = objects,                         
                         sim = sim,  method = "L-BFGS-B",
                         lower = lbound,
                         upper = ubound,
@@ -383,12 +378,14 @@ path_propagation_model <- R6Class("path_propagation_model",
                         ))
                         
         ll <- self$log_likelihood(par_out$par, objects, sim)
-        
+        traced_ll <- do.call(rbind, trace_log) %>% as.data.frame
+
         return(list(
-          par = par_out$par,
-          ll = ll,
+          ll          = ll,
+          par         = par_out$par,
           convergence = par_out$convergence,
-          # objects = objects
+          traced_ll   = traced_ll
+          # objects = objects_
         ))
         
       }, error = function(e) {
@@ -1023,7 +1020,6 @@ simulation_batch <- R6Class("simulation_batch",
 
 # Jaguar class to handle data related to a single individual
 #   $get_track() - get processed track data with movement metrics
-#   $get_track_cells() - get raster cell indices for the track
 #   $get_landscape() - get cropped landscape raster and dataframe for the track
 jaguar <- R6Class("jaguar",
   public = list(
@@ -1219,7 +1215,7 @@ empirical_batch <- R6Class("empirical_batch",
       # Create jaguar instance and get data
       jag <- jaguar$new(i)
       track <- jag$get_track()
-      track_cells <- jag$get_track_cells()
+      track_cells <- jag$track_cells
       n_obs <- length(track_cells)
 
       dt_scaled <- track$dt[2:length(track$dt)] / median(na.exclude(track$dt))

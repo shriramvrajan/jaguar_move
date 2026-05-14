@@ -20,24 +20,15 @@ po <- diag1$ss$p_obs
 lo <- diag1$ss$ll_obs
 ps <- diag1$ss$p_surface
 
-with_pdf("figs/diagnostic.pdf", x = 12, y = 4, { 
-  pheatmap::pheatmap(t(ps)[, nrow(ps):1], cluster_rows = FALSE, cluster_cols = FALSE)
+with_pdf("figs/diagnostic.pdf", x = 4, y = 12, { 
+  pheatmap::pheatmap(ps, cluster_rows = FALSE, cluster_cols = FALSE)
 })
-
-
 
 ggplot(data = r2$res_table, aes(x = ss_aic, y = pp_aic, label = ID)) +
       geom_point(aes(col = pp_conv, na.rm = TRUE)) +
       # geom_text(aes(label = ID, x = ss_aic + 500), size = 2) +
       geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
       labs(x = "Step selection AIC", y = "Path propagation AIC") 
-
-
-
-
-
-
-
 
 ### Going to entirely redo this, it's getting ridiculous =======================
 if (FALSE) {

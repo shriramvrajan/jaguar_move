@@ -7,7 +7,7 @@ fit_individuals <- TRUE
 test_holdout    <- FALSE
 
 # 1 for step selection, 2 for path propagation
-model_type <- 2
+model_type <- 1
 
 if (fit_individuals) {
     files <- list.files("data/output", pattern = "out_\\d+\\.rds")
@@ -18,8 +18,8 @@ if (fit_individuals) {
         step_size         = 1,    # Minimum step size (inner neighborhood) in pixels
 
         # NULL = all individuals, or vector of IDs
-        # individuals       = 58, 
-        individuals       = as.numeric(gsub("\\D", "", files)), # Just save results
+        individuals       = 94, 
+        # individuals       = as.numeric(gsub("\\D", "", files)), # Just save results
 
         # Holdout set parameters
         holdout_set  = FALSE,     # Whether to reserve holdout set (T/F)

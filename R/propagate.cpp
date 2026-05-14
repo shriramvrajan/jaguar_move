@@ -56,6 +56,7 @@ double path_propagation_ll_cpp(
       for (int col = 0; col < ncol_inner; col++) {
         int idx = nbhd_i(row, col); // 1-indexed from R
         if (IntegerVector::is_na(idx)) continue; // skip NA neighbors
+        if (idx < 1 || idx > n_total) continue;  // skip out of bounds indices
         double val = attract_raw[idx - 1] * kernel[col]; // convert to 0-index
         attract[row + col * n_total] = val; 
         row_sum += val;
@@ -98,6 +99,7 @@ double path_propagation_ll_cpp(
         for (int j = 0; j < ncol_inner; j++) {
           int v = to_dest_vec[k + j * n_total]; // 1-index
           if (IntegerVector::is_na(v)) continue; 
+          if (v < 1 || v > n_total * ncol_inner) continue;  // skip OOB obs
           int src_flat = v - 1;  // 0-index
           int src_row = src_flat % n_total; 
           int src_col = src_flat / n_total;

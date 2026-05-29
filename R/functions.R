@@ -20,7 +20,7 @@ library(RSpectra)
 # C++ function for path propagation
 Rcpp::sourceCpp("R/propagate.cpp")
 
-# Data ============================================================d=============
+# Data =========================================================================
 
 if (!exists("skip_data")) {
   # CRS definitions
@@ -106,25 +106,39 @@ make_nbhd <- function(rdf, i, sz) {
 # env:      Environmental variable values
 # par:      Parameters for functional form
 # format:   TRUE to return as matrix, FALSE to return as vector
-env_function <- function(env, par, nbhd = NULL, sim = FALSE) {
+env_function <- function(env, par, nbhd = NULL, sim = FALSE, type = "2o") {
 
   par <- as.numeric(par)
   if (!sim) {
     # env <- scale(env)
     if (any(is.na(env))) env[which(is.na(env))] <- 0
-    # First order with intercept
-    # attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
-    #                         par[3] * env[, 3] + par[4] * env[, 4] +
-    #                         par[5] * env[, 5] + par[6] * env[, 6] +
-    #                         par[7]))
-    # Second order with intercept
-    attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 1]^2 +
-                            par[3] * env[, 2] + par[4] * env[, 2]^2 +
-                            par[5] * env[, 3] + par[6] * env[, 3]^2 +
-                            par[7] * env[, 4] + par[8] * env[, 4]^2 +
-                            par[9] * env[, 5] + par[10] * env[, 5]^2 +
-                            par[11] * env[, 6] + par[12] * env[, 6]^2 +
-                            par[13]))
+    if (type == "1o") {
+      # First order with intercept
+      attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 2] +
+                              par[3] * env[, 3] + par[4] * env[, 4] +
+                              par[5] * env[, 5] + par[6] * env[, 6] +
+                              par[7]))
+    } else if (type == "2o") {
+      # Second order with intercept
+      attract <- 1 / (1 + exp(par[1] * env[, 1] + par[2] * env[, 1]^2 +
+                              par[3] * env[, 2] + par[4] * env[, 2]^2 +
+                              par[5] * env[, 3] + par[6] * env[, 3]^2 +
+                              par[7] * env[, 4] + par[8] * env[, 4]^2 +
+                              par[9] * env[, 5] + par[10] * env[, 5]^2 +
+                              par[11] * env[, 6] + par[12] * env[, 6]^2 +
+                              par[13]))
+    } else if (type == "mix") {
+      # Mixed functional form
+      attract <- 1 / (1 + exp(par[1] * env[, 1] +    # Footprint, monotonic
+        par[2] * env[, 2] + par[3] * env[, 2] ^ 2 +  # Elevation, unimodal
+        par[4] * env[, 3] + par[5] * env[, 3] ^ 2 +  # Slope, unimodal
+        par[6] * env[, 4] +                          # Forest cover, monotonic
+        par[7] * env[, 5] + par[8] * env[, 5] ^ 2 +  # Dist. water, unimodal
+        par[9] * env[, 6] + par[10] * env[, 6] ^ 2 + # Dist. road, unimodal
+        par[11]))
+    } else {
+      stop("Invalid type specified")
+    }
   } else {
     attract <- 1 / (1 + exp(par[1] + par[2] * env + par[3] * env^2))
   }
@@ -153,21 +167,21 @@ apply_kernel <- function(attract0, kernel, bg_rate = 0) {
   return(p)
 }
 
-pointwise_env <- function(par, cells, rdf, scale_from = NULL) {
+pointwise_env <- function(par, cells, rdf, scale_from = NULL, env_type = "2o") {
   # scale_from: cells used for fitting, to replicate scaling
   ref <- if (!is.null(scale_from)) scale_from else cells
   env_scaled <- scale(rdf[cells, 1:6],
                       center = colMeans(rdf[ref, 1:6], na.rm = TRUE),
                       scale = apply(rdf[ref, 1:6], 2, sd, na.rm = TRUE))
   env_scaled[is.na(env_scaled)] <- 0
-  phi <- env_function(env_scaled, par, sim = FALSE)
+  phi <- env_function(env_scaled, par, sim = FALSE, type = env_type)
   setNames(phi, cells)
   return(phi)
 }
 
-get_local_region <- function(track_Cells, rdf, buffer = 20) {
-  rows <- rdf$row[track_Cells]
-  cols <- rdf$col[track_Cells]
+get_local_region <- function(track_cells, rdf, buffer = 20) {
+  rows <- rdf$row[track_cells]
+  cols <- rdf$col[track_cells]
   return(which(rdf$row >= min(rows) - buffer & rdf$row <= max(rows) + buffer &
          rdf$col >= min(cols) - buffer & rdf$col <= max(cols) + buffer))
 }
@@ -419,44 +433,7 @@ plot_path <- function(path, int = obs_interval, vgram = FALSE,
     # plot(vgram(path, ...), type = "l", xlab = "Time lag", ylab = "Variance")
 }
 
-# 3. Output analysis -----------------------------------------------------------
-
-results_table <- function(r_ss, r_pp) {
-  # Fix results_table for AIC calculation !!!
-  ncol_ss <- length(unlist(r_ss[[1]]))
-  ncol_pp <- length(unlist(r_pp[[1]]))
-  if (ncol_ss == ncol_pp) ncol_pp <- ncol_pp + 1 # for n_jump parameter
-  out_df <- matrix(nrow = nrow(jag_meta), ncol = ncol_ss + ncol_pp + 2)
-  for (i in seq_len(nrow(out_df))) {
-    if (all(is.na(r_ss[[i]]))) {
-      out_df[i, 1:ncol_ss] <- NA
-    } else {
-      out_df[i, 1:ncol_ss] <- unlist(r_ss[[i]])
-      # aic based on likelihood
-      out_df[i, ncol_ss + 1] <- 2 * out_df[i, ncol_ss - 1] + 2 * (ncol_ss - 2)
-    }
-    if (all(is.na(r_pp[[i]]))) {
-      out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- NA
-    } else {
-      if (length(unlist(r_pp[[i]])) == ncol_pp - 1) {
-        r_pp_i <- c(unlist(r_pp[[i]]), NA) # for n_jump parameter
-      } else {
-        r_pp_i <- unlist(r_pp[[i]])
-      }
-      out_df[i, (ncol_ss + 2):(ncol_ss + ncol_pp + 1)] <- r_pp_i
-      # for aic, also considering n_jump and the max likelihood step as parameters
-      out_df[i, ncol_ss + ncol_pp + 2] <- 2 * out_df[i, ncol_ss + ncol_pp - 1] +
-                                           2 * (ncol_pp - 1) 
-    }
-  }
-  out <- cbind(jag_meta[, c("ID", "biome")], out_df) %>% as.data.frame()
-  names(out) <- c("ID", "biome", 
-               paste0("ss_par", 1:(ncol_ss - 2)), "ss_ll", "ss_conv", "ss_aic",
-               paste0("pp_par", 1:(ncol_pp - 3)), "pp_ll", "pp_conv", "pp_njump", "pp_aic")
-  return(out)
-}
-
-# 4. Data visualization --------------------------------------------------------
+# 3. Data visualization --------------------------------------------------------
 
 # Calculate variogram of jaguar path
 vgram <- function(path, cut = 10, window = 14, start = 1) {

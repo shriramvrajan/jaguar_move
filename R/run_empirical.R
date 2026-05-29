@@ -1,6 +1,6 @@
 rm(list = ls())
-source("R/functions.R")     # Existing functions
-source("R/classes.R")       # New classes
+source("R/functions.R")     
+source("R/classes.R")       
 set.seed(7)                 # For reproducibility
 
 fit_individuals <- TRUE
@@ -8,17 +8,18 @@ test_holdout    <- FALSE
 
 # 1 for step selection, 2 for path propagation
 model_type <- 1
+env_type   <- "mix" # "1o" or "2o"
 
 if (fit_individuals) {
     files <- list.files("data/output", pattern = "out_\\d+\\.rds")
     config <- list(   
         # Model parameters
         model_type        = model_type,
-        npar              = switch(model_type, 15, 15),    # Number of parameters
-        step_size         = 1,    # Minimum step size (inner neighborhood) in pixels
+        env_type          = env_type,
+        npar              = switch(env_type, "1o" = 9, "2o" = 15, "mix" = 13), # Number of parameters
 
         # NULL = all individuals, or vector of IDs
-        individuals       = 94, 
+        individuals       = NULL, 
         # individuals       = as.numeric(gsub("\\D", "", files)), # Just save results
 
         # Holdout set parameters
@@ -27,18 +28,18 @@ if (fit_individuals) {
 
         # Parallel processing parameters
         parallel = FALSE,          # Whether to use parallel processing (T/F)
-        n_cores  = 20,             # Number of cores to use if parallel
+        n_cores  = 5,             # Number of cores to use if parallel
 
         # Model fitting options
-        fit_model      = TRUE,    # Whether to fit the model (T/F)
-        model_calcnull = FALSE    # Whether to calculate null model likelihood (T/F)
+        fit_model      = TRUE    # Whether to fit the model (T/F)
+        # model_calcnull = FALSE    # Whether to calculate null model likelihood (T/F)
     )
 
     batch <- empirical_batch$new(config)
     results <- batch$run_all()
 
     message("Saving results...")
-    saveRDS(results, paste0("data/output/empirical_results_", 
+    saveRDS(results, paste0("data/output/emp_", 
                             switch(config$model_type, "ss", "pp"), "_",
                             Sys.Date(), ".rds"))
 }

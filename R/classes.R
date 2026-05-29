@@ -3,7 +3,7 @@ library(R6)
 
 ## Models ======================================================================
 
-# Step selection model class
+# Step selection model class --- to be merged with path propagation model!!
 #  $prepare_objects() - prepare data structures for fitting
 #  $build_kernel()    - build the dispersal kernel and calculate attraction
 #  $dispersal_from()  - simulate dispersal from a starting point
@@ -47,25 +47,26 @@ step_selection_model <- R6Class("step_selection_model",
     },
 
     ## build_kernel ------------------------------------------------------------
-    build_kernel = function(par, objects, sim) {
+    build_kernel = function(par, objects, sim, env_type) {
       # Extract kernel parameters
       k_exp   <- ifelse(sim, exp(par[length(par)]), exp(par[length(par) - 1]))
       bg_rate <- ifelse(sim, 0, plogis(par[length(par)]))
       kernel <- calculate_dispersal_kernel(max_dispersal_dist = objects$max_dist, 
                                           kfun = function(x) dexp(x, k_exp))
       # Calculate environmental attraction
-      attract0 <- env_function(objects$env_ss, par, objects$nbhd_ss, sim = sim)
+      attract0 <- env_function(objects$env_ss, par, objects$nbhd_ss, sim = sim,
+                               type = env_type)
       attract <- apply_kernel(attract0, kernel, bg_rate = bg_rate)
       return(attract)      
     },
 
     ## log_likelihood ----------------------------------------------------------
-    log_likelihood = function(par, objects, sim, debug = TRUE) {
+    log_likelihood = function(par, objects, sim, env_type, debug = TRUE) {
       obs      <- objects$obs
       max_dist <- objects$max_dist
       outliers <- objects$outliers
       
-      attract <- self$build_kernel(par, objects, sim)
+      attract <- self$build_kernel(par, objects, sim, env_type = env_type)
       
       indices <- if (length(outliers) > 0) {
         setdiff(seq_along(obs), outliers)
@@ -88,7 +89,7 @@ step_selection_model <- R6Class("step_selection_model",
 
     ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, 
-                  outliers = integer(0)) {
+                  outliers = integer(0), env_type) {
       objects <- self$prepare_objects(trajectory, max_dist, rdf, sim)
       objects$outliers <- outliers
       # Fit model
@@ -107,15 +108,16 @@ step_selection_model <- R6Class("step_selection_model",
 
       tryCatch({
         par_out <- optim(par_start, self$log_likelihood, objects = objects, 
-                        sim = sim,  method = "L-BFGS-B",
+                        sim = sim,  method = "L-BFGS-B", 
+                        env_type = env_type,
                         lower = lbound,
                         upper = ubound,
                         control = list(
-                          maxit = 2000,     # More iterations
+                          maxit = 200,     # More iterations
                           factr = 1e5
                         ))
         
-        ll <- self$log_likelihood(par_out$par, objects, sim)
+        ll <- self$log_likelihood(par_out$par, objects, sim, env_type = env_type)
         return(list(
           par = par_out$par,
           ll = ll,
@@ -129,8 +131,8 @@ step_selection_model <- R6Class("step_selection_model",
     },
 
     ## diagnose ----------------------------------------------------------------
-    diagnose = function(par, objects, sim = FALSE) {
-      attract  <- self$build_kernel(par, objects, sim = sim)
+    diagnose = function(par, objects, env_type, sim = FALSE) {
+      attract  <- self$build_kernel(par, objects, sim = sim, env_type = env_type)
       obs      <- objects$obs
       outliers <- objects$outliers
       valid    <- setdiff(seq_along(obs), outliers)
@@ -156,12 +158,11 @@ step_selection_model <- R6Class("step_selection_model",
 #   $fit()             - fit the model to a trajectory
 path_propagation_model <- R6Class("path_propagation_model",
   public = list(
-    propagation_steps = 10,  # Default, should be set externally
+    propagation_steps = NULL,  # Should be set externally
 
     ## prepare_objects ---------------------------------------------------------
     prepare_objects = function(trajectory, max_dist, step_size, rdf, sim = FALSE) {
       message("Preparing path propagation objects...")
-      ## This is where the magic happens. Indexing is everything!
       # Extended neighborhoods
       nbhd_0 <- make_nbhd(rdf = rdf, i = trajectory, sz = max_dist)
 
@@ -263,7 +264,7 @@ path_propagation_model <- R6Class("path_propagation_model",
     },
 
     ## build_kernel ------------------------------------------------------------
-    build_kernel = function(par, objects, sim) { 
+    build_kernel = function(par, objects, sim, env_type) { 
       # Numerical values
       max_dist   <- objects$max_dist
       ncell_local <- (2 * max_dist + 1)^2 
@@ -283,7 +284,8 @@ path_propagation_model <- R6Class("path_propagation_model",
                     kfun = function(x) dexp(x, k_exp))
 
       # Calculate environmental attraction
-      attract0 <- env_function(env_i, par, nbhd = nbhd_i, sim = sim) 
+      attract0 <- env_function(env_i, par, nbhd = nbhd_i, sim = sim, 
+                                type = env_type)
       attract <- apply_kernel(attract0, kernel)
 
       current <- propagate_cpp(
@@ -291,7 +293,7 @@ path_propagation_model <- R6Class("path_propagation_model",
         to_dest_vec  = objects$to_dest_vec,
         ncell        = ncell_local,
         nobs         = n_obs,
-        nsteps       = self$propagation_steps,
+        # nsteps       = self$propagation_steps,
         bg_rate      = bg_rate,
         ncol_dest    = ncol(objects$dest)
       )
@@ -299,15 +301,15 @@ path_propagation_model <- R6Class("path_propagation_model",
     },
 
     ## log_likelihood ----------------------------------------------------------
-    log_likelihood = function(par, objects, sim, debug = FALSE) {
-      
+    log_likelihood = function(par, objects, sim, debug = FALSE, env_type) {
       obs <- objects$obs
       outliers <- objects$outliers
       n_obs <- length(obs) + 1
       
       if (sim) {
+        ## Change this block to call C++!
         current <- self$build_kernel(par, objects, sim)
-        predictions <- matrix(0, nrow = self$propagation_steps, ncol = n_obs)
+        predictions <- matrix(0, nrow = self$propagation_steps, ncol = n_obs) 
         for (i in 1:n_obs) {
           if (i %in% outliers || is.na(obs[i])) {
             predictions[, i] <- rep(NA, self$propagation_steps)
@@ -324,9 +326,9 @@ path_propagation_model <- R6Class("path_propagation_model",
       ncell_local <- (2 * objects$max_dist + 1)^2
       k_exp <- exp(par[length(par) - 1])
       bg_rate <- plogis(par[length(par)])
-      attract_raw <- as.numeric(env_function(objects$env_i, par,
-                              nbhd = NULL, sim = sim))
-      path_propagation_ll_cpp(
+      attract_raw <- as.numeric(env_function(objects$env_i, par, nbhd = NULL, 
+                                sim = sim, type = env_type))
+      ll <- path_propagation_ll_cpp(
         k_exp = k_exp,
         bg_rate = bg_rate,
         attract_raw = attract_raw,
@@ -339,18 +341,19 @@ path_propagation_model <- R6Class("path_propagation_model",
         n_obs = as.integer(n_obs),
         n_steps = as.integer(self$propagation_steps)
       )
+      return(ll)
     },
 
     ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, step_size, rdf, par_start, sim = FALSE, 
-                  outliers = integer(0), dt) {
-                    
+                  outliers = integer(0), env_type) {
+      self$propagation_steps <- min(max(1, ceiling(max_dist / step_size)), 8)
       objects <- self$prepare_objects(trajectory, max_dist, step_size, rdf, sim)
       objects$outliers <- outliers
 
       trace_log <- list()
-      trace_ll <- function(par, objects, sim, lbound, ubound) {
-        ll <- self$log_likelihood(par, objects, sim)
+      trace_ll <- function(par, objects, sim, lbound, ubound, env_type) {
+        ll <- self$log_likelihood(par, objects, sim, env_type = env_type)
         trace_log[[length(trace_log) + 1L]] <<- c(par, ll = ll)
         return(ll)
       }
@@ -369,20 +372,17 @@ path_propagation_model <- R6Class("path_propagation_model",
       # Fit model
       tryCatch({
         par_out <- optim(par_start, trace_ll, objects = objects,                         
-                        sim = sim,  method = "L-BFGS-B",
+                        sim = sim,  env_type = env_type, method = "L-BFGS-B", 
                         lower = lbound,
                         upper = ubound,
-                        control = list(
-                          maxit = 1000,     # More iterations
-                          factr = 1e5
-                        ))
+                        control = list(maxit = 200))     # More iterations
                         
-        ll <- self$log_likelihood(par_out$par, objects, sim)
+        ll <- self$log_likelihood(par_out$par, objects, sim, env_type = env_type)
         traced_ll <- do.call(rbind, trace_log) %>% as.data.frame
 
         return(list(
-          ll          = ll,
           par         = par_out$par,
+          ll          = ll,
           convergence = par_out$convergence,
           traced_ll   = traced_ll
           # objects = objects_
@@ -395,13 +395,13 @@ path_propagation_model <- R6Class("path_propagation_model",
     },
     
     ## diagnose ----------------------------------------------------------------
-    diagnose = function(par, objects, sim = FALSE) {
+    diagnose = function(par, objects, sim = FALSE, env_type) {
       ncell_local <- (2 * objects$max_dist + 1)^2
       n_obs <- length(objects$obs) + 1
       k_exp <- exp(par[length(par) - 1])
       bg_rate <- plogis(par[length(par)])
-      attract_raw <- as.numeric(env_function(objects$env_i, par, 
-                                nbhd = NULL, sim = sim))
+      attract_raw <- as.numeric(env_function(objects$env_i, par, nbhd = NULL,
+                                sim = sim, type = env_type))
       path_propagation_diagnose_cpp(
         k_exp = k_exp,
         bg_rate = bg_rate,
@@ -419,7 +419,7 @@ path_propagation_model <- R6Class("path_propagation_model",
 
     ## dispersal_from ----------------------------------------------------------
     dispersal_from = function(init_point, par, step_size, n_steps, rdf = brdf,
-                              threshold = 1e-6) {
+                              threshold = 1e-6, env_type) {
       
       # FIX BG RATE ISSUE
       k_exp <- exp(par[length(par)]) %>% as.numeric()
@@ -443,7 +443,7 @@ path_propagation_model <- R6Class("path_propagation_model",
           dists <- sqrt((rdf$row[nbhd] - rdf$row[cell])^2 + 
                         (rdf$col[nbhd] - rdf$col[cell])^2)
           dist_kernel <- dexp(dists, k_exp) 
-          env_kernel  <- env_function(rdf[nbhd, 1:6], par, sim = FALSE)
+          env_kernel  <- env_function(rdf[nbhd, 1:6], par, sim = FALSE, type = env_type)
           weights     <- dist_kernel * env_kernel /
                            sum(dist_kernel * env_kernel, na.rm = TRUE)
           
@@ -477,7 +477,7 @@ path_propagation_model <- R6Class("path_propagation_model",
 
     ## stationary_surface ------------------------------------------------------
     stationary_surface = function(par, region_cells, rdf = brdf, step_size = 1,
-                                  scale_from = NULL) {
+                                  scale_from = NULL, env_type) {
       k_exp <- exp(par[length(par) - 1]) %>% as.numeric()
       bg_rate <- plogis(par[length(par)]) %>% as.numeric()
 
@@ -489,7 +489,8 @@ path_propagation_model <- R6Class("path_propagation_model",
       env_scaled[is.na(env_scaled)] <- 0
 
       # Precompute phi for region cells
-      phi_all <- env_function(env_scaled, par, sim = FALSE)
+      phi_all <- env_function(env_scaled, par, nbhd = NULL, sim = FALSE, 
+                              type = env_type)
       names(phi_all) <- as.character(region_cells)
 
       cell_to_index <- setNames(seq_along(region_cells), as.character(region_cells))
@@ -1085,34 +1086,22 @@ jaguar <- R6Class("jaguar",
     },
 
     ## calculate_ll ------------------------------------------------------------
-    calculate_ll = function() {
+    calculate_ll = function(env_type) {
       if (is.null(self$results)) stop("No fitted results.")
-      npar <- (length(self$results) - 9) / 2
-      ss_par <- as.numeric(self$results[, paste0("ss_par", seq_len(npar))])
-      pp_par <- as.numeric(self$results[, paste0("pp_par", seq_len(npar))])
-      n_jump  <- ifelse(is.na(self$results$pp_njump), 0, self$results$pp_njump)
-      ## Initiate models, run debug versions, and output.
-      # Following should match process_individual exactly, refactor later?
-      dt_scaled  <- self$track$dt[2:length(self$track$dt)] / 
-                    median(na.exclude(self$track$dt))
-      outliers   <- which(round(dt_scaled) != 1)
-      sl_emp     <- na.exclude(self$track$sl[-outliers])
-      max_dist   <- ceiling(1.1 * max(sl_emp) / 1000)
-      step_size  <- n_jump + 1
+      npar <- (length(self$results) - 9) / 2 
+      # 9 is a magic number here......^ so fix it.
       
-      ss_model <- step_selection_model$new()
-      pp_model <- path_propagation_model$new()
-      pp_model$propagation_steps <- min(max(1, ceiling(max_dist / step_size)), 8)
-      
-      obj_ss <- ss_model$prepare_objects(self$track_cells, max_dist, rdf = brdf)
-      obj_ss$outliers <- outliers
-      obj_pp <- pp_model$prepare_objects(self$track_cells, max_dist, step_size, 
-                                          rdf = brdf)
-      obj_pp$outliers <- outliers
-      
-      list(
-        ss = ss_model$diagnose(ss_par, obj_ss),
-        pp = pp_model$diagnose(pp_par, obj_pp)
+      batch <- empirical_batch$new(list(holdout_set = FALSE, env_type = env_type))
+      batch$process_individual(
+        self$id,
+        step_selection_model$new(),
+        path_propagation_model$new(),
+        diagnose_par = list(
+          ss     = as.numeric(self$results[, paste0("ss_par", seq_len(npar))]),
+          pp     = as.numeric(self$results[, paste0("pp_par", seq_len(npar))]),
+          n_jump = ifelse(is.na(self$results$pp_njump), 0, self$results$pp_njump),
+          env_type = env_type
+        )
       )
     }
   ))
@@ -1190,7 +1179,7 @@ empirical_batch <- R6Class("empirical_batch",
       }
       
       if (self$config$parallel) {
-        parallel::stopCluster(c1)
+        parallel::stopCluster(cl)
         message("Parallel processing complete")
       }
 
@@ -1210,7 +1199,7 @@ empirical_batch <- R6Class("empirical_batch",
     },
     
     ## process_individual ------------------------------------------------------
-    process_individual = function(i, ss_model, pp_model) {
+    process_individual = function(i, ss_model, pp_model, diagnose_par = NULL) {
       message(paste0("Processing jaguar #", i))
       # Create jaguar instance and get data
       jag <- jaguar$new(i)
@@ -1234,21 +1223,39 @@ empirical_batch <- R6Class("empirical_batch",
           if (length(outliers) > 0) outliers <- outliers - length(hold)
         }
       }
-      
+
       # Calculate max distance for this individual
-      pp_model$propagation_steps <- 8
       sl_emp <- na.exclude(track$sl[-outliers])
       max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
             
+      # Diagnosis mode: skip fitting and return diagnostic info
+      if (!is.null(diagnose_par)) {
+        step_size <- diagnose_par$n_jump + 1
+        pp_model$propagation_steps <- min(max(1, ceiling(max_dist / step_size)), 8)
+        env_type <- diagnose_par$env_type
+
+        obj_ss <- ss_model$prepare_objects(track_cells, max_dist, rdf = brdf)
+        obj_ss$outliers <- outliers
+        obj_pp <- pp_model$prepare_objects(track_cells, max_dist, step_size, 
+                                          rdf = brdf)
+        obj_pp$outliers <- outliers
+
+        return(list(
+          ss = ss_model$diagnose(diagnose_par$ss, obj_ss, env_type = env_type),
+          pp = pp_model$diagnose(diagnose_par$pp, obj_pp, env_type = env_type)
+        ))
+      }
+
       # Starting parameters
       par_start <- c(rep(0, self$config$npar - 2), # no environment preferences
                     log(1.0),                      # k_exp 
-                    -15)                           # bg_rate ~ 0 
+                    -15)                           # bg_rate ~ 0  
 
       # Fit models based on config
       if (self$config$model_type == 1) {
         # Step selection
         result <- ss_model$fit(track_cells, max_dist, rdf = brdf, 
+                               env_type = self$config$env_type,
                                par_start = par_start, outliers = outliers)
       } else if (self$config$model_type == 2) {
         # Iterate over n_jump values and select best based on log likelihood
@@ -1258,20 +1265,17 @@ empirical_batch <- R6Class("empirical_batch",
         worse_count <- 0
 
         max_jump <- min(max_dist - 1, 8) # Limit max n_jump to 8 (compute)
-        max_steps <- 8              # Cap propagation steps to 8 (also compute)
 
         for (n_jump in 0:max_jump) {
-          # Adjust propagation steps based on n_jump
-          inner_size <- n_jump + 1
-          pp_model$propagation_steps <- min(max(1, ceiling(max_dist / inner_size)), 
-                                          max_steps)
-
+          pp_model$propagation_steps <- ceiling(max_dist / (n_jump + 1))
           message(paste0("Trying n_jump = ", n_jump, 
                       " with propagation_steps = ", pp_model$propagation_steps))
-          par_best <- if (!is.null(best_result)) best_result$par else par_start
+          # par_best <- if (!is.null(best_result)) best_result$par else par_start
+          par_best <- par_start # turning this off for now, par values explode 
           result_n <- pp_model$fit(track_cells, max_dist, rdf = brdf, 
                                par_start = par_best, outliers = outliers, 
-                               step_size = inner_size)
+                               step_size = n_jump + 1, 
+                               env_type = self$config$env_type)
           if (!is.na(result_n[1]) && result_n$ll < best_ll) {
             best_ll <- result_n$ll
             best_result <- result_n
@@ -1305,10 +1309,8 @@ empirical_batch <- R6Class("empirical_batch",
   
   private = list(
     get_completed_ids = function() {
-      outfiles <- list.files("data/output", pattern = "^out_.*\\.rds$") 
-      ids <- gsub(".rds", "", outfiles) %>% 
-        gsub("out_", "", .) %>% 
-        as.numeric
+      outfiles <- list.files("data/output", pattern = "^(out|NA)_.*\\.rds$") 
+      ids <- gsub("^(out|NA)_|\\.rds$", "", outfiles) %>% as.numeric
       if (any(is.na(ids))) ids <- ids[!is.na(ids)]
       return(ids)
     }
@@ -1318,20 +1320,29 @@ results_set <- R6Class("results_set",
   public = list(
     r_ss = NULL,
     r_pp = NULL,
+    env_type = NULL,
     res_table = NULL,
 
-    initialize = function(r_ss, r_pp) {
-      self$r_ss <- r_ss
-      self$r_pp <- r_pp
-      self$res_table <- self$results_table(r_ss = r_ss, r_pp = r_pp)
+    initialize = function(r_ss, r_pp, env_type) {
+      self$r_ss <- readRDS(r_ss)
+      # remove element 4 (traced_ll) if it exists to avoid issues with unlisting
+      self$r_pp <- readRDS(r_pp)
+      self$r_pp <- lapply(self$r_pp, function(x) if (length(x) > 4) x[-4] else x)
+      self$res_table <- self$results_table(r_ss = self$r_ss, r_pp = self$r_pp, 
+                                           env_type = env_type)
+      self$env_type  <- env_type
     },
 
     ## results_table -----------------------------------------------------------
-    results_table = function(r_ss, r_pp) {
-      n_ss <- length(unlist(r_ss[[1]]))
-      n_pp <- length(unlist(r_pp[[1]]))
+    results_table = function(r_ss, r_pp, env_type) {
+      first_index <- Position(function(x) length(x) > 1, r_ss)
+      n_ss <- length(unlist(r_ss[[first_index]]))
+      first_index <- Position(function(x) length(x) > 1, r_pp)
+      n_pp <- length(unlist(r_pp[[first_index]][-4])) # Exclude traced_ll
       if (n_ss == n_pp) n_pp <- n_pp + 1 # For runs pre-n_jump implementation
-
+      ## The above should really be simplified - env_type determines n_ss and 
+      ## n_pp, but the n_jump discrepancy needs to be addressed.
+      
       row_for <- function(r_i, n) {
         if (all(is.na(r_i))) return(rep(NA, n)) else return(unlist(r_i))
       }

@@ -15,6 +15,7 @@ c1_writing/*
 .vscode/*
 vasco.sh
 R/old
+R/gao_optimizer.R
 R/scratch.R
 jaguar_movement.md
 jaguar_paper.md

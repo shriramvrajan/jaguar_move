@@ -129,13 +129,13 @@ env_function <- function(env, par, nbhd = NULL, sim = FALSE, type = "2o") {
                               par[13]))
     } else if (type == "mix") {
       # Mixed functional form
-      attract <- 1 / (1 + exp(par[1] * env[, 1] +    # Footprint, monotonic
-        par[2] * env[, 2] + par[3] * env[, 2] ^ 2 +  # Elevation, unimodal
-        par[4] * env[, 3] + par[5] * env[, 3] ^ 2 +  # Slope, unimodal
-        par[6] * env[, 4] +                          # Forest cover, monotonic
-        par[7] * env[, 5] + par[8] * env[, 5] ^ 2 +  # Dist. water, unimodal
-        par[9] * env[, 6] + par[10] * env[, 6] ^ 2 + # Dist. road, unimodal
-        par[11]))
+      attract <- 1 / (1 + exp(par[1] * env[, 1] +    # Footprint
+        par[2] * env[, 2] + par[3] * env[, 2] ^ 2 +   # Elevation
+        par[4] * env[, 3] +                          # Slope
+        par[5] * env[, 4] +                          # Forest cover
+        par[6] * env[, 5] +                          # Dist. water
+        par[7] * env[, 6] +                          # Dist. road
+        par[8]))                                     # Intercept
     } else {
       stop("Invalid type specified")
     }

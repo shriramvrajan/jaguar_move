@@ -3,14 +3,24 @@ library(pheatmap)
 source("R/functions.R")
 source("R/classes.R")
 
-r1 <- results_set$new(r_ss = "data/output/empirical_ss_qcbs.rds",
-                      r_pp = "data/output/empirical_pp_qcbs.rds",
-                      env_type = "1o")
+r1 <- results_set$new(r_ss = "data/output/emp_ss_1o.rds", 
+    env_type = "1o")$res_table
+r2 <- results_set$new(r_ss = "data/output/emp_ss_2o.rds", 
+    env_type = "2o")$res_table
+r3 <- results_set$new(r_ss = "data/output/emp_ss_distwat_elev_distroad_slope_2o.rds", 
+    env_type = "mix")$res_table
+r4 <- results_set$new(r_ss = "data/output/emp_ss_distwat_elev_2o.rds",
+    env_type = "mix")$res_table
+r5 <- results_set$new(r_ss = "data/output/emp_ss_distwat_2o.rds", 
+    env_type = "mix")$res_table
+r6 <- results_set$new(r_ss = "data/output/emp_ss_elev_2o.rds", 
+    env_type = "mix")$res_table
 
-# First-order results
-r2 <- results_set$new(r_ss = "data/output/emp_ss_2026-05-22.rds",
-                      r_pp = "data/output/emp_pp_2026-05-27.rds",
-                      env_type = "2o")
+j <- jaguar$new(id = 112)
+hist(brdf$elevation[j$track_cells])
+
+br <- brdf[, 1:6]
+cm <- cor(br, use = "pairwise.complete.obs")
 
 
 diag1 <- r1$get_individual(id)$calculate_ll("1o")
@@ -25,11 +35,11 @@ p <- ggplot(res, aes(x = ss_aic, y = pp_aic)) +
     labs(x = "Step selection AIC", y = "Path propagation AIC")
 p
 
+r1 <- results_set$new(r_ss = "data/output/empirical_ss_qcbs.rds",
+                      r_pp = "data/output/empirical_pp_qcbs.rds",
+                      env_type = "1o")
 
-j <- jaguar$new(id = 13)
-
-bb <- brdf[unique(j$track_cells), 1:6]
-bb <- scale(bb[, 1:6],
-                      center = colMeans(bb[, 1:6]),
-                      scale  = apply(bb[, 1:6], 2, sd))
-bb2 <- bb ^ 2
+# First-order results
+r2 <- results_set$new(r_ss = "data/output/emp_ss_2026-05-22.rds",
+                      r_pp = "data/output/emp_pp_2026-05-27.rds",
+                      env_type = "2o")

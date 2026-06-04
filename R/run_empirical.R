@@ -8,7 +8,7 @@ test_holdout    <- FALSE
 
 # 1 for step selection, 2 for path propagation
 model_type <- 1
-env_type   <- "mix" # "1o" or "2o"
+env_type   <- "mix" # "1o" or "2o" or "mix"
 
 if (fit_individuals) {
     files <- list.files("data/output", pattern = "out_\\d+\\.rds")
@@ -16,7 +16,7 @@ if (fit_individuals) {
         # Model parameters
         model_type        = model_type,
         env_type          = env_type,
-        npar              = switch(env_type, "1o" = 9, "2o" = 15, "mix" = 13), # Number of parameters
+        npar              = switch(env_type, "1o" = 9, "2o" = 15, "mix" = 10), # Number of parameters
 
         # NULL = all individuals, or vector of IDs
         individuals       = NULL, 
@@ -27,8 +27,8 @@ if (fit_individuals) {
         holdout_frac = 0.7,       # Proportion of data to use for training
 
         # Parallel processing parameters
-        parallel = FALSE,          # Whether to use parallel processing (T/F)
-        n_cores  = 5,             # Number of cores to use if parallel
+        parallel = TRUE,          # Whether to use parallel processing (T/F)
+        n_cores  = 20,             # Number of cores to use if parallel
 
         # Model fitting options
         fit_model      = TRUE    # Whether to fit the model (T/F)

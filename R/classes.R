@@ -113,7 +113,7 @@ step_selection_model <- R6Class("step_selection_model",
                         lower = lbound,
                         upper = ubound,
                         control = list(
-                          maxit = 200,     # More iterations
+                          maxit = 1000,     # More iterations
                           factr = 1e5
                         ))
         
@@ -1323,52 +1323,118 @@ results_set <- R6Class("results_set",
     env_type = NULL,
     res_table = NULL,
 
-    initialize = function(r_ss, r_pp, env_type) {
-      self$r_ss <- readRDS(r_ss)
-      # remove element 4 (traced_ll) if it exists to avoid issues with unlisting
-      self$r_pp <- readRDS(r_pp)
-      self$r_pp <- lapply(self$r_pp, function(x) if (length(x) > 4) x[-4] else x)
-      self$res_table <- self$results_table(r_ss = self$r_ss, r_pp = self$r_pp, 
-                                           env_type = env_type)
-      self$env_type  <- env_type
+    initialize = function(r_ss = NULL, r_pp = NULL, env_type) {
+      if (!is.null(r_ss))
+        self$r_ss <- if (is.character(r_ss)) readRDS(r_ss) else r_ss
+      if (!is.null(r_pp)) {
+        self$r_pp <- if (is.character(r_pp)) readRDS(r_pp) else r_pp
+        self$r_pp <- lapply(self$r_pp, function(x) {
+          if (is.list(x)) { x$traced_ll <- NULL; x } else x
+        })
+      }
+      self$env_type <- env_type
+      self$res_table <- self$results_table()
     },
 
     ## results_table -----------------------------------------------------------
-    results_table = function(r_ss, r_pp, env_type) {
-      first_index <- Position(function(x) length(x) > 1, r_ss)
-      n_ss <- length(unlist(r_ss[[first_index]]))
-      first_index <- Position(function(x) length(x) > 1, r_pp)
-      n_pp <- length(unlist(r_pp[[first_index]][-4])) # Exclude traced_ll
-      if (n_ss == n_pp) n_pp <- n_pp + 1 # For runs pre-n_jump implementation
-      ## The above should really be simplified - env_type determines n_ss and 
-      ## n_pp, but the n_jump discrepancy needs to be addressed.
-      
-      row_for <- function(r_i, n) {
-        if (all(is.na(r_i))) return(rep(NA, n)) else return(unlist(r_i))
-      }
-      aic_for <- function(row, ll_idx, k) {
-        if (anyNA(row[ll_idx])) return(NA) else return(2 * row[ll_idx] + 2 * k)
+    results_table = function() {
+      tabulate_model <- function(results, prefix, has_njump = FALSE) {
+        first <- Position(is.list, results)
+        if (is.na(first)) return(NULL)
+        npar <- length(results[[first]]$par)
+        ncols <- npar + 2L + has_njump
+
+        mat <- t(vapply(results, function(r) {
+          if (!is.list(r)) return(rep(NA_real_, ncols))
+          c(r$par, r$ll, r$convergence, 
+            if (has_njump) r$n_jump %||% NA_real_)
+        }, numeric(ncols)))
+
+        cnames <- c(paste0(prefix, "_par", seq_len(npar)),
+                    paste0(prefix, c("_ll", "_conv")))
+        if (has_njump) cnames <- c(cnames, paste0(prefix, "_njump"))
+
+        k <- npar + has_njump
+        aic <- ifelse(is.na(mat[, npar + 1]), NA, 2 * mat[, npar + 1] + 2 * k)
+
+        out <- as.data.frame(mat)
+        names(out) <- cnames
+        out[[paste0(prefix, "_aic")]] <- aic
+        out
       }
 
-      ss <- t(sapply(r_ss, row_for, n = n_ss))
-      pp <- t(sapply(r_pp, row_for, n = n_pp))
-      if (ncol(ss) == ncol(pp)) pp <- cbind(pp, NA) # For runs pre-n_jump implementation
-      ss_aic <- apply(ss, 1, aic_for, ll_idx = n_ss - 1, k = n_ss - 2)
-      pp_aic <- apply(pp, 1, aic_for, ll_idx = n_pp - 2, k = n_pp - 2)
-      out <- data.frame(jag_meta[, c("ID", "biome")], ss, ss_aic, pp, pp_aic)
-      colnames(out) <- c("ID", "biome",
-        paste0("ss_par", seq_len(n_ss - 2)), "ss_ll", "ss_conv", "ss_aic", 
-        paste0("pp_par", seq_len(n_pp - 3)), "pp_ll", "pp_conv", "pp_njump", "pp_aic")
-      return(out)
+      parts <- list(jag_meta[, c("ID", "biome")])
+      if (!is.null(self$r_ss))
+        parts[[length(parts) + 1]] <- tabulate_model(self$r_ss, "ss")
+      if (!is.null(self$r_pp))
+        parts[[length(parts) + 1]] <- tabulate_model(self$r_pp, "pp", 
+                                                      has_njump = TRUE)
+      do.call(cbind, parts)
     },
 
     ## get_individual ----------------------------------------------------------
     get_individual = function(id) {
       res_id <- self$res_table[self$res_table$ID == id, ]
-      indiv  <- jaguar$new(id = id, results = res_id)
+      jaguar$new(id = id, results = res_id)
     },
 
     ## plot_aic ----------------------------------------------------------------
-    plot_aic = function() {
-    }
-))
+    plot_aic = function() { }
+  ))
+
+# results_set <- R6Class("results_set",
+#   public = list(
+#     r_ss = NULL,
+#     r_pp = NULL,
+#     env_type = NULL,
+#     res_table = NULL,
+
+#     initialize = function(r_ss, r_pp, env_type) {
+#       self$r_ss <- readRDS(r_ss)
+#       self$r_pp <- readRDS(r_pp)
+#       # remove element 4 (traced_ll) if it exists to avoid issues with unlisting
+#       self$r_pp <- lapply(self$r_pp, function(x) if (length(x) > 4) x[-4] else x)
+#       self$res_table <- self$results_table(r_ss = self$r_ss, r_pp = self$r_pp, 
+#                                            env_type = env_type)
+#       self$env_type  <- env_type
+#     },
+
+#     ## results_table -----------------------------------------------------------
+#     results_table = function(r_ss, r_pp, env_type) {
+#       first_index <- Position(function(x) length(x) > 1, r_ss)
+#       n_ss <- length(unlist(r_ss[[first_index]]))
+#       first_index <- Position(function(x) length(x) > 1, r_pp)
+#       n_pp <- length(unlist(r_pp[[first_index]][-4])) # Exclude traced_ll
+#       if (n_ss == n_pp) n_pp <- n_pp + 1 # For runs pre-n_jump implementation
+#       ## The above should really be simplified - env_type determines n_ss and 
+#       ## n_pp, but the n_jump discrepancy needs to be addressed.
+      
+#       row_for <- function(r_i, n) {
+#         if (all(is.na(r_i))) return(rep(NA, n)) else return(unlist(r_i))
+#       }
+#       aic_for <- function(row, ll_idx, k) {
+#         if (anyNA(row[ll_idx])) return(NA) else return(2 * row[ll_idx] + 2 * k)
+#       }
+
+#       ss <- t(sapply(r_ss, row_for, n = n_ss))
+#       pp <- t(sapply(r_pp, row_for, n = n_pp))
+#       if (ncol(ss) == ncol(pp)) pp <- cbind(pp, NA) # For runs pre-n_jump implementation
+#       ss_aic <- apply(ss, 1, aic_for, ll_idx = n_ss - 1, k = n_ss - 2)
+#       pp_aic <- apply(pp, 1, aic_for, ll_idx = n_pp - 2, k = n_pp - 2)
+#       out <- data.frame(jag_meta[, c("ID", "biome")], ss, ss_aic, pp, pp_aic)
+#       colnames(out) <- c("ID", "biome",
+#         paste0("ss_par", seq_len(n_ss - 2)), "ss_ll", "ss_conv", "ss_aic", 
+#         paste0("pp_par", seq_len(n_pp - 3)), "pp_ll", "pp_conv", "pp_njump", "pp_aic")
+#       return(out)
+#     },
+
+#     ## get_individual ----------------------------------------------------------
+#     get_individual = function(id) {
+#       res_id <- self$res_table[self$res_table$ID == id, ]
+#       indiv  <- jaguar$new(id = id, results = res_id)
+#     },
+
+#     ## plot_aic ----------------------------------------------------------------
+#     plot_aic = function() {
+#     }
+# ))

@@ -27,8 +27,8 @@ if (fit_individuals) {
         holdout_frac = 0.7,       # Proportion of data to use for training
 
         # Parallel processing parameters
-        parallel = FALSE,          # Whether to use parallel processing (T/F)
-        n_cores  = 6,             # Number of cores to use if parallel
+        parallel = TRUE,          # Whether to use parallel processing (T/F)
+        n_cores  = 20,             # Number of cores to use if parallel
 
         # Model fitting options
         fit_model      = TRUE    # Whether to fit the model (T/F)

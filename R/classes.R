@@ -113,10 +113,8 @@ step_selection_model <- R6Class("step_selection_model",
                         env_type = env_type,
                         lower = lbound,
                         upper = ubound,
-                        control = list(
-                          maxit = 1000,     # More iterations
-                          factr = 1e9
-                        ))
+                        control = list(maxit = 400, factr = 1e9))
+                        # Max iterations and tolerance factor
         
         ll <- self$log_likelihood(par_out$par, objects, sim, env_type = env_type)
         return(list(
@@ -377,7 +375,7 @@ path_propagation_model <- R6Class("path_propagation_model",
                         sim = sim,  env_type = env_type, method = "L-BFGS-B", 
                         lower = lbound,
                         upper = ubound,
-                        control = list(maxit = 200))     # More iterations
+                        control = list(maxit = 400, factr = 1e9)) 
                         
         ll <- self$log_likelihood(par_out$par, objects, sim, env_type = env_type)
         traced_ll <- do.call(rbind, trace_log) %>% as.data.frame
@@ -1260,42 +1258,52 @@ empirical_batch <- R6Class("empirical_batch",
                                env_type = self$config$env_type,
                                par_start = par_start, outliers = outliers)
       } else if (self$config$model_type == 2) {
-        # Iterate over n_jump values and select best based on log likelihood
-        best_result <- NULL
-        best_ll     <- Inf
-        best_n_jump <- 0
-        worse_count <- 0
+        check_file <- paste0("data/output/partial_", i, ".rds")
+        # The check_file loop prevents rerunning n_jump iterations for the case
+        # where a core crashes without completing evaluation (happens).
 
-        max_jump <- min(max_dist - 1, 8) # Limit max n_jump to 8 (compute)
+        if (file.exists(check_file)) {
+          message("Resuming from checkpoint.")
+          readRDS(check_file)
+        } else {
+          list(best_result = NULL, best_ll = Inf, best_n_jump = 0, 
+               worse_count = 0, done_jumps = integer(0))
+        }
 
+        try_jump <- function(n_j) {
+          pp_model$propagation_steps <- ceiling(max_dist / (nj + 1))
+          message(paste0("n_jump = ", n_j, ", steps = ", pp_model$propagation_steps))
+          res <- pp_model$fit(track_cells, max_dist, rdf = brdf, 
+            par_start = par_start, outliers = outliers, step_size = n_j + 1,
+            env_type = self$config$env_type)
+          if (!is.na(res[1]) && res$ll < checkpoint$best_ll) {
+            checkpoint$best_ll <<- res$ll
+            checkpoint$best_result <<- res
+            checkpoint$best_n_jump <<- n_j
+            checkpoint$worse_count <<- 0
+          } else if (!is.null(checkpoint$best_result)) {
+            checkpoint$worse_count <<- checkpoint$worse_count + 1 
+          }
+          checkpoint$done_jumps <<- c(checkpoint$done_jumps, n_j)
+          saveRDS(checkpoint, check_file)
+        }
+
+        max_jump <- min(max_dist - 1, 8)
         for (n_jump in 0:max_jump) {
-          pp_model$propagation_steps <- ceiling(max_dist / (n_jump + 1))
-          message(paste0("Trying n_jump = ", n_jump, 
-                      " with propagation_steps = ", pp_model$propagation_steps))
-          # par_best <- if (!is.null(best_result)) best_result$par else par_start
-          par_best <- par_start # turning this off for now, par values explode 
-          result_n <- pp_model$fit(track_cells, max_dist, rdf = brdf, 
-                               par_start = par_best, outliers = outliers, 
-                               step_size = n_jump + 1, 
-                               env_type = self$config$env_type)
-          if (!is.na(result_n[1]) && result_n$ll < best_ll) {
-            best_ll <- result_n$ll
-            best_result <- result_n
-            best_n_jump <- n_jump
-            worse_count <- 0
-          } else if (!is.null(best_result)) {
-            worse_count <- worse_count + 1
-            if (worse_count >= 2) {
-              message("Stopping early due to consecutive worse results")
-              break
-            }
+          if (n_jump %in% checkpoint$done_jumps || checkpoint$worse_count > 2) {
+            next # If past two have been consecutively worse, skip to end
+          } else {
+            try_jump(n_jump)
           }
         }
+        if (!((max_dist - 1) %in% checkpoint$done_jumps)) try_jump(max_dist - 1)
+        # For 2-consecutive-worse case, also evaluate maximum n_jump. 
+        # Necessary for model comparison, since it's the special case 
+        # where path propagation is the same as step selection.
 
-        if (!is.null(best_result)) {
-          best_result$n_jump <- best_n_jump
-        }
-        result <- best_result
+        result <- checkpoint$best_result
+        if (!is.null(result)) result$n_jump <- checkpoint$best_n_jump
+        if (file.exists(check_file)) file.remove(check_file)
       }
       
       # Save individual result

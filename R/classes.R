@@ -77,7 +77,8 @@ step_selection_model <- R6Class("step_selection_model",
         return(attract[i, obs[i]])
       })
       out <- -sum(log(pmax(like, .Machine$double.eps)), na.rm = TRUE)
-
+      print(par)
+      print(out)
       # if (is.infinite(out) || is.na(out)) out <- 0
 
       # print(paste("Current SSLL:", round(-out, 4)))
@@ -114,7 +115,7 @@ step_selection_model <- R6Class("step_selection_model",
                         upper = ubound,
                         control = list(
                           maxit = 1000,     # More iterations
-                          factr = 1e5
+                          factr = 1e9
                         ))
         
         ll <- self$log_likelihood(par_out$par, objects, sim, env_type = env_type)
@@ -341,6 +342,7 @@ path_propagation_model <- R6Class("path_propagation_model",
         n_obs = as.integer(n_obs),
         n_steps = as.integer(self$propagation_steps)
       )
+      print(par)
       return(ll)
     },
 
@@ -1247,7 +1249,7 @@ empirical_batch <- R6Class("empirical_batch",
       }
 
       # Starting parameters
-      par_start <- c(rep(0, self$config$npar - 2), # no environment preferences
+      par_start <- c(rnorm(self$config$npar - 2, sd = 0.1), # environmental vars
                     log(1.0),                      # k_exp 
                     -15)                           # bg_rate ~ 0  
 

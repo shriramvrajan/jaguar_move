@@ -61,7 +61,7 @@ step_selection_model <- R6Class("step_selection_model",
     },
 
     ## log_likelihood ----------------------------------------------------------
-    log_likelihood = function(par, objects, sim, env_type, debug = TRUE) {
+    log_likelihood = function(par, objects, sim, env_type = "1o", debug = TRUE) {
       obs      <- objects$obs
       max_dist <- objects$max_dist
       outliers <- objects$outliers
@@ -77,20 +77,13 @@ step_selection_model <- R6Class("step_selection_model",
         return(attract[i, obs[i]])
       })
       out <- -sum(log(pmax(like, .Machine$double.eps)), na.rm = TRUE)
-      print(par)
-      print(out)
       # if (is.infinite(out) || is.na(out)) out <- 0
-
-      # print(paste("Current SSLL:", round(-out, 4)))
-      # print(paste("SS parameters:", paste(round(par, 4), collapse = ", ")))
-      # saveRDS(list(out = out, array = like, par = par, o = objects),
-      #         "data/output/current_iter_ss.rds")
       return(out)
     },
 
     ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, 
-                  outliers = integer(0), env_type) {
+                  outliers = integer(0), env_type = "1o") {
       objects <- self$prepare_objects(trajectory, max_dist, rdf, sim)
       objects$outliers <- outliers
       # Fit model
@@ -264,7 +257,7 @@ path_propagation_model <- R6Class("path_propagation_model",
 
     ## build_kernel ------------------------------------------------------------
     build_kernel = function(par, objects, sim, env_type) { 
-      # Numerical values
+      # Currently vestigial!
       max_dist   <- objects$max_dist
       ncell_local <- (2 * max_dist + 1)^2 
       step_size  <- objects$step_size
@@ -300,54 +293,26 @@ path_propagation_model <- R6Class("path_propagation_model",
     },
 
     ## log_likelihood ----------------------------------------------------------
-    log_likelihood = function(par, objects, sim, debug = FALSE, env_type) {
-      obs <- objects$obs
-      outliers <- objects$outliers
-      n_obs <- length(obs) + 1
-      
-      if (sim) {
-        ## Change this block to call C++!
-        current <- self$build_kernel(par, objects, sim)
-        predictions <- matrix(0, nrow = self$propagation_steps, ncol = n_obs) 
-        for (i in 1:n_obs) {
-          if (i %in% outliers || is.na(obs[i])) {
-            predictions[, i] <- rep(NA, self$propagation_steps)
-            next
-          }
-          predictions[, i] <- current[obs[i], i, ]
-        }
-        log_likelihood <- rowSums(log(pmax(predictions, .Machine$double.eps)), 
-                                    na.rm = TRUE)
-        return(-max(log_likelihood, na.rm = TRUE))
-      }
-
-      # Empirical case: C++ call replaces R loop for likelihood calculation
+    log_likelihood = function(par, objects, sim, debug = FALSE, env_type = "1o") {
+      n_obs       <- length(objects$obs) + 1
       ncell_local <- (2 * objects$max_dist + 1)^2
-      k_exp <- exp(par[length(par) - 1])
-      bg_rate <- plogis(par[length(par)])
-      attract_raw <- as.numeric(env_function(objects$env_i, par, nbhd = NULL, 
-                                sim = sim, type = env_type))
-      ll <- path_propagation_ll_cpp(
-        k_exp = k_exp,
-        bg_rate = bg_rate,
-        attract_raw = attract_raw,
-        nbhd_i = objects$nbhd_i,
-        to_dest_vec = as.integer(objects$to_dest_vec),
-        obs = as.integer(objects$obs),
-        outliers = as.integer(objects$outliers),
-        inner_dists = objects$inner_dists,
-        ncell_local = as.integer(ncell_local),
-        n_obs = as.integer(n_obs),
-        n_steps = as.integer(self$propagation_steps)
-      )
-      print(par)
-      return(ll)
+      k_exp   <- if (sim) exp(par[length(par)]) else exp(par[length(par) - 1])
+      bg_rate <- if (sim) 0 else plogis(par[length(par)])
+      attract_raw <- as.numeric(env_function(objects$env_i, par, nbhd = NULL,
+                                              sim = sim, type = env_type))
+      path_propagation_ll_cpp(
+        k_exp = k_exp, bg_rate = bg_rate, attract_raw = attract_raw,
+        nbhd_i = objects$nbhd_i, to_dest_vec = as.integer(objects$to_dest_vec),
+        obs = as.integer(objects$obs), outliers = as.integer(objects$outliers),
+        inner_dists = objects$inner_dists, ncell_local = as.integer(ncell_local),
+        n_obs = as.integer(n_obs), n_steps = as.integer(self$propagation_steps))
     },
 
     ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, step_size, rdf, par_start, sim = FALSE, 
-                  outliers = integer(0), env_type) {
-      self$propagation_steps <- min(max(1, ceiling(max_dist / step_size)), 8)
+                  outliers = integer(0), env_type = "1o") {
+      cap <- if (sim) max_dist else 8
+      self$propagation_steps <- min(max(1, ceiling(max_dist / step_size)), cap)
       objects <- self$prepare_objects(trajectory, max_dist, step_size, rdf, sim)
       objects$outliers <- outliers
 
@@ -402,6 +367,14 @@ path_propagation_model <- R6Class("path_propagation_model",
       bg_rate <- plogis(par[length(par)])
       attract_raw <- as.numeric(env_function(objects$env_i, par, nbhd = NULL,
                                 sim = sim, type = env_type))
+
+      # debug check
+      
+      if (all(is.finite(attract_raw)) & is.finite(k_exp) & is.finite(bg_rate)) {
+        print("debug check ✅")
+      } else {
+        stop()
+      }
       path_propagation_diagnose_cpp(
         k_exp = k_exp,
         bg_rate = bg_rate,
@@ -1128,16 +1101,14 @@ empirical_batch <- R6Class("empirical_batch",
         individuals_to_process <- self$config$individuals
       }
       
-      # Check for already completed results
-      outfiles <- list.files("data/output")
-      done <- gsub(".rds", "", outfiles) %>% 
-        gsub("out_",     "", .) %>% 
-        gsub("ll_null_", "", .) %>%
-        gsub("ll_",      "", .) %>% 
-        as.numeric()
-      done <- done[!is.na(done)]
+      # Check for already completed results, then order remainder in reverse
+      # order of total object size (proxy for time it takes to run) so that 
+      # we don't waste core time
+      done <- private$get_completed_ids()
       i_todo <- setdiff(individuals_to_process, done)
-      
+      order_i <- jag_meta$osize[which(jag_meta$ID %in% i_todo)] %>%
+        order(., decreasing = FALSE) # Smallest osize i.e. easiest fits first
+      i_todo <- i_todo[order_i]
       message(paste0("Processing ", length(i_todo), " individuals"))
       
       # Set up parallel processing
@@ -1158,8 +1129,6 @@ empirical_batch <- R6Class("empirical_batch",
       # Main processing loop
       max_attempts <- 10
       for (attempt in seq_len(max_attempts)) {
-        done <- private$get_completed_ids()
-        i_todo <- setdiff(individuals_to_process, done)
         if (length(i_todo) == 0) break
         if (self$config$parallel) {
           batch_config <- self$config
@@ -1262,7 +1231,7 @@ empirical_batch <- R6Class("empirical_batch",
         # The check_file loop prevents rerunning n_jump iterations for the case
         # where a core crashes without completing evaluation (happens).
 
-        if (file.exists(check_file)) {
+        checkpoint <- if (file.exists(check_file)) {
           message("Resuming from checkpoint.")
           readRDS(check_file)
         } else {
@@ -1271,7 +1240,7 @@ empirical_batch <- R6Class("empirical_batch",
         }
 
         try_jump <- function(n_j) {
-          pp_model$propagation_steps <- ceiling(max_dist / (nj + 1))
+          pp_model$propagation_steps <- ceiling(max_dist / (n_j + 1))
           message(paste0("n_jump = ", n_j, ", steps = ", pp_model$propagation_steps))
           res <- pp_model$fit(track_cells, max_dist, rdf = brdf, 
             par_start = par_start, outliers = outliers, step_size = n_j + 1,
@@ -1296,7 +1265,7 @@ empirical_batch <- R6Class("empirical_batch",
             try_jump(n_jump)
           }
         }
-        if (!((max_dist - 1) %in% checkpoint$done_jumps)) try_jump(max_dist - 1)
+        # if (!((max_dist - 1) %in% checkpoint$done_jumps)) try_jump(max_dist - 1)
         # For 2-consecutive-worse case, also evaluate maximum n_jump. 
         # Necessary for model comparison, since it's the special case 
         # where path propagation is the same as step selection.
@@ -1364,7 +1333,7 @@ results_set <- R6Class("results_set",
                     paste0(prefix, c("_ll", "_conv")))
         if (has_njump) cnames <- c(cnames, paste0(prefix, "_njump"))
 
-        k <- npar + has_njump
+        k <- ifelse(has_njump, npar + 2, npar)
         aic <- ifelse(is.na(mat[, npar + 1]), NA, 2 * mat[, npar + 1] + 2 * k)
 
         out <- as.data.frame(mat)
@@ -1380,12 +1349,6 @@ results_set <- R6Class("results_set",
         parts[[length(parts) + 1]] <- tabulate_model(self$r_pp, "pp", 
                                                       has_njump = TRUE)
       do.call(cbind, parts)
-    },
-
-    ## get_individual ----------------------------------------------------------
-    get_individual = function(id) {
-      res_id <- self$res_table[self$res_table$ID == id, ]
-      jaguar$new(id = id, results = res_id)
     },
 
     ## plot_aic ----------------------------------------------------------------

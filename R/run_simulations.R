@@ -24,7 +24,7 @@ if (test_barrier) {
 
             # Landscape parameters
             env_size          = 400,            # Square side length in pixels
-            autocorr_range    = .Machine$double.eps,             # Autocorrelation range
+            autocorr_range    = 1,             # Autocorrelation range
             autocorr_strength = 10,             # Autocorrelation strength
             b_density         = b1,
             b_value           = 50,
@@ -40,7 +40,8 @@ if (test_barrier) {
     batch$done <- gsub("^sim_|\\.rds$", "", done_files)
     output <- batch$run_all(parallel = TRUE)
     saveRDS(batch$get_results(), 
-        paste0("simulations/barriersim_", Sys.time(), ".rds"))    
+        paste0("simulations/barriersim_", 
+            format(Sys.time(), "%Y%m%d_%H%M%S"), ".rds"))    
 
     plot_barrier <- function(batch_results) {
             results_df <- batch_results$results
@@ -60,7 +61,7 @@ if (test_barrier) {
 ## Autocorrelation range / observation interval study ==========================
 if (test_2dsweep) {
     batch <- simulation_batch$new()
-    r1_values           <- c(.Machine$double.eps, seq(5, 25, 5))
+    r1_values           <- c(1, seq(5, 25, 5))
     obs_interval_values <- 1:12
     param_grid <- expand.grid(
         r1 = r1_values, obs_interval = obs_interval_values,
@@ -94,7 +95,8 @@ if (test_2dsweep) {
     batch$done <- gsub("^sim_|\\.rds$", "", done_files)
     output <- batch$run_all(parallel = TRUE)
     saveRDS(batch$get_results(), 
-            paste0("simulations/r1_obs_sweep_", Sys.time(), ".rds"))  
+            paste0("simulations/r1_obs_sweep_", 
+                format(Sys.time(), "%Y%m%d_%H%M%S"), ".rds"))  
 
     plot_2d_sweep <- function(batch_results) {
         results <- batch_results$summary
@@ -106,8 +108,9 @@ if (test_2dsweep) {
             scale_fill_viridis_c(name = "Median LL\n(SS - PP) per obs") +
             labs(x = "Observation interval", y = "Autocorrelation range") +
             theme_minimal()
-        ggsave(paste0("figs/sims/2d_sweep_", Sys.time(), ".pdf"), p,
-                width = 8, height = 6)
+        ggsave(paste0("figs/sims/2d_sweep_",
+                format(Sys.time(), "%Y%m%d_%H%M%S"), ".pdf"), p,
+            width = 8, height = 6)
         print(p)
         return(results)
     } 

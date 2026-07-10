@@ -16,6 +16,7 @@ library(ggplot2)
 library(Rcpp)
 library(Matrix)
 library(RSpectra)
+library(gstat)
 
 # C++ function for path propagation
 Rcpp::sourceCpp("R/propagate.cpp")
@@ -177,13 +178,6 @@ pointwise_env <- function(par, cells, rdf, scale_from = NULL, env_type = "2o") {
   phi <- env_function(env_scaled, par, sim = FALSE, type = env_type)
   setNames(phi, cells)
   return(phi)
-}
-
-get_local_region <- function(track_cells, rdf, buffer = 20) {
-  rows <- rdf$row[track_cells]
-  cols <- rdf$col[track_cells]
-  return(which(rdf$row >= min(rows) - buffer & rdf$row <= max(rows) + buffer &
-         rdf$col >= min(cols) - buffer & rdf$col <= max(cols) + buffer))
 }
 
 # 2. Simulation ---------------------------------------------------------------
@@ -594,7 +588,7 @@ calc_move_freq <- function(dat) {
 }
 
 # Plot movement kernel
-plot_curve <- function(par, mu = 0, sd = 1, bounds = c(0, 10), add = FALSE, 
+plot_curve <- function(par, mu = 0, sd = 1, bounds = c(-6, 6), add = FALSE, 
                        values = FALSE, col = "black") {
     # Plot functional form for 2op, mu/sd reverse normalization of env variable.
     x <- seq(bounds[1], bounds[2], 0.1)
@@ -611,9 +605,6 @@ plot_curve <- function(par, mu = 0, sd = 1, bounds = c(0, 10), add = FALSE,
 }
 
 plot_dispersal_comparison <- function(p_ss, p_pp, max_displacement, id) {
-                
-      plot_pdf(nm = paste0("figs/dispersal_tests/indiv_test_", id, "_", 
-                          Sys.Date(), ".pdf"), x = 6, y = 6)
       par(mfrow = c(2, 2))
 
       # Extract probability distributions
@@ -665,6 +656,4 @@ plot_dispersal_comparison <- function(p_ss, p_pp, max_displacement, id) {
       # # Forest cover context
       # forest_cover <- terra::crop(brazil_ras[[4]], plot_extent)
       # terra::plot(forest_cover, main = "Forest cover")
-      dev.off()
-      message("Dispersal comparison plot saved")  
 }

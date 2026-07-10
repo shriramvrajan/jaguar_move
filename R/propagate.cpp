@@ -43,13 +43,13 @@ double path_propagation_ll_cpp(
     if (obs.size() != n_obs - 1)
       Rcpp::stop("obs has %d elements, expected %d", obs.size(), n_obs - 1);
 
-    // 2. Dispersal kernel (replaces calculate_dispersal_kernel)
+    // 1. Dispersal kernel (replaces calculate_dispersal_kernel)
     std::vector<double> kernel(ncol_inner);
     for (int j = 0; j < ncol_inner; j++) {
       kernel[j] = k_exp * std::exp(-k_exp * inner_dists[j]);
     }
 
-    // 3. Transition probabilities (replaces env_function + apply_kernel)
+    // 2. Transition probabilities (replaces env_function + apply_kernel)
     std::vector<double> attract(n_total * ncol_inner, 0.0);
     for (int row = 0; row < n_total; row++) {
       double row_sum = 0.0;
@@ -58,6 +58,7 @@ double path_propagation_ll_cpp(
         if (IntegerVector::is_na(idx)) continue; // skip NA neighbors
         if (idx < 1 || idx > n_total) continue;  // skip out of bounds indices
         double val = attract_raw[idx - 1] * kernel[col]; // convert to 0-index
+        if (!std::isfinite(val)) continue;      // non-finite cell -> 0
         attract[row + col * n_total] = val; 
         row_sum += val;
       }
@@ -136,6 +137,8 @@ double path_propagation_ll_cpp(
     return -best_ll; // return negative log-likelihood for minimization
   }
  
+// Function to run diagnostics for an individual, given model objects. 
+
 // [[Rcpp::export]]
 List path_propagation_diagnose_cpp(
   NumericVector attract_raw,
@@ -154,6 +157,18 @@ List path_propagation_diagnose_cpp(
     int ncol_inner = nbhd_i.ncol();
     int center = ncell_local / 2;
 
+    // Dimension checks 
+    if (attract_raw.size() != n_total)
+      Rcpp::stop("attract_raw has %d elements, expected %d", 
+        attract_raw.size(), n_total);
+    if (nbhd_i.nrow() != n_total)
+      Rcpp::stop("nbhd_i has %d rows, expected %d", nbhd_i.nrow(), n_total);
+    if (to_dest_vec.size() != n_total * ncol_inner)
+      Rcpp::stop("to_dest_vec has %d elements, expected %d",
+                to_dest_vec.size(), n_total * ncol_inner);
+    if (obs.size() != n_obs - 1)
+      Rcpp::stop("obs has %d elements, expected %d", obs.size(), n_obs - 1);
+      
     // 1. Dispersal kernel
     std::vector<double> kernel(ncol_inner);
     for (int j = 0; j < ncol_inner; j++) {
@@ -167,7 +182,9 @@ List path_propagation_diagnose_cpp(
       for (int col = 0; col < ncol_inner; col++) {
         int idx = nbhd_i(row, col);
         if (IntegerVector::is_na(idx)) continue;
+        if (idx < 1 || idx > n_total) continue;
         double val = attract_raw[idx - 1] * kernel[col];
+        if (!std::isfinite(val)) continue;  // non-finite cells turn to zeroes
         attract[row + col * n_total] = val;
         row_sum += val;
       }
@@ -179,7 +196,7 @@ List path_propagation_diagnose_cpp(
       }
     }
 
-    // 3. Propagation — same as ll version but keep the surface at each step
+    // 3. Propagation; same as ll version but keep the surface at each step
     std::vector<double> current(n_total, 0.0);
     std::vector<double> next_buf(n_total, 0.0);
     for (int i = 0; i < n_obs; i++) {
@@ -194,7 +211,7 @@ List path_propagation_diagnose_cpp(
 
     double floor_val = 2.220446e-16;
     NumericVector ll_by_step(n_steps);
-    // Track per-obs ll at each step: n_steps × (n_obs-1), col-major
+    // Track per-obs ll at each step: n_steps * (n_obs-1), col-major
     int n_transitions = n_obs - 1;
     std::vector<double> ll_obs_all(n_steps * n_transitions, 0.0);
 
@@ -215,6 +232,7 @@ List path_propagation_diagnose_cpp(
         for (int j = 0; j < ncol_inner; j++) {
           int v = to_dest_vec[k + j * n_total];
           if (IntegerVector::is_na(v)) continue;
+          if (v < 1 || v > n_total * ncol_inner) continue;
           int src_flat = v - 1;
           int src_row = src_flat % n_total;
           int src_col = src_flat / n_total;
@@ -251,10 +269,17 @@ List path_propagation_diagnose_cpp(
     }
 
     // Extract per-obs quantities at best step
-    NumericVector ll_obs(n_transitions);
+    std::vector<double> ll_vals;
+    std::vector<int> keep;
     for (int i = 0; i < n_transitions; i++) {
-      ll_obs[i] = ll_obs_all[best_step + i * n_steps];
+      if (is_outlier[i]) continue;
+      keep.push_back(i + 1);
+      ll_vals.push_back(IntegerVector::is_na(obs[i]) ?
+                          NA_REAL : ll_obs_all[best_step + i * n_steps]);
     }
+    int n_keep = (int) keep.size();
+    NumericVector ll_obs(ll_vals.begin(), ll_vals.end());
+    ll_obs.attr("names") = wrap(keep);
 
     // Snapshot the full surface at best step — but we need to re-run to that step.
     // Re-propagate to best_step:
@@ -269,6 +294,7 @@ List path_propagation_diagnose_cpp(
         for (int j = 0; j < ncol_inner; j++) {
           int v = to_dest_vec[k + j * n_total];
           if (IntegerVector::is_na(v)) continue;
+          if (v < 1 || v > n_total * ncol_inner) continue;
           int src_flat = v - 1;
           int src_row = src_flat % n_total;
           int src_col = src_flat / n_total;
@@ -288,13 +314,14 @@ List path_propagation_diagnose_cpp(
       std::swap(current, next_buf);
     }
 
-    // Now `current` holds the surface at best_step
-    NumericMatrix p_surface(ncell_local, n_obs);
-    for (int i = 0; i < n_obs; i++) {
-      for (int cell = 0; cell < ncell_local; cell++) {
-        p_surface(cell, i) = current[cell + i * ncell_local];
-      }
+    // Now "current" holds the surface at best_step; subset to kept columns
+    NumericMatrix p_surface(ncell_local, n_keep);
+    for (int c = 0; c < n_keep; c++) {
+      int i = keep[c] - 1;
+      for (int cell = 0; cell < ncell_local; cell++)
+        p_surface(cell, c) = current[cell + i * ncell_local];
     }
+    p_surface.attr("dimnames") = List::create(R_NilValue, wrap(keep));
 
     return List::create(
       Named("ll_total")   = -best_ll,

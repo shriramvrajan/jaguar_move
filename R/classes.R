@@ -3,6 +3,42 @@ library(R6)
 
 ## Models ======================================================================
 
+# Distance decay only model 
+distance_model <- R6Class("distance_model",
+  public = list(
+    prepare_objects = function(trajectory, max_dist, rdf) {
+          nbhd <- make_nbhd(rdf = rdf, i = trajectory, sz = max_dist)
+          obs <- sapply(2:nrow(nbhd), function(r) {
+            nextcell <- which(nbhd[r - 1, ] == trajectory[r])
+            if (length(nextcell) == 0) NA else nextcell
+          })
+          list(nbhd = nbhd, obs = obs, max_dist = max_dist, outliers = integer(0))
+        },
+
+    log_likelihood = function(log_k, objects) {
+      kernel <- calculate_dispersal_kernel(
+        max_dispersal_dist = objects$max_dist,
+        kfun = function(x) dexp(x, exp(log_k)))
+      nbhd <- objects$nbhd
+      kmat <- matrix(rep(kernel, each = nrow(nbhd)), nrow = nrow(nbhd))
+      kmat[is.na(nbhd)] <- 0
+      p <- kmat / rowSums(kmat)
+      valid <- setdiff(seq_along(objects$obs), objects$outliers)
+      like <- vapply(valid, function(i) p[i, objects$obs[i]], numeric(1))
+      -sum(log(pmax(like, .Machine$double.eps)), na.rm = TRUE)
+    },
+
+    fit = function(trajectory, max_dist, rdf, outliers = integer(0)) {
+      objects <- self$prepare_objects(trajectory, max_dist, rdf)
+      objects$outliers <- outliers
+      opt <- optim(log(1), self$log_likelihood, objects = objects,
+                  method = "Brent", lower = -5, upper = 5)
+      list(log_k = opt$par, k = exp(opt$par), ll = opt$value,
+              convergence = opt$convergence, objects = objects)
+        }
+    )
+  )
+
 # Step selection model class --- to be merged with path propagation model!!
 #  $prepare_objects() - prepare data structures for fitting
 #  $build_kernel()    - build the dispersal kernel and calculate attraction
@@ -522,6 +558,76 @@ path_propagation_model <- R6Class("path_propagation_model",
 
 ## Theoretical simulations =====================================================
 
+# Configuration parameters for theoretical simulations
+#   $max_dist() - maximum dispersal distance for neighborhood
+#   $propagation_steps() - number of steps to propagate for path propagation
+#   $save() - save configuration parameters to file
+simulation_config <- R6Class("simulation_config",
+    public <- list(
+        # Landscape parameters
+        env_size = NULL,
+        autocorr_strength = NULL,
+        autocorr_range = NULL,
+        b_density = NULL,
+        b_width = NULL,
+        b_length = NULL,
+        b_value = NULL,
+
+        # Model parameters
+        env_response = NULL,
+        step_size = NULL,
+        obs_interval = NULL,
+
+        # Simulation parameters
+        n_steps = NULL,
+        n_individuals = NULL,
+        n_cores = NULL,
+
+        # Output parameters
+        name = NULL, 
+
+        initialize = function(name = "default", autocorr_range = 50, 
+                        n_individuals = 10, env_size = 200, 
+                        autocorr_strength = 5, n_cores = 15,
+                        env_response = c(-1.5, 1.5, -0.2, exp(1)),
+                        b_density = 0, b_width = 2, b_length = 20, b_value = 99,
+                        step_size = 1, obs_interval = 1, n_steps = 1000) {
+            self$name <- name
+            self$env_size <- env_size
+            self$autocorr_range <- autocorr_range
+            self$autocorr_strength <- autocorr_strength
+            self$env_response <- env_response
+            self$step_size <- step_size
+            self$obs_interval <- obs_interval
+            self$n_individuals <- n_individuals
+            self$n_steps <- n_steps
+            self$n_cores <- n_cores
+            self$b_density <- b_density
+            self$b_length <- b_length
+            self$b_width <- b_width
+            self$b_value <- b_value
+        },
+
+        # Derived properties
+        max_dist = function() self$step_size * (self$obs_interval + 1),
+        propagation_steps = function() self$obs_interval + 2,
+
+        save = function(filepath) {
+            params <- list(
+                name              = self$name,
+                env_size          = self$env_size,
+                autocorr_range    = self$autocorr_range,
+                autocorr_strength = self$autocorr_strength,
+                n_individuals     = self$n_individuals,
+                n_steps           = self$n_steps,
+                env_response      = self$env_response,
+                step_size         = self$step_size,
+                obs_interval      = self$obs_interval
+            )
+            saveRDS(params, filepath)            
+        }
+    ))
+
 # Movement simulator for path generation and model fitting
 #   $simulate_paths() - simulate movement paths based on config
 #   $fit_models()    - fit both models to the simulated paths 
@@ -800,76 +906,6 @@ movement_simulator <- R6Class("movement_simulator",
     }
 ))
 
-# Configuration parameters for theoretical simulations
-#   $max_dist() - maximum dispersal distance for neighborhood
-#   $propagation_steps() - number of steps to propagate for path propagation
-#   $save() - save configuration parameters to file
-simulation_config <- R6Class("simulation_config",
-    public <- list(
-        # Landscape parameters
-        env_size = NULL,
-        autocorr_strength = NULL,
-        autocorr_range = NULL,
-        b_density = NULL,
-        b_width = NULL,
-        b_length = NULL,
-        b_value = NULL,
-
-        # Model parameters
-        env_response = NULL,
-        step_size = NULL,
-        obs_interval = NULL,
-
-        # Simulation parameters
-        n_steps = NULL,
-        n_individuals = NULL,
-        n_cores = NULL,
-
-        # Output parameters
-        name = NULL, 
-
-        initialize = function(name = "default", autocorr_range = 50, 
-                        n_individuals = 10, env_size = 200, 
-                        autocorr_strength = 5, n_cores = 15,
-                        env_response = c(-1.5, 1.5, -0.2, exp(1)),
-                        b_density = 0, b_width = 2, b_length = 20, b_value = 99,
-                        step_size = 1, obs_interval = 1, n_steps = 1000) {
-            self$name <- name
-            self$env_size <- env_size
-            self$autocorr_range <- autocorr_range
-            self$autocorr_strength <- autocorr_strength
-            self$env_response <- env_response
-            self$step_size <- step_size
-            self$obs_interval <- obs_interval
-            self$n_individuals <- n_individuals
-            self$n_steps <- n_steps
-            self$n_cores <- n_cores
-            self$b_density <- b_density
-            self$b_length <- b_length
-            self$b_width <- b_width
-            self$b_value <- b_value
-        },
-
-        # Derived properties
-        max_dist = function() self$step_size * (self$obs_interval + 1),
-        propagation_steps = function() self$obs_interval + 2,
-
-        save = function(filepath) {
-            params <- list(
-                name              = self$name,
-                env_size          = self$env_size,
-                autocorr_range    = self$autocorr_range,
-                autocorr_strength = self$autocorr_strength,
-                n_individuals     = self$n_individuals,
-                n_steps           = self$n_steps,
-                env_response      = self$env_response,
-                step_size         = self$step_size,
-                obs_interval      = self$obs_interval
-            )
-            saveRDS(params, filepath)            
-        }
-    ))
-
 # Batch runner to coordinate multiple simulations
 #   $autocorr_range_study() - create batch for fragmentation study
 #   $run_all() - run all simulations in the batch
@@ -1002,6 +1038,7 @@ jaguar <- R6Class("jaguar",
     track_cells = NULL,
     landscape = NULL,
     results = NULL,
+    outliers = NULL,
 
     initialize = function(id = NULL, results = NULL) {
       self$id <- as.numeric(id)
@@ -1010,6 +1047,11 @@ jaguar <- R6Class("jaguar",
                           self$track[, c("longitude", "latitude")])
       self$landscape <- self$get_landscape()
       self$results <- results
+
+      dt_scaled <- self$track$dt[2:length(self$track$dt)] / 
+        median(na.exclude(self$track$dt))
+      dt_discrete <- round(dt_scaled)
+      self$outliers <- which(dt_discrete != 1)
     },
 
     ## get_track ---------------------------------------------------------------
@@ -1032,6 +1074,7 @@ jaguar <- R6Class("jaguar",
       path <- track(x = crds(path)[, 1], y = crds(path)[, 2], 
                     t = path$t, id = path$ID, crs = epsg5880)
       st <- steps(path)
+      
       dat$sl <- c(NA, st$sl_)             # step lengths in m
       dat$ta <- c(NA, st$ta_)             # turn angles in radians
       dat$dir <- c(NA, st$direction_p)    # bearing in radians
@@ -1061,11 +1104,11 @@ jaguar <- R6Class("jaguar",
     ## calculate_ll ------------------------------------------------------------
     calculate_ll = function(env_type) {
       if (is.null(self$results)) stop("No fitted results.")
-      npar <- (length(self$results) - 9) / 2 
-      # 9 is a magic number here......^ so fix it.
+      npar <- length(grep("ss_par", names(self$results))) 
+      max_dist <- ceiling(1.1 * max(self$track$sl / 1000, na.rm = TRUE))
       
       batch <- empirical_batch$new(list(holdout_set = FALSE, env_type = env_type))
-      batch$process_individual(
+      ll_m <- batch$process_individual(
         self$id,
         step_selection_model$new(),
         path_propagation_model$new(),
@@ -1076,6 +1119,27 @@ jaguar <- R6Class("jaguar",
           env_type = env_type
         )
       )
+      return(list(ll_m[[1]], ll_m[[2]], ll_null))
+    },
+
+    ## calculate_null_ll -------------------------------------------------------
+    calculate_null_ll = function() {
+      sl <- self$track$sl
+      sl_emp <- if (length(self$outliers)) na.exclude(sl[-self$outliers]) else na.exclude(sl)
+      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+
+      fit <- distance_model$new()$fit(
+        self$track_cells, max_dist, rdf = brdf, outliers = self$outliers)
+
+      obj   <- fit$objects
+      valid <- setdiff(seq_along(obj$obs), obj$outliers)
+      valid <- valid[!is.na(obj$obs[valid])]
+      m_i   <- rowSums(!is.na(obj$nbhd))[valid]
+
+      list(ll_unif = sum(log(m_i)),
+          ll_dist = fit$ll,
+          k       = fit$k,
+          n       = length(valid))
     }
   ))
 
@@ -1086,10 +1150,12 @@ jaguar <- R6Class("jaguar",
 empirical_batch <- R6Class("empirical_batch",
   public = list(
     config = NULL,
+    k_fit = NULL,
     results = list(),
 
-    initialize = function(config) {
+    initialize = function(config, k_fit) {
       self$config <- config
+      self$k_fit  <- k_fit
     },
 
     ## run_all -----------------------------------------------------------------
@@ -1104,8 +1170,7 @@ empirical_batch <- R6Class("empirical_batch",
       # Check for already completed results, then order remainder in reverse
       # order of total object size (proxy for time it takes to run) so that 
       # we don't waste core time
-      done <- private$get_completed_ids()
-      i_todo <- setdiff(individuals_to_process, done)
+      i_todo <- setdiff(individuals_to_process, private$get_completed_ids())
       order_i <- jag_meta$osize[which(jag_meta$ID %in% i_todo)] %>%
         order(., decreasing = FALSE) # Smallest osize i.e. easiest fits first
       i_todo <- i_todo[order_i]
@@ -1129,14 +1194,16 @@ empirical_batch <- R6Class("empirical_batch",
       # Main processing loop
       max_attempts <- 10
       for (attempt in seq_len(max_attempts)) {
+        i_todo <- setdiff(individuals_to_process, private$get_completed_ids())
         if (length(i_todo) == 0) break
         if (self$config$parallel) {
           batch_config <- self$config
-          results <- foreach(i = i_todo, .export = "batch_config", 
+          k_fit        <- self$k_fit
+          results <- foreach(i = i_todo, .export = c("batch_config", "k_fit"), 
             .errorhandling = "pass") %dopar% {
             ss_model <- step_selection_model$new()
             pp_model <- path_propagation_model$new()
-            batch <- empirical_batch$new(batch_config)
+            batch <- empirical_batch$new(batch_config, k_fit = k_fit)
             batch$process_individual(i, ss_model, pp_model)
           }
         } else {
@@ -1217,7 +1284,7 @@ empirical_batch <- R6Class("empirical_batch",
 
       # Starting parameters
       par_start <- c(rnorm(self$config$npar - 2, sd = 0.1), # environmental vars
-                    log(1.0),                      # k_exp 
+                    log(self$k_fit$k[which(self$k_fit$id == i)]),      # k_exp 
                     -15)                           # bg_rate ~ 0  
 
       # Fit models based on config
@@ -1349,65 +1416,5 @@ results_set <- R6Class("results_set",
         parts[[length(parts) + 1]] <- tabulate_model(self$r_pp, "pp", 
                                                       has_njump = TRUE)
       do.call(cbind, parts)
-    },
-
-    ## plot_aic ----------------------------------------------------------------
-    plot_aic = function() { }
+    }
   ))
-
-# results_set <- R6Class("results_set",
-#   public = list(
-#     r_ss = NULL,
-#     r_pp = NULL,
-#     env_type = NULL,
-#     res_table = NULL,
-
-#     initialize = function(r_ss, r_pp, env_type) {
-#       self$r_ss <- readRDS(r_ss)
-#       self$r_pp <- readRDS(r_pp)
-#       # remove element 4 (traced_ll) if it exists to avoid issues with unlisting
-#       self$r_pp <- lapply(self$r_pp, function(x) if (length(x) > 4) x[-4] else x)
-#       self$res_table <- self$results_table(r_ss = self$r_ss, r_pp = self$r_pp, 
-#                                            env_type = env_type)
-#       self$env_type  <- env_type
-#     },
-
-#     ## results_table -----------------------------------------------------------
-#     results_table = function(r_ss, r_pp, env_type) {
-#       first_index <- Position(function(x) length(x) > 1, r_ss)
-#       n_ss <- length(unlist(r_ss[[first_index]]))
-#       first_index <- Position(function(x) length(x) > 1, r_pp)
-#       n_pp <- length(unlist(r_pp[[first_index]][-4])) # Exclude traced_ll
-#       if (n_ss == n_pp) n_pp <- n_pp + 1 # For runs pre-n_jump implementation
-#       ## The above should really be simplified - env_type determines n_ss and 
-#       ## n_pp, but the n_jump discrepancy needs to be addressed.
-      
-#       row_for <- function(r_i, n) {
-#         if (all(is.na(r_i))) return(rep(NA, n)) else return(unlist(r_i))
-#       }
-#       aic_for <- function(row, ll_idx, k) {
-#         if (anyNA(row[ll_idx])) return(NA) else return(2 * row[ll_idx] + 2 * k)
-#       }
-
-#       ss <- t(sapply(r_ss, row_for, n = n_ss))
-#       pp <- t(sapply(r_pp, row_for, n = n_pp))
-#       if (ncol(ss) == ncol(pp)) pp <- cbind(pp, NA) # For runs pre-n_jump implementation
-#       ss_aic <- apply(ss, 1, aic_for, ll_idx = n_ss - 1, k = n_ss - 2)
-#       pp_aic <- apply(pp, 1, aic_for, ll_idx = n_pp - 2, k = n_pp - 2)
-#       out <- data.frame(jag_meta[, c("ID", "biome")], ss, ss_aic, pp, pp_aic)
-#       colnames(out) <- c("ID", "biome",
-#         paste0("ss_par", seq_len(n_ss - 2)), "ss_ll", "ss_conv", "ss_aic", 
-#         paste0("pp_par", seq_len(n_pp - 3)), "pp_ll", "pp_conv", "pp_njump", "pp_aic")
-#       return(out)
-#     },
-
-#     ## get_individual ----------------------------------------------------------
-#     get_individual = function(id) {
-#       res_id <- self$res_table[self$res_table$ID == id, ]
-#       indiv  <- jaguar$new(id = id, results = res_id)
-#     },
-
-#     ## plot_aic ----------------------------------------------------------------
-#     plot_aic = function() {
-#     }
-# ))

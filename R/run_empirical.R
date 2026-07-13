@@ -3,8 +3,8 @@ source("R/functions.R")
 source("R/classes.R")       
 set.seed(7)                 # For reproducibility
 
-fit_individuals <- FALSE
-test_holdout    <- TRUE
+fit_individuals <- 1
+test_holdout    <- 0
 
 # 1 for step selection, 2 for path propagation
 model_type <- 2
@@ -19,23 +19,25 @@ if (fit_individuals) {
         npar              = switch(env_type, "1o" = 9, "2o" = 15, "mix" = 10), 
 
         # NULL = all individuals, or vector of specific IDs
-        # individuals       = NULL, 
-        individuals       = as.numeric(gsub("\\D", "", files)), # Save existing results
+        individuals       = NULL, 
+        # individuals       = as.numeric(gsub("\\D", "", files)), # Save existing results
 
         # Holdout set parameters
         holdout_set  = FALSE,     # Whether to reserve holdout set (T/F)
         holdout_frac = 0.7,       # Proportion of data to use for training
 
         # Parallel processing parameters
-        parallel = FALSE,             # Whether to use parallel processing (T/F)
-        n_cores  = 5,             # Number of cores to use if parallel
+        parallel = TRUE,             # Whether to use parallel processing (T/F)
+        n_cores  = 3,             # Number of cores to use if parallel
 
         # Model fitting options
         fit_model      = TRUE    # Whether to fit the model (T/F)
         # model_calcnull = FALSE    # Whether to calculate null model likelihood (T/F)
     )
 
-    batch <- empirical_batch$new(config)
+    # this object is currently generated in results.R, find a better place for it
+    k_fit <- readRDS("data/output/k_fitted_start_values.rds")
+    batch <- empirical_batch$new(config, k_fit = k_fit)
     results <- batch$run_all()
 
     message("Saving results...")
@@ -68,7 +70,7 @@ if (test_holdout) {
 
         par_ss_i <- as.numeric(res[i, 3:11])
         par_pp_i <- as.numeric(res[i, 15:23])
-        njump_i <- res$pp_njump[i]
+        njump_i <- 0 # duct tape
         if (anyNA(par_ss_i) || anyNA(par_pp_i) || is.na(njump_i)) 
             return(c(ss = NA, pp = NA))
 
@@ -99,10 +101,10 @@ if (test_holdout) {
         obj_pp <- pp_model$prepare_objects(track_cells, max_dist, step_size_i,
                                            rdf = brdf)
         obj_pp$outliers <- outliers
-        nll_pp <- pp_model$log_likelihood(par_pp_i, obj_pp, sim = FALSE,
+        ll_pp <- pp_model$log_likelihood(par_pp_i, obj_pp, sim = FALSE,
                                           env_type = env_type)
 
-        c(ss = nll_ss, pp = nll_pp)
+        c(ss = ll_ss, pp = ll_pp)
     })
 
     ll_holdout <- as.data.frame(t(ll_holdout))

@@ -5,29 +5,89 @@ source("R/functions.R")
 source("R/classes.R")
 Rcpp::sourceCpp("R/propagate.cpp")
 
-r1 <- results_set$new(r_ss = "data/output/emp_ss_2026-07-06.rds", env_type = "1o")
-r2 <- results_set$new(r_pp = "data/output/emp_pp_2026-07-09.rds", env_type = "1o")
-res <- cbind(as.data.frame(r1$res_table), 
-             as.data.frame(r2$res_table)[, 3:ncol(r2$res_table)])
+## Data and functions ==========================================================
 
-## aggregate analysis ----------------------------------------------------------
+r1 <- results_set$new(r_ss = "data/output/emp_ss_2026-07-10.rds", 
+                      r_pp = "data/output/emp_pp_2026-07-13.rds", env_type = "1o")
+res0 <- r1$res_table
+res0 <- res0[which(!is.na(res0$pp_aic)), ]
+res <- merge(res0, jag_meta, by = c("ID", "biome"))
 
+## ouuuaoo
+jdt <- lapply(jag_meta$ID, function(i) jaguar$new(i)$track$dt)
+names(jdt) <- jag_meta$ID
+par(mfrow = c(3, 3))
+for (id in names(jdt)) {
+  hist(jdt[[id]], 100, col = "black", main = id, border = NA)
+}
+
+## Aggregate analysis ==========================================================
+
+### AIC ------------------------------------------------------------------------   
 p_aic <- ggplot(res, aes(x = ss_aic, y = pp_aic)) +
-    geom_point(aes(color = as.factor(pp_conv))) +
+    geom_point(aes(color = nmove)) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
     geom_text(aes(label = ID), vjust = -0.7, size = 3) +
     labs(x = "Step selection AIC", y = "Path propagation AIC")
 plot(p_aic)
 
 diff <- res$ss_aic - res$pp_aic
+print(sort(diff))
 diff[diff < -4] <- -4
-hist(diff[diff < 1000], 100)
+hist(diff, 100)
 length(which(diff > 2))
 
-## holdout set 
-h <- readRDS("data/output/holdout_1o_2026-07-09.rds")
+### Deviance explained ---------------------------------------------------------
+dev_exp <- function(i) {
+  print(i)
+  jag <- jaguar$new(id = i, results = res[res$ID == i, ])
+  nulls <- jag$calculate_null_ll()
+  de_dist <- 1 - nulls$ll_dist / nulls$ll_unif
+  de_ss <- 1 - res$ss_ll[res$ID == i] / nulls$ll_unif
+  de_pp <- 1 - res$pp_ll[res$ID == i] / nulls$ll_unif
+  return(data.frame(id = i, de_dist = de_dist, 
+                      de_ss = de_ss, de_pp = de_pp))
+}
+# k_fit <- data.frame(
+#   id = sort(res$ID),
+#   k = sapply(sort(res$ID), function(i) {
+#     print(i)
+#     jag <- jaguar$new(id = i, results = res[res$ID == i, ])
+#     nulls <- jag$calculate_null_ll()
+#     return(nulls$k)
+#   }))
+# saveRDS(k_fit, "data/output/k_fitted_start_values.rds")
+dev <- do.call(rbind, lapply(res$ID, dev_exp))
+dev_plot <- data.frame(
+  ID = res$ID,
+  val = c(dev$de_dist, dev$de_ss - dev$de_dist, dev$de_pp - dev$de_ss),
+  col = rep(c("gray", "red", "blue"), each = nrow(dev))
+)
 
-## individual analysis ---------------------------------------------------------
+dev_plot$col <- factor(dev_plot$col, levels = c("blue", "red", "gray"))
+
+ggplot(dev_plot, aes(x = ID,  y = val, fill = col)) +
+  geom_col() + 
+  scale_fill_identity() +
+  ylim(0, 1)
+
+### Holdout analysis -----------------------------------------------------------
+h <- readRDS("data/output/holdout_1o_2026-07-09.rds")
+h$biome <- res$biome.x
+h$nmove <- res$nmove
+ind <- is.na(h$nll_ss) | is.na(h$nll_pp)
+h <- h[-which(ind), ]
+hold <- ggplot(h, aes(x = nll_ss / nmove, y = nll_pp / nmove)) +
+    geom_point(aes(color = as.factor(biome))) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+    geom_text(aes(label = ID), vjust = -0.7, size = 3) 
+plot(hold)
+
+plot(res$nmove, h$nll_ss - h$nll_pp)
+cor(res$nmove, h$nll_ss - h$nll_pp, use = "pairwise.complete.obs")
+
+
+## Individual analysis =========================================================
 
 ll_compare <- function(id, env_type = "2o") {
     j_i <- jaguar$new(id = id, results = res[res$ID == id, ])
@@ -71,7 +131,6 @@ ll_compare <- function(id, env_type = "2o") {
     return(sim)
 }
 
-
 # ind <- c(12, 22, 50, 54, 99, 117)
 # diag <- list()
 # for (i in ind) {
@@ -89,7 +148,7 @@ ll_compare <- function(id, env_type = "2o") {
 
 bb <- ll_compare(62)
 
-## grain? ======================================================================
+## Grain? ======================================================================
 
 # Grain of the traversed landscape: the range of an exponential variogram fit
 # to one covariate over the neighbourhood. Coordinates are raster row/col, so 

@@ -255,9 +255,7 @@ gen_landscape <- function(size = 100, beta = 1, s = 0.03, r = 10, n = 0,
       }
     }
 
-    plot_pdf(nm = "figs/current_landscape.pdf")
-    terra::plot(out)
-    dev.off()
+    with_pdf(path = "figs/current_landscape.pdf", expr = "terra::plot(out)")
     return(out)
 }
 

@@ -8,7 +8,7 @@ Rcpp::sourceCpp("R/propagate.cpp")
 ## Data and functions ==========================================================
 
 r1 <- results_set$new(r_ss = "data/output/emp_ss_2026-07-10.rds", 
-                      r_pp = "data/output/emp_pp_2026-07-13.rds", env_type = "1o")
+                      r_pp = "data/output/emp_pp_2026-07-14.rds", env_type = "1o")
 res0 <- r1$res_table
 res0 <- res0[which(!is.na(res0$pp_aic)), ]
 res <- merge(res0, jag_meta, by = c("ID", "biome"))
@@ -34,7 +34,8 @@ plot(p_aic)
 diff <- res$ss_aic - res$pp_aic
 print(sort(diff))
 diff[diff < -4] <- -4
-hist(diff, 100)
+hist(diff, 70, border = NA)
+abline(v = 2, lty = 2, col = "red")
 length(which(diff > 2))
 
 ### Deviance explained ---------------------------------------------------------

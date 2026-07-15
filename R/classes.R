@@ -347,15 +347,16 @@ path_propagation_model <- R6Class("path_propagation_model",
     ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, step_size, rdf, par_start, sim = FALSE, 
                   outliers = integer(0), env_type = "1o") {
-      cap <- if (sim) max_dist else 8
-      self$propagation_steps <- min(max(1, ceiling(max_dist / step_size)), cap)
+      depth <- max(1, ceiling(max_dist / step_size))   # propagations needed to span max_dist
+      cap   <- if (sim) depth + 1 else 9
+      self$propagation_steps <- min(depth + 1, cap)     # +1: evaluate depths 0..depth inclusive
       objects <- self$prepare_objects(trajectory, max_dist, step_size, rdf, sim)
       objects$outliers <- outliers
 
       trace_log <- list()
       trace_ll <- function(par, objects, sim, lbound, ubound, env_type) {
         ll <- self$log_likelihood(par, objects, sim, env_type = env_type)
-        trace_log[[length(trace_log) + 1L]] <<- c(par, ll = ll)
+        trace_log[[length(trace_log) + 1]] <<- c(par, ll = ll)
         return(ll)
       }
 
@@ -828,8 +829,8 @@ movement_simulator <- R6Class("movement_simulator",
         # print(result)
         if (!is.list(result) || identical(result$step_selection, NA) ||
               identical(result$path_propagation, NA)) next
-        plot_pdf(nm = paste0("figs/sims/currentpaths/fit_", self$config$name, 
-                "_ind_", i, ".pdf"), x = 10, y = 5)
+        cairo_pdf(filename = paste0("figs/sims/currentpaths/fit_", self$config$name, 
+                "_ind_", i, ".pdf"), width = 10, height = 5)
         par(mfrow = c(1, 2))
         
         # Panel 1: path on landscape
@@ -1176,47 +1177,65 @@ empirical_batch <- R6Class("empirical_batch",
       i_todo <- i_todo[order_i]
       message(paste0("Processing ", length(i_todo), " individuals"))
       
-      # Set up parallel processing
-      if (self$config$parallel) {
-        cl <- makeCluster(self$config$n_cores)
-        registerDoParallel(cl)
-        parallel::clusterEvalQ(cl, {
-          source("R/functions.R")
-          source("R/classes.R")
-        })
-        message(paste0("Using ", self$config$n_cores, " cores"))
+      # PP wave optimization
+      # cost proxy per individual: total object size
+      cost <- jag_meta$osize[match(i_todo, jag_meta$ID)]
+      ord <- order(cost, decreasing = TRUE)
+      i_todo <- i_todo[ord]
+      cost <- cost[ord]
+
+      mem_budget <- self$config$mem_budget
+      core_cap   <- self$config$n_cores
+
+      waves <- list()
+      w <- integer(0)
+      wcost <- 0 
+
+      for (j in seq_along(i_todo)) {
+        if (length(w) > 0 && (wcost + cost[j] > mem_budget || length(w) >= core_cap)) {
+          waves[[length(waves) + 1]] <- w
+          w <- integer(0)
+          wcost <- 0
+        }
+        w <- c(w, i_todo[j])
+        wcost <- wcost + cost[j]
       }
-      
-      # Create model instances
-      ss_model <- step_selection_model$new()
-      pp_model <- path_propagation_model$new()
-      
-      # Main processing loop
-      max_attempts <- 10
-      for (attempt in seq_len(max_attempts)) {
-        i_todo <- setdiff(individuals_to_process, private$get_completed_ids())
-        if (length(i_todo) == 0) break
-        if (self$config$parallel) {
-          batch_config <- self$config
-          k_fit        <- self$k_fit
-          results <- foreach(i = i_todo, .export = c("batch_config", "k_fit"), 
-            .errorhandling = "pass") %dopar% {
+      if (length(w) > 0) waves[[length(waves) + 1]] <- w
+
+      message(paste0("Scheduled ", length(i_todo), " individuals in ", 
+                      length(waves), " waves"))
+
+      if (self$config$parallel) {
+        batch_config <- self$config
+        k_fit <- self$k_fit
+        for (w_i in seq_along(waves)) {
+          wave <- waves[[w_i]]
+          n_cores_wave <- min(length(wave), core_cap)
+          message(paste0("Wave ", w_i, "/", length(waves), ": ",
+                    length(wave), " individuals on ", n_cores_wave, " cores"))
+          cl <- makeCluster(n_cores_wave)
+          registerDoParallel(cl)
+          parallel::clusterEvalQ(cl, {
+            source("R/functions.R")
+            source("R/classes.R")
+          })
+          foreach(i = wave, .export = c("batch_config", "k_fit"),
+                  .errorhandling = "pass") %dopar% {
+                    ss_model <- step_selection_model$new()
+                    pp_model <- path_propagation_model$new()
+                    batch <- empirical_batch$new(batch_config, k_fit = k_fit)
+                    batch$process_individual(i, ss_model, pp_model)
+                  }
+          stopCluster(cl)           
+          message("Parallel processing complete")    
+        }
+      } else {
+          results <- list()
+          for (i in i_todo) {                    
             ss_model <- step_selection_model$new()
             pp_model <- path_propagation_model$new()
-            batch <- empirical_batch$new(batch_config, k_fit = k_fit)
-            batch$process_individual(i, ss_model, pp_model)
-          }
-        } else {
-          results <- list()
-          for (i in i_todo) {
             results[[length(results) + 1]] <- self$process_individual(i, ss_model, pp_model)
           }
-        }
-      }
-      
-      if (self$config$parallel) {
-        parallel::stopCluster(cl)
-        message("Parallel processing complete")
       }
 
       # If there are already completed results, load and combine

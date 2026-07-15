@@ -8,9 +8,9 @@ test_2dsweep    <- TRUE
 
 ## Barrier density study =======================================================
 if (test_barrier) {
-    batch <- simulation_batch$new()
+    batch            <- simulation_batch$new()
     b_density_values <- seq(0, 30, 5)
-    batch$configs <- lapply(b_density_values, function(b1) {
+    batch$configs    <- lapply(b_density_values, function(b1) {
         simulation_config$new(
             # Simulation parameters
             name            = paste0("b1_", b1),
@@ -61,8 +61,8 @@ if (test_barrier) {
 ## Autocorrelation range / observation interval study ==========================
 if (test_2dsweep) {
     batch <- simulation_batch$new()
-    r1_values           <- c(1, seq(5, 25, 5))
-    obs_interval_values <- 1:12
+    r1_values           <- c(0.01, seq(5, 35, 5))
+    obs_interval_values <- seq(0:10)
     param_grid <- expand.grid(
         r1 = r1_values, obs_interval = obs_interval_values,
         stringsAsFactors = FALSE
@@ -75,8 +75,8 @@ if (test_2dsweep) {
             # Simulation parameters
             name            = paste0("r1_", r1, "obs_", o_i),
             obs_interval    = o_i,           # Observation interval in time steps
-            n_steps         = 2000,          # Number of steps to simulate
-            n_individuals   = 30,            # Number of individuals to simulate
+            n_steps         = 1000,          # Number of steps to simulate
+            n_individuals   = 12,            # Number of individuals to simulate
             env_response = c(4, -3, 0.5, 0), # Environmental response parameters
 
             # Landscape parameters
@@ -161,3 +161,10 @@ if (FALSE) {
     dev.off()
 
 }
+
+## scratch
+
+ww <- readRDS("simulations/r1_obs_sweep_20260713_143155.rds")$results
+plot(ww$autocorr_range, ww$ll_diff_per_obs)
+abline(h = 0)
+plot(tapply(ww$ll_diff_per_obs, ww$obs_interval, mean))

@@ -5,9 +5,10 @@ set.seed(7)                 # For reproducibility
 
 fit_individuals <- 1
 test_holdout    <- 0
+parallel <- TRUE          # Whether to use parallel processing (T/F)
 
 # 1 for step selection, 2 for path propagation
-model_type <- 2
+model_type <- 1
 env_type   <- "1o" # "1o" or "2o" or "mix", env_function argument
 
 if (fit_individuals) {
@@ -27,8 +28,8 @@ if (fit_individuals) {
         holdout_frac = 0.7,       # Proportion of data to use for training
 
         # Parallel processing parameters
-        parallel = TRUE,          # Whether to use parallel processing (T/F)
-        n_cores  = 7,             # Number of cores to use if parallel
+        parallel = parallel,
+        n_cores  = 10,             # Number of cores to use if parallel
         mem_budget = 0.8 * 94e9,
 
         # Model fitting options
@@ -45,12 +46,14 @@ if (fit_individuals) {
     saveRDS(results, paste0("data/output/emp_", 
                             switch(config$model_type, "ss", "pp"), "_",
                             Sys.Date(), ".rds"))
+
+    source("~/memplot.R") # save memory use plot, only works on vasco
 }
 
 ## Holdout set evaluation ======================================================
 
 if (test_holdout) {
-
+    ## NEEDS FIXING FOR MULTIPLIERS BEFORE BEING RUN AGAIN
     res <- results_set$new(
         r_ss = "data/output/empirical_ss_qcbs_holdout.rds",
         r_pp = "data/output/empirical_pp_qcbs_holdout.rds",

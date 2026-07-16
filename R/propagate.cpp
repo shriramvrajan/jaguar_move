@@ -22,11 +22,11 @@ double path_propagation_ll_cpp(
   IntegerVector to_dest_vec,
   IntegerVector obs,
   IntegerVector outliers,
+  IntegerVector multipliers,   // time-multiplier per transition (length n_obs-1)
   NumericVector inner_dists,
   int ncell_local,
   int n_obs,
   int n_steps) {
-    
     int n_total = ncell_local * n_obs;
     int ncol_inner = nbhd_i.ncol();
     int center = ncell_local / 2;
@@ -70,7 +70,7 @@ double path_propagation_ll_cpp(
       }
     }
 
-    // 4. Propagation and likelihood (replaces propagate_cpp + log_likelihood)
+    // 4. Propagation & likelihood (replaces old propagate_cpp + log_likelihood)
     std::vector<double> current(n_total, 0.0);
     std::vector<double> next_buf(n_total, 0.0);
     for (int i = 0; i < n_obs; i++) {
@@ -84,29 +84,39 @@ double path_propagation_ll_cpp(
       }
     }
     double floor_val = 2.220446e-16;  // .Machine$double.eps in R, to avoid log(0)
-    std::vector<double> ll_per_step(n_steps, 0.0);
 
+    // Find max multiplier among valid (non-outlier, non-NA) transitions
+    int max_m = 1;
     for (int i = 0; i < n_obs - 1; i++) {
-      if (is_outlier[i] || IntegerVector::is_na(obs[i])) continue; // skip outliers and missing obs
-      int cell = obs[i] - 1; // 0-index
-      double p = current[cell + i * ncell_local];
-      ll_per_step[0] += std::log(std::max(p, floor_val));
+      if (is_outlier[i] || IntegerVector::is_na(obs[i])) continue;
+      int m_i = multipliers[i];
+      if (m_i > max_m) max_m = m_i;
+    }
+    int max_r = (n_steps - 1) / max_m;   // max base-rate that stays in range
+    std::vector<double> total_ll(max_r + 1, 0.0);  // one accumulator per candidate r
+
+    // Step 0: depth=0 for all transitions, contributes to r=0 (the SS baseline)
+    for (int i = 0; i < n_obs - 1; i++) {
+      if (is_outlier[i] || IntegerVector::is_na(obs[i])) continue;
+      double p = current[obs[i] - 1 + i * ncell_local];
+      total_ll[0] += std::log(std::max(p, floor_val));
     }
 
+    // Steps 1..n_steps-1: propagate, then credit each transition to its base-rate
     for (int step = 0; step < n_steps - 1; step++) {
       std::fill(next_buf.begin(), next_buf.end(), 0.0);
       for (int k = 0; k < n_total; k++) {
         double incoming = 0.0;
         for (int j = 0; j < ncol_inner; j++) {
-          int v = to_dest_vec[k + j * n_total]; // 1-index
-          if (IntegerVector::is_na(v)) continue; 
-          if (v < 1 || v > n_total * ncol_inner) continue;  // skip OOB obs
-          int src_flat = v - 1;  // 0-index
-          int src_row = src_flat % n_total; 
+          int v = to_dest_vec[k + j * n_total];
+          if (IntegerVector::is_na(v)) continue;
+          if (v < 1 || v > n_total * ncol_inner) continue;
+          int src_flat = v - 1;
+          int src_row = src_flat % n_total;
           int src_col = src_flat / n_total;
           incoming += current[src_row] * attract[src_row + src_col * n_total];
         }
-        next_buf[k] = incoming + bg_rate - incoming * bg_rate; // apply background rate
+        next_buf[k] = incoming + bg_rate - incoming * bg_rate;
       }
 
       for (int i = 0; i < n_obs; i++) {
@@ -118,27 +128,33 @@ double path_propagation_ll_cpp(
         if (col_sum > 0.0) {
           double inv = 1.0 / col_sum;
           for (int cell = 0; cell < ncell_local; cell++) {
-            next_buf[base + cell] *= inv; // normalize
+            next_buf[base + cell] *= inv;
           }
         }
       }
 
-      std::swap(current, next_buf); // move to next step
+      std::swap(current, next_buf);
 
+      int depth = step + 1;  // current propagation depth after this round
       for (int i = 0; i < n_obs - 1; i++) {
-        if (is_outlier[i] || IntegerVector::is_na(obs[i])) continue; // skip outliers and missing obs
-        int cell = obs[i] - 1; // 0-index
-        double p = current[cell + i * ncell_local];
-        ll_per_step[step + 1] += std::log(std::max(p, floor_val));
+        if (is_outlier[i] || IntegerVector::is_na(obs[i])) continue;
+        int m_i = multipliers[i];
+        // This transition contributes to base-rate r iff depth == r * m_i
+        if (depth % m_i == 0) {                       // depth is a multiple of m_i
+          int r = depth / m_i;                         // the base-rate this depth implies
+          if (r >= 1 && r <= max_r) {                  // within searchable range
+            double p = current[obs[i] - 1 + i * ncell_local];
+            total_ll[r] += std::log(std::max(p, floor_val));
+          }
+        }
       }
     }
 
-    double best_ll = *std::max_element(ll_per_step.begin(), ll_per_step.end());
-    return -best_ll; // return negative log-likelihood for minimization
+    double best_ll = *std::max_element(total_ll.begin(), total_ll.end());
+    return -best_ll;
   }
  
-// Function to run diagnostics for an individual, given model objects. 
-
+// Function to run diagnostics for an individual, given model objects.
 // [[Rcpp::export]]
 List path_propagation_diagnose_cpp(
   NumericVector attract_raw,
@@ -148,6 +164,7 @@ List path_propagation_diagnose_cpp(
   IntegerVector to_dest_vec,
   IntegerVector obs,
   IntegerVector outliers,
+  IntegerVector multipliers,
   NumericVector inner_dists,
   int ncell_local,
   int n_obs,
@@ -262,6 +279,37 @@ List path_propagation_diagnose_cpp(
       }
     }
     
+    // Base-rate profiling (mirrors the fitting function)
+    int max_m = 1;
+    for (int i = 0; i < n_transitions; i++) {
+      if (is_outlier[i] || IntegerVector::is_na(obs[i])) continue;
+      if (multipliers[i] > max_m) max_m = multipliers[i];
+    }
+    int max_r = (n_steps - 1) / max_m;
+    NumericVector total_ll_by_r(max_r + 1, 0.0);
+
+    // r=0: all valid transitions at step 0
+    for (int i = 0; i < n_transitions; i++) {
+      if (is_outlier[i] || IntegerVector::is_na(obs[i])) continue;
+      total_ll_by_r[0] += ll_obs_all[0 + i * n_steps];   // step 0 value
+    }
+    // r>=1: each transition at step r * m_i
+    for (int r = 1; r <= max_r; r++) {
+      for (int i = 0; i < n_transitions; i++) {
+        if (is_outlier[i] || IntegerVector::is_na(obs[i])) continue;
+        int target = r * multipliers[i];
+        if (target < n_steps) {
+          total_ll_by_r[r] += ll_obs_all[target + i * n_steps];
+        }
+      }
+    }
+
+    int best_r = 0;
+    double best_r_ll = total_ll_by_r[0];
+    for (int r = 1; r <= max_r; r++) {
+      if (total_ll_by_r[r] > best_r_ll) { best_r_ll = total_ll_by_r[r]; best_r = r; }
+    }
+    
     int best_step = 0;
     double best_ll = ll_by_step[0];
     for (int s = 1; s < n_steps; s++) {
@@ -324,9 +372,11 @@ List path_propagation_diagnose_cpp(
     p_surface.attr("dimnames") = List::create(R_NilValue, wrap(keep));
 
     return List::create(
-      Named("ll_total")   = -best_ll,
+      Named("ll_total")   = -best_r_ll,
       Named("ll_by_step") = ll_by_step,
+      Named("ll_by_baserate") = total_ll_by_r, 
       Named("best_step")  = best_step + 1,  // back to R 1-indexing
+      Named("best_r")         = best_r, 
       Named("ll_obs")     = ll_obs,
       Named("p_surface")  = p_surface
     );

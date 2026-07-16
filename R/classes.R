@@ -340,18 +340,21 @@ path_propagation_model <- R6Class("path_propagation_model",
         k_exp = k_exp, bg_rate = bg_rate, attract_raw = attract_raw,
         nbhd_i = objects$nbhd_i, to_dest_vec = as.integer(objects$to_dest_vec),
         obs = as.integer(objects$obs), outliers = as.integer(objects$outliers),
+        multipliers = as.integer(objects$multipliers),
         inner_dists = objects$inner_dists, ncell_local = as.integer(ncell_local),
         n_obs = as.integer(n_obs), n_steps = as.integer(self$propagation_steps))
     },
 
     ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, step_size, rdf, par_start, sim = FALSE, 
-                  outliers = integer(0), env_type = "1o") {
+                  outliers = integer(0), env_type = "1o", multipliers = NULL) {
       depth <- max(1, ceiling(max_dist / step_size))   # propagations needed to span max_dist
       cap   <- if (sim) depth + 1 else 9
       self$propagation_steps <- min(depth + 1, cap)     # +1: evaluate depths 0..depth inclusive
       objects <- self$prepare_objects(trajectory, max_dist, step_size, rdf, sim)
       objects$outliers <- outliers
+      if (is.null(multipliers)) multipliers <- rep(1L, length(trajectory) - 1)
+      objects$multipliers <- as.integer(multipliers)
 
       trace_log <- list()
       trace_ll <- function(par, objects, sim, lbound, ubound, env_type) {
@@ -406,7 +409,6 @@ path_propagation_model <- R6Class("path_propagation_model",
                                 sim = sim, type = env_type))
 
       # debug check
-      
       if (all(is.finite(attract_raw)) & is.finite(k_exp) & is.finite(bg_rate)) {
         print("debug check ✅")
       } else {
@@ -420,6 +422,7 @@ path_propagation_model <- R6Class("path_propagation_model",
         to_dest_vec = as.integer(objects$to_dest_vec),
         obs = as.integer(objects$obs),
         outliers = as.integer(objects$outliers),
+        multipliers = as.integer(objects$multipliers),
         inner_dists = objects$inner_dists,
         ncell_local = as.integer(ncell_local),
         n_obs = as.integer(n_obs),
@@ -1039,6 +1042,7 @@ jaguar <- R6Class("jaguar",
     track_cells = NULL,
     landscape = NULL,
     results = NULL,
+    multipliers = NULL,
     outliers = NULL,
 
     initialize = function(id = NULL, results = NULL) {
@@ -1050,9 +1054,11 @@ jaguar <- R6Class("jaguar",
       self$results <- results
 
       dt_scaled <- self$track$dt[2:length(self$track$dt)] / 
-        median(na.exclude(self$track$dt))
+                    median(na.exclude(self$track$dt))
       dt_discrete <- round(dt_scaled)
-      self$outliers <- which(dt_discrete != 1)
+      max_multiple <- 5L # lower bound for 'true' outliers
+      self$multipliers <- pmax(dt_discrete, 1L)
+      self$outliers <- which(dt_discrete < 1 | dt_discrete > max_multiple)
     },
 
     ## get_track ---------------------------------------------------------------
@@ -1264,25 +1270,29 @@ empirical_batch <- R6Class("empirical_batch",
 
       dt_scaled <- track$dt[2:length(track$dt)] / median(na.exclude(track$dt))
       dt_discrete <- round(dt_scaled)
-      outliers <- which(dt_discrete != 1)
-
+      max_multiple <- 5L # lower bound for 'true' outliers
+      multipliers <- pmax(dt_discrete, 1L)
+      outliers <- which(dt_discrete < 1 | dt_discrete > max_multiple)
       if (length(outliers) > 0) dt_discrete <- dt_discrete[-outliers]
-      
-      if (self$config$holdout_set && nrow(track) > 100) {
-        hold <- seq_len(ceiling(nrow(track) * self$config$holdout_frac))
-        if (self$config$fit_model) {
-          track_cells <- track_cells[hold]
-        } else {
-          track_cells <- track_cells[-hold]
-          outliers <- outliers[outliers > max(hold)]
-          if (length(outliers) > 0) outliers <- outliers - length(hold)
-        }
-      }
 
       # Calculate max distance for this individual
       sl_emp <- na.exclude(track$sl[-outliers])
       max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
             
+      # Holdout set mode
+      if (self$config$holdout_set && nrow(track) > 100) {
+        hold <- seq_len(ceiling(nrow(track) * self$config$holdout_frac))
+        if (self$config$fit_model) {
+          track_cells <- track_cells[hold]
+          multipliers <- multipliers[seq_len(length(hold) - 1)]
+        } else {
+          track_cells <- track_cells[-hold]
+          outliers <- outliers[outliers > max(hold)]
+          if (length(outliers) > 0) outliers <- outliers - length(hold)
+          multipliers <- multipliers[(length(hold) + 1):length(multipliers)] 
+        }
+      }
+
       # Diagnosis mode: skip fitting and return diagnostic info
       if (!is.null(diagnose_par)) {
         step_size <- diagnose_par$n_jump + 1
@@ -1293,7 +1303,8 @@ empirical_batch <- R6Class("empirical_batch",
         obj_ss$outliers <- outliers
         obj_pp <- pp_model$prepare_objects(track_cells, max_dist, step_size, 
                                           rdf = brdf)
-        obj_pp$outliers <- outliers
+        obj_pp$outliers <- as.integer(outliers)
+        obj_pp$multipliers <- as.integer(multipliers)
 
         return(list(
           ss = ss_model$diagnose(diagnose_par$ss, obj_ss, env_type = env_type),
@@ -1330,7 +1341,8 @@ empirical_batch <- R6Class("empirical_batch",
           message(paste0("n_jump = ", n_j, ", steps = ", pp_model$propagation_steps))
           res <- pp_model$fit(track_cells, max_dist, rdf = brdf, 
             par_start = par_start, outliers = outliers, step_size = n_j + 1,
-            env_type = self$config$env_type)
+            env_type = self$config$env_type, multipliers = multipliers)
+          if (!is.na(res[1])) par_start <<- res$par # warm start next radius
           if (!is.na(res[1]) && res$ll < checkpoint$best_ll) {
             checkpoint$best_ll <<- res$ll
             checkpoint$best_result <<- res

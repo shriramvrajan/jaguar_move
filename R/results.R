@@ -7,8 +7,8 @@ Rcpp::sourceCpp("R/propagate.cpp")
 
 ## Data and functions ==========================================================
 
-r1 <- results_set$new(r_ss = "data/output/emp_ss_2026-07-10.rds", 
-                      r_pp = "data/output/emp_pp_2026-07-14.rds", env_type = "1o")
+r1 <- results_set$new(r_ss = "data/output/emp_ss_2026-07-16.rds", 
+                      r_pp = "data/output/emp_pp_2026-07-16.rds", env_type = "1o")
 res0 <- r1$res_table
 res0 <- res0[which(!is.na(res0$pp_aic)), ]
 res <- merge(res0, jag_meta, by = c("ID", "biome"))

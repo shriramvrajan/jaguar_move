@@ -13,6 +13,11 @@ env_type   <- "1o" # "1o" or "2o" or "mix", env_function argument
 
 if (fit_individuals) {
     files <- list.files("data/output", pattern = "out_\\d+\\.rds")
+    # this object is currently generated in results.R, find a better place for it
+    k_fit <- readRDS("data/output/k_fitted_start_values.rds")
+    ss_warm <- switch(env_type, "1o" = readRDS("data/output/emp_ss_1o.rds"),
+                                "2p" = NULL)
+
     config <- list(   
         # Model parameters (npar = number of parameters)
         model_type        = model_type,
@@ -37,9 +42,7 @@ if (fit_individuals) {
         # model_calcnull = FALSE    # Whether to calculate null model likelihood (T/F)
     )
 
-    # this object is currently generated in results.R, find a better place for it
-    k_fit <- readRDS("data/output/k_fitted_start_values.rds")
-    batch <- empirical_batch$new(config, k_fit = k_fit)
+    batch <- empirical_batch$new(config, k_fit = k_fit, ss_warm_par = ss_warm)
     results <- batch$run_all()
 
     message("Saving results...")

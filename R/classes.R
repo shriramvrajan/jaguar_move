@@ -1158,11 +1158,13 @@ empirical_batch <- R6Class("empirical_batch",
   public = list(
     config = NULL,
     k_fit = NULL,
+    ss_warm_par = NULL,
     results = list(),
 
-    initialize = function(config, k_fit) {
+    initialize = function(config, k_fit, ss_warm_par) {
       self$config <- config
       self$k_fit  <- k_fit
+      self$ss_warm_par <- ss_warm_par
     },
 
     ## run_all -----------------------------------------------------------------
@@ -1214,6 +1216,7 @@ empirical_batch <- R6Class("empirical_batch",
       if (self$config$parallel) {
         batch_config <- self$config
         k_fit <- self$k_fit
+        ss_warm <- self$ss_warm
         for (w_i in seq_along(waves)) {
           wave <- waves[[w_i]]
           n_cores_wave <- min(length(wave), core_cap)
@@ -1225,11 +1228,12 @@ empirical_batch <- R6Class("empirical_batch",
             source("R/functions.R")
             source("R/classes.R")
           })
-          foreach(i = wave, .export = c("batch_config", "k_fit"),
+          foreach(i = wave, .export = c("batch_config", "k_fit", "ss_warm"),
                   .errorhandling = "pass") %dopar% {
                     ss_model <- step_selection_model$new()
                     pp_model <- path_propagation_model$new()
-                    batch <- empirical_batch$new(batch_config, k_fit = k_fit)
+                    batch <- empirical_batch$new(batch_config, 
+                                               k_fit = k_fit, ss_warm = ss_warm)
                     batch$process_individual(i, ss_model, pp_model)
                   }
           stopCluster(cl)           
@@ -1313,9 +1317,15 @@ empirical_batch <- R6Class("empirical_batch",
       }
 
       # Starting parameters
-      par_start <- c(rnorm(self$config$npar - 2, sd = 0.1), # environmental vars
-                    log(self$k_fit$k[which(self$k_fit$id == i)]),      # k_exp 
-                    -15)                           # bg_rate ~ 0  
+      ss_i <- self$ss_warm[[which(jag_id$jag_id == i)]] 
+      if (is.list(ss_i) && length(ss_i$par) == self$config$npar) {
+        par_start <- ss_i$par
+        message("Warm starting from step selection fit")
+      } else {
+        par_start <- c(rnorm(self$config$npar - 2, sd = 0.1), # environmental vars
+                      log(self$k_fit$k[which(self$k_fit$id == i)]),      # k_exp 
+                      -15)                           # bg_rate ~ 0  
+      }
 
       # Fit models based on config
       if (self$config$model_type == 1) {

@@ -5,7 +5,7 @@ set.seed(7)                 # For reproducibility
 
 fit_individuals <- 1
 test_holdout    <- 0
-parallel <- FALSE          # Whether to use parallel processing (T/F)
+parallel        <- 0   # Whether to use parallel processing
 
 # 1 for step selection, 2 for path propagation
 model_type <- 1
@@ -25,7 +25,7 @@ if (fit_individuals) {
         npar              = switch(env_type, "1o" = 9, "2o" = 15, "mix" = 10), 
 
         # NULL = all individuals, or vector of specific IDs
-        individuals       = NULL, 
+        individuals       = jag_id$jag_id[1:3], 
         # individuals       = as.numeric(gsub("\\D", "", files)), # Save existing results
 
         # Holdout set parameters

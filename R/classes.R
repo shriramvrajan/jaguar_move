@@ -62,11 +62,13 @@ step_selection_model <- R6Class("step_selection_model",
       })
 
       if (sim) {
-        env_table <- scale(rdf[unique(nbhd_ss), 1, drop = FALSE])
+        unique_env <- na.exclude(unique(as.vector(nbhd_ss)))
+        env_table <- scale(rdf[unique_env, 1, drop = FALSE])
         env_ss <- as.vector(env_table)
         names(env_ss) <- row.names(env_table)
       } else {
-        env_ss <- scale(rdf[unique(nbhd_ss), ])
+        unique_env <- na.exclude(unique(as.vector(nbhd_ss)))
+        env_ss <- scale(rdf[unique_env, ])
       }
       if (any(is.na(env_ss))) env_ss[which(is.na(env_ss))] <- 0
 
@@ -350,13 +352,23 @@ path_propagation_model <- R6Class("path_propagation_model",
     ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, step_size, rdf, par_start, sim = FALSE, 
                   outliers = integer(0), env_type = "1o", multipliers = NULL) {
-      depth <- max(1, ceiling(max_dist / step_size))   # propagations needed to span max_dist
-      cap   <- if (sim) depth + 1 else 9
-      self$propagation_steps <- min(depth + 1, cap)     # +1: evaluate depths 0..depth inclusive
+      if (is.null(multipliers)) multipliers <- rep(1, length(trajectory) - 1)
+      multipliers <- as.integer(multipliers)
+      valid_m <- setdiff(seq_along(multipliers), outliers)
+      max_m   <- if (length(valid_m) > 0) max(multipliers[valid_m]) else 1
+
+      if (step_size * max_m > max_dist) {
+        message(paste0("step_size ", step_size, " x max multiplier ", max_m,
+                       " exceeds max_dist ", max_dist, "; skipping."))
+        return(NULL)
+      }
+      depth <- max(1, ceiling(max_dist / step_size))
+      cap <- if (sim) depth + 1 else 9
+      self$propagation_steps <- min(depth + 1, cap)
+
       objects <- self$prepare_objects(trajectory, max_dist, step_size, rdf, sim)
-      objects$outliers <- outliers
-      if (is.null(multipliers)) multipliers <- rep(1L, length(trajectory) - 1)
-      objects$multipliers <- as.integer(multipliers)
+      objects$outliers    <- outliers
+      objects$multipliers <- multipliers
 
       trace_log <- list()
       trace_ll <- function(par, objects, sim, lbound, ubound, env_type) {
@@ -1046,8 +1058,11 @@ jaguar <- R6Class("jaguar",
     results = NULL,
     multipliers = NULL,
     outliers = NULL,
+    max_dist = NULL,
+    max_multiple = NULL,
 
-    initialize = function(id = NULL, results = NULL) {
+    initialize = function(id = NULL, results = NULL, max_multiple = 1) {
+      self$max_multiple <- max_multiple
       self$id <- as.numeric(id)
       self$track <- self$get_track()
       self$track_cells <- cellFromXY(brazil_ras, 
@@ -1058,9 +1073,13 @@ jaguar <- R6Class("jaguar",
       dt_scaled <- self$track$dt[2:length(self$track$dt)] / 
                     median(na.exclude(self$track$dt))
       dt_discrete <- round(dt_scaled)
-      max_multiple <- 5L # lower bound for 'true' outliers
+      max_multiple <- self$max_multiple # lower bound for 'true' outliers
       self$multipliers <- pmax(dt_discrete, 1L)
       self$outliers <- which(dt_discrete < 1 | dt_discrete > max_multiple)
+
+      sl_all <- self$track$sl
+      sl_emp <- na.exclude(if (length(self$outliers)) sl_all[-self$outliers] else sl_all)
+      self$max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
     },
 
     ## get_track ---------------------------------------------------------------
@@ -1110,13 +1129,71 @@ jaguar <- R6Class("jaguar",
       return(list(raster = brazil_ras_crop, dataframe = brazil_ras_crop_df))
     },
 
+    # eval_ss ------------------------------------------------------------------
     eval_ss = function(par, env_type = "1o") {
-      sl_emp   <- na.exclude(self$track$sl[-(self$outliers)])
-      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
       ss <- step_selection_model$new()
-      obj <- ss$prepare_objects(self$track_cells, max_dist, rdf = brdf)
+      obj <- ss$prepare_objects(self$track_cells, self$max_dist, rdf = brdf)
       obj$outliers <- self$outliers
       ss$diagnose(par, obj, env_type = env_type)
+    },
+
+    # eval_pp ------------------------------------------------------------------
+    # Use case 2: evaluate LL at given parameters
+    eval_pp = function(par, n_jump, env_type = "1o") {
+      if (n_jump == "max") n_jump = self$max_dist - 1
+      setup <- self$pp_objects(n_jump, env_type)
+      if (is.null(setup)) stop("n_jump too coarse to resolve the multipliers.")
+      ll  <- setup$model$log_likelihood(par, setup$objects, sim = FALSE, env_type = env_type)
+      return(setup$model$diagnose(par, setup$objects, env_type = env_type))
+    },
+
+    # fit_ss --------------------------------------------------------------
+    fit_ss = function(par_start, env_type = "1o", clamp = Inf) {
+      env_idx <- seq_len(length(par_start) - 2)
+      par_start[env_idx] <- pmin(pmax(par_start[env_idx], -clamp), clamp)
+
+      ss  <- step_selection_model$new()
+      res <- ss$fit(self$track_cells, self$max_dist, rdf = brdf,
+                    par_start = par_start, outliers = self$outliers,
+                    env_type = env_type)
+      if (length(res) == 1 && is.na(res[1])) return(NULL)
+      res
+    },
+    
+    # fit_pp -------------------------------------------------------------------
+    # Use case 1: fit PP with n_jump
+    fit_pp = function(par_start, env_type = "1o", max_jump = NULL, 
+                      n_jump = NULL, clamp = 2) {
+      max_dist <- self$max_dist
+      if (is.null(max_jump)) max_jump <- min(max_dist - 1, 8)
+      print(max_jump)
+
+      env_idx <- seq_len(length(par_start) - 2)
+      par_start[env_idx] <- pmin(pmax(par_start[env_idx], -clamp), clamp)
+
+      best <- list(result = NULL, ll = Inf, n_jump = 0)
+      worse_count <- 0
+
+      for (n_j in 0:max_jump) {
+        if (worse_count > 2) break
+        if (!is.null(n_jump) && n_jump != n_j) next
+        message(paste0("n_jump = ", n_j))
+        pp <- path_propagation_model$new()
+        res <- pp$fit(self$track_cells, max_dist, rdf = brdf,
+          par_start = par_start, outliers = self$outliers,
+          step_size = n_j + 1, env_type = env_type,
+          multipliers = self$multipliers)
+        if (is.null(res) || (length(res) == 1 && is.na(res[1]))) next
+        par_start <- res$par                             # warm-start next n_j
+        if (res$ll < best$ll) {
+          best <- list(result = res, ll = res$ll, n_jump = n_j)
+          worse_count <- 0
+        } else {
+          worse_count <- worse_count + 1
+        }
+      }
+      best$result$n_jump <- best$n_jump
+      return(best$result)
     },
 
     # pp_objects ---------------------------------------------------------------
@@ -1124,9 +1201,7 @@ jaguar <- R6Class("jaguar",
       tc   <- self$track_cells
       out  <- self$outliers
       mult <- self$multipliers
-
-      sl_emp   <- na.exclude(self$track$sl[-(out)])
-      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+      max_dist <- self$max_dist
 
       if (!is.null(holdout_frac)) {
         hold <- seq_len(ceiling(length(tc) * holdout_frac))
@@ -1142,60 +1217,22 @@ jaguar <- R6Class("jaguar",
 
       step_size <- n_jump + 1
       pp <- path_propagation_model$new()
-      pp$propagation_steps <- min(max(1, ceiling(max_dist / step_size)) + 1, 9)
+      valid <- which(!(seq_along(mult) %in% out))
+      max_m <- if (length(valid) > 0) max(mult[valid]) else 1L
+      if (step_size * max_m > max_dist) return(NULL)
+      depth <- max(1, ceiling(max_dist / step_size))
+      pp$propagation_steps <- min(depth + 1, 9)
       obj <- pp$prepare_objects(tc, max_dist, step_size, rdf = brdf)
       obj$outliers    <- as.integer(out)
       obj$multipliers <- as.integer(mult)
       list(model = pp, objects = obj, max_dist = max_dist)
     },
 
-    # fit_pp -------------------------------------------------------------------
-    # Use case 1: fit PP with n_jump
-    fit_pp = function(par_start, env_type = "1o", max_jump = NULL, clamp = 2) {
-      sl_emp   <- na.exclude(self$track$sl[-(self$outliers)])
-      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
-      if (is.null(max_jump)) max_jump <- min(max_dist - 1, 8)
-
-      env_idx <- seq_len(length(par_start) - 2)
-      par_start[env_idx] <- pmin(pmax(par_start[env_idx], -clamp), clamp)
-
-      best <- list(result = NULL, ll = Inf, n_jump = 0)
-      worse_count <- 0
-
-      for (n_j in 0:max_jump) {
-        if (worse_count > 2) break
-        message(paste0("n_jump = ", n_j))
-        setup <- self$pp_objects(n_j, env_type)
-        res <- setup$model$fit(self$track_cells, max_dist, rdf = brdf,
-          par_start = par_start, outliers = self$outliers,
-          step_size = n_j + 1, env_type = env_type,
-          multipliers = self$multipliers)
-        if (!is.na(res[1])) par_start <- res$par        # warm-start next n_j
-        if (!is.na(res[1]) && res$ll < best$ll) {
-          best <- list(result = res, ll = res$ll, n_jump = n_j)
-          worse_count <- 0
-        } else {
-          worse_count <- worse_count + 1
-        }
-      }
-      best$result$n_jump <- best$n_jump
-      return(best$result)
-    },
-
-    # eval_pp ------------------------------------------------------------------
-    # Use case 2: evaluate LL at given parameters
-    eval_pp = function(par, n_jump, env_type = "1o") {
-      setup <- self$pp_objects(n_jump, env_type)
-      ll  <- setup$model$log_likelihood(par, setup$objects, sim = FALSE, env_type = env_type)
-      return(setup$model$diagnose(par, setup$objects, env_type = env_type))
-    },
-
     # holdout_pp ---------------------------------------------------------------
     # Use case 3: holdout analysis
     holdout_pp = function(par_start, env_type = "1o", frac = 0.7, max_jump = NULL,
                           clamp = 2) {
-      sl_emp   <- na.exclude(self$track$sl[-(self$outliers)])
-      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+      max_dist <- self$max_dist
       if (is.null(max_jump)) max_jump <- min(max_dist - 1, 8)
 
       env_idx <- seq_len(length(par_start) - 2)
@@ -1252,8 +1289,7 @@ jaguar <- R6Class("jaguar",
     calculate_null_ll = function() {
       sl     <- self$track$sl
       ocheck <- length(self$outliers) >= 1
-      sl_emp <- if (ocheck) na.exclude(sl[-self$outliers]) else na.exclude(sl)
-      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+      max_dist <- self$max_dist
 
       fit <- distance_model$new()$fit(
         self$track_cells, max_dist, rdf = brdf, outliers = self$outliers)
@@ -1272,8 +1308,7 @@ jaguar <- R6Class("jaguar",
     ## calculate_limit_case_ll -------------------------------------------------
     calculate_limit_case_ll = function() {
       ocheck <- length(self$outliers) >= 1
-      sl_emp <- if (ocheck) na.exclude(sl[-self$outliers]) else na.exclude(sl)
-      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+      max_dist <- self$max_dist
       ## ... incomplete
     },
 
@@ -1284,11 +1319,12 @@ jaguar <- R6Class("jaguar",
       
       dt_scaled <- track$dt[2:length(track$dt)] / median(na.exclude(track$dt))
       dt_discrete <- round(dt_scaled)
-      max_multiple <- 5L
+      max_multiple <- self$max_multiple
       multipliers <- pmax(dt_discrete, 1L)
       outliers <- which(dt_discrete < 1 | dt_discrete > max_multiple)
       
-      sl_emp <- na.exclude(track$sl[-outliers])
+      sl_all <- self$track$sl
+      sl_emp <- na.exclude(if (length(self$outliers)) sl_all[-self$outliers] else sl_all)
       max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
       
       step_size <- n_jump + 1
@@ -1431,12 +1467,11 @@ empirical_batch <- R6Class("empirical_batch",
       track_cells <- jag$track_cells
       outliers    <- jag$outliers
       multipliers <- jag$multipliers
-      sl_emp <- na.exclude(track$sl[-outliers])
-      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+      max_dist    <- jag$max_dist
             
       # Holdout set mode
-      if (self$config$holdout_set && nrow(track) > 100) {
-        hold <- seq_len(ceiling(nrow(track) * self$config$holdout_frac))
+      if (self$config$holdout_set && nrow(jag$track) > 100) {
+        hold <- seq_len(ceiling(nrow(jag$track) * self$config$holdout_frac))
         if (self$config$fit_model) {
           track_cells <- track_cells[hold]
           multipliers <- multipliers[seq_len(length(hold) - 1)]

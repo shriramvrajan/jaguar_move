@@ -159,8 +159,10 @@ apply_kernel <- function(attract0, kernel, bg_rate = 0) {
   attract0[na_mask] <- 0
   if (is.null(nrow(attract0))) {
     p <- attract0 * kernel
+    p <- p / rowSums(p, na.rm = TRUE)
   } else {
     p <- attract0 * rep(kernel, each = nrow(attract0))
+    p <- p / rowSums(p, na.rm = TRUE)
   }
   p <- p + bg_rate - p * bg_rate
   p <- p / rowSums(p, na.rm = TRUE)

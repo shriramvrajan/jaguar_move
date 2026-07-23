@@ -62,7 +62,7 @@ double path_propagation_ll_cpp(
         attract[row + col * n_total] = val; 
         row_sum += val;
       }
-      if (row_sum > 0.0) {
+      if (std::isfinite(row_sum) && row_sum > 0.0) {
         double inv = 1.0 / row_sum;
         for (int col = 0; col < ncol_inner; col++) {
           attract[row + col * n_total] *= inv; // normalize
@@ -125,7 +125,7 @@ double path_propagation_ll_cpp(
         for (int cell = 0; cell < ncell_local; cell++) {
           col_sum += next_buf[base + cell];
         }
-        if (col_sum > 0.0) {
+        if (std::isfinite(col_sum) && col_sum > 0.0) {
           double inv = 1.0 / col_sum;
           for (int cell = 0; cell < ncell_local; cell++) {
             next_buf[base + cell] *= inv;
@@ -205,7 +205,7 @@ List path_propagation_diagnose_cpp(
         attract[row + col * n_total] = val;
         row_sum += val;
       }
-      if (row_sum > 0.0) {
+      if (std::isfinite(row_sum) && row_sum > 0.0) {
         double inv = 1.0 / row_sum;
         for (int col = 0; col < ncol_inner; col++) {
           attract[row + col * n_total] *= inv;
@@ -262,7 +262,7 @@ List path_propagation_diagnose_cpp(
         double col_sum = 0.0;
         int base = i * ncell_local;
         for (int cell = 0; cell < ncell_local; cell++) col_sum += next_buf[base + cell];
-        if (col_sum > 0.0) {
+        if (std::isfinite(col_sum) && col_sum > 0.0) {
           double inv = 1.0 / col_sum;
           for (int cell = 0; cell < ncell_local; cell++) next_buf[base + cell] *= inv;
         }
@@ -316,26 +316,44 @@ List path_propagation_diagnose_cpp(
       if (ll_by_step[s] > best_ll) { best_ll = ll_by_step[s]; best_step = s; }
     }
 
-    // Extract per-obs quantities at best step
+    // Per-transition evaluation depth implied by the chosen base rate
+    std::vector<int> eval_depth(n_transitions, 0);
+    for (int i = 0; i < n_transitions; i++) eval_depth[i] = best_r * multipliers[i];
+
+    // Per-obs log-likelihoods, read at each transition's own depth
     std::vector<double> ll_vals;
     std::vector<int> keep;
     for (int i = 0; i < n_transitions; i++) {
       if (is_outlier[i]) continue;
       keep.push_back(i + 1);
-      ll_vals.push_back(IntegerVector::is_na(obs[i]) ?
-                          NA_REAL : ll_obs_all[best_step + i * n_steps]);
+      int d = eval_depth[i];
+      bool bad = IntegerVector::is_na(obs[i]) || d >= n_steps;
+      ll_vals.push_back(bad ? NA_REAL : ll_obs_all[d + i * n_steps]);
     }
     int n_keep = (int) keep.size();
     NumericVector ll_obs(ll_vals.begin(), ll_vals.end());
     ll_obs.attr("names") = wrap(keep);
 
-    // Snapshot the full surface at best step — but we need to re-run to that step.
-    // Re-propagate to best_step:
-    std::fill(current.begin(), current.end(), 0.0);
-    for (int i = 0; i < n_obs; i++) {
-      current[center + i * ncell_local] = 1.0;
+    // Surfaces: re-propagate once, harvesting each column at its own depth
+    NumericMatrix p_surface(ncell_local, n_keep);
+    int max_depth = 0;
+    for (int c = 0; c < n_keep; c++) {
+      int d = eval_depth[keep[c] - 1];
+      if (d > max_depth) max_depth = d;
     }
-    for (int step = 0; step < best_step; step++) {
+    if (max_depth > n_steps - 1) max_depth = n_steps - 1;
+
+    std::fill(current.begin(), current.end(), 0.0);
+    for (int i = 0; i < n_obs; i++) current[center + i * ncell_local] = 1.0;
+
+    for (int c = 0; c < n_keep; c++) {          // depth 0 (only if best_r == 0)
+      int i = keep[c] - 1;
+      if (eval_depth[i] != 0) continue;
+      for (int cell = 0; cell < ncell_local; cell++)
+        p_surface(cell, c) = current[cell + i * ncell_local];
+    }
+
+    for (int step = 0; step < max_depth; step++) {
       std::fill(next_buf.begin(), next_buf.end(), 0.0);
       for (int k = 0; k < n_total; k++) {
         double incoming = 0.0;
@@ -344,8 +362,8 @@ List path_propagation_diagnose_cpp(
           if (IntegerVector::is_na(v)) continue;
           if (v < 1 || v > n_total * ncol_inner) continue;
           int src_flat = v - 1;
-          int src_row = src_flat % n_total;
-          int src_col = src_flat / n_total;
+          int src_row  = src_flat % n_total;
+          int src_col  = src_flat / n_total;
           incoming += current[src_row] * attract[src_row + src_col * n_total];
         }
         next_buf[k] = incoming + bg_rate - incoming * bg_rate;
@@ -354,20 +372,20 @@ List path_propagation_diagnose_cpp(
         double col_sum = 0.0;
         int base = i * ncell_local;
         for (int cell = 0; cell < ncell_local; cell++) col_sum += next_buf[base + cell];
-        if (col_sum > 0.0) {
+        if (std::isfinite(col_sum) && col_sum > 0.0) {
           double inv = 1.0 / col_sum;
           for (int cell = 0; cell < ncell_local; cell++) next_buf[base + cell] *= inv;
         }
       }
       std::swap(current, next_buf);
-    }
 
-    // Now "current" holds the surface at best_step; subset to kept columns
-    NumericMatrix p_surface(ncell_local, n_keep);
-    for (int c = 0; c < n_keep; c++) {
-      int i = keep[c] - 1;
-      for (int cell = 0; cell < ncell_local; cell++)
-        p_surface(cell, c) = current[cell + i * ncell_local];
+      int depth = step + 1;
+      for (int c = 0; c < n_keep; c++) {
+        int i = keep[c] - 1;
+        if (eval_depth[i] != depth) continue;
+        for (int cell = 0; cell < ncell_local; cell++)
+          p_surface(cell, c) = current[cell + i * ncell_local];
+      }
     }
     p_surface.attr("dimnames") = List::create(R_NilValue, wrap(keep));
 
@@ -377,6 +395,7 @@ List path_propagation_diagnose_cpp(
       Named("ll_by_baserate") = total_ll_by_r, 
       Named("best_step")  = best_step + 1,  // back to R 1-indexing
       Named("best_r")         = best_r, 
+      Named("eval_depth") = wrap(eval_depth),
       Named("ll_obs")     = ll_obs,
       Named("p_surface")  = p_surface
     );

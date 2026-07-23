@@ -7,19 +7,22 @@ Rcpp::sourceCpp("R/propagate.cpp")
 
 ## Data and functions ==========================================================
 
-r1 <- results_set$new(r_ss = "data/output/emp_ss_2026-07-16.rds", 
-                      r_pp = "data/output/emp_pp_2026-07-16.rds", env_type = "1o")
+r1 <- results_set$new(r_ss = "data/output/emp_ss_1o.rds", 
+                      r_pp = "data/output/emp_pp_2026-07-17.rds", env_type = "1o")
 res0 <- r1$res_table
 res0 <- res0[which(!is.na(res0$pp_aic)), ]
 res <- merge(res0, jag_meta, by = c("ID", "biome"))
 
 ## ouuuaoo
-jdt <- lapply(jag_meta$ID, function(i) jaguar$new(i)$track$dt)
-names(jdt) <- jag_meta$ID
-par(mfrow = c(3, 3))
-for (id in names(jdt)) {
-  hist(jdt[[id]], 100, col = "black", main = id, border = NA)
-}
+# jdt <- lapply(jag_meta$ID, function(i) jaguar$new(i)$track$dt)
+# names(jdt) <- jag_meta$ID
+# par(mfrow = c(3, 3))
+# for (id in names(jdt)) {
+#   hist(jdt[[id]], 100, col = "black", main = id, border = NA)
+# }
+# jag <- jaguar$new(114)
+# b   <- jag$benchmark()
+# system.time(b$pp$log_likelihood(rnorm(9), b$objects, sim = FALSE))
 
 ## Aggregate analysis ==========================================================
 
@@ -90,9 +93,9 @@ cor(res$nmove, h$nll_ss - h$nll_pp, use = "pairwise.complete.obs")
 
 ## Individual analysis =========================================================
 
-ll_compare <- function(id, env_type = "2o") {
+ll_compare <- function(id, env_type = "1o") {
     j_i <- jaguar$new(id = id, results = res[res$ID == id, ])
-    track <- j_i$get_track()[, c("longitude", "latitude")]
+    track <- j_i$track[, c("longitude", "latitude")]
     cells <- j_i$track_cells
     land <- j_i$get_landscape()
     sl_emp   <- na.exclude(j_i$get_track()$sl)
@@ -132,6 +135,17 @@ ll_compare <- function(id, env_type = "2o") {
     return(sim)
 }
 
+bb <- ll_compare(58)
+
+id <- 117
+jj <- jaguar$new(id, results = res[res$ID == id, ])
+ppnew <- jj$results[, paste0("pp_par", seq_len(9))] %>% as.numeric
+ppnew[9] <- -5
+ll <- jj$calculate_ll("1o")
+ll2 <- jj$calculate_ll(env_type = "1o", par_pp = ppnew)
+plot(ll2$ss$ll_obs, ll2$pp$ll_obs)
+abline(0, 1)
+
 # ind <- c(12, 22, 50, 54, 99, 117)
 # diag <- list()
 # for (i in ind) {
@@ -144,10 +158,6 @@ ll_compare <- function(id, env_type = "2o") {
 #     gc()
 # } 
 # saveRDS(diag, "data/output/diagnostics.rds")
-
-# id <- 62
-
-bb <- ll_compare(62)
 
 ## Grain? ======================================================================
 

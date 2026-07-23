@@ -5,7 +5,7 @@ set.seed(7)                 # For reproducibility
 
 fit_individuals <- 1
 test_holdout    <- 0
-parallel <- TRUE          # Whether to use parallel processing (T/F)
+parallel <- FALSE          # Whether to use parallel processing (T/F)
 
 # 1 for step selection, 2 for path propagation
 model_type <- 1
@@ -16,7 +16,7 @@ if (fit_individuals) {
     # this object is currently generated in results.R, find a better place for it
     k_fit <- readRDS("data/output/k_fitted_start_values.rds")
     ss_warm <- switch(env_type, "1o" = readRDS("data/output/emp_ss_1o.rds"),
-                                "2p" = NULL)
+                                "2o" = NULL)
 
     config <- list(   
         # Model parameters (npar = number of parameters)
@@ -29,13 +29,13 @@ if (fit_individuals) {
         # individuals       = as.numeric(gsub("\\D", "", files)), # Save existing results
 
         # Holdout set parameters
-        holdout_set  = FALSE,     # Whether to reserve holdout set (T/F)
-        holdout_frac = 0.7,       # Proportion of data to use for training
+        holdout_set  = TRUE,     # Whether to reserve holdout set (T/F)
+        holdout_frac = 0.6,       # Proportion of data to use for training
 
         # Parallel processing parameters
         parallel = parallel,
-        n_cores  = 10,             # Number of cores to use if parallel
-        mem_budget = 0.8 * 94e9,
+        n_cores  = 20,             # Number of cores to use if parallel
+        mem_budget = 0.75 * 94e9,
 
         # Model fitting options
         fit_model      = TRUE    # Whether to fit the model (T/F)

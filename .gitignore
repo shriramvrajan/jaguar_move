@@ -10,6 +10,7 @@ docs/*
 data/*
 figs/*
 gis/*
+tmp/*
 simulations/*
 c1_writing/*
 .vscode/*

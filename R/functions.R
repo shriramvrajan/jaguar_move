@@ -70,7 +70,7 @@ raster_to_df <- function(r) {
 }
 
 # Plot to pdf
-with_pdf <- function(path, expr, x = 5, y = 5) {
+plot_pdf <- function(path, expr, x = 5, y = 5) {
   cairo_pdf(filename = path, width = x, height = y)
   on.exit(dev.off())
   force(expr)
@@ -168,7 +168,7 @@ apply_kernel <- function(attract0, kernel, bg_rate = 0) {
   return(p)
 }
 
-pointwise_env <- function(par, cells, rdf, scale_from = NULL, env_type = "2o") {
+pointwise_env <- function(par, cells, rdf, scale_from = NULL, env_type = "1o") {
   # scale_from: cells used for fitting, to replicate scaling
   ref <- if (!is.null(scale_from)) scale_from else cells
   env_scaled <- scale(rdf[cells, 1:6],
@@ -255,7 +255,7 @@ gen_landscape <- function(size = 100, beta = 1, s = 0.03, r = 10, n = 0,
       }
     }
 
-    with_pdf(path = "figs/current_landscape.pdf", expr = "terra::plot(out)")
+    plot_pdf(path = "figs/current_landscape.pdf", expr = "terra::plot(out)")
     return(out)
 }
 
@@ -519,7 +519,7 @@ map_track <- function(i, grad = 20, type = 2, file = FALSE) {
     path <- sp::SpatialPoints(coords = moves[, 3:4], sp::CRS("+init=epsg:4326"))
     # path2 <- as.data.frame(sp::spTransform(path, OpenStreetMap::osm()))
 
-    if (file) plot_pdf(nm = "track.pdf", x = 8, y = 4)
+    if (file) plot_pdf(path = "track.pdf", x = 8, y = 4)
     if (type == 1) {
         bboxgg <- bbox[c(1, 3, 2, 4)]
         names(bboxgg) <- c("left", "bottom", "right", "top")

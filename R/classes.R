@@ -3,7 +3,7 @@ library(R6)
 
 ## Models ======================================================================
 
-# Distance decay only model 
+# Distance decay kernel model - no habitat selection, no path dependence
 distance_model <- R6Class("distance_model",
   public = list(
     prepare_objects = function(trajectory, max_dist, rdf) {
@@ -39,12 +39,13 @@ distance_model <- R6Class("distance_model",
     )
   )
 
-# Step selection model class --- to be merged with path propagation model!!
-#  $prepare_objects() - prepare data structures for fitting
-#  $build_kernel()    - build the dispersal kernel and calculate attraction
-#  $dispersal_from()  - simulate dispersal from a starting point
-#  $log_likelihood()  - calculate log-likelihood of observed steps
-#  $fit()             - fit the model to a trajectory
+# Step selection model class 
+# Distance kernel model with habitat selection added, but no path dependence.
+#  prepare_objects() - prepare data structures for fitting
+#  build_kernel()    - build dispersal kernel and calculate attraction
+#  log_likelihood()  - calculate log-likelihood of observed steps
+#  fit()             - fit the model to a trajectory
+#  diagnose()        - more informative output for debugging
 step_selection_model <- R6Class("step_selection_model",
   public = list(  
     ## prepare_objects ---------------------------------------------------------
@@ -179,11 +180,12 @@ step_selection_model <- R6Class("step_selection_model",
 )
 
 # Path propagation model class
-#   $prepare_objects() - prepare data structures for fitting
-#   $build_kernel()    - build the dispersal kernel 
-#   $dispersal_from()  - simulate dispersal from a starting point
-#   $log_likelihood()  - calculate log-likelihood of observed path
-#   $fit()             - fit the model to a trajectory
+#   prepare_objects() - prepare data structures for fitting
+#   build_kernel()    - build the dispersal kernel 
+#   log_likelihood()  - calculate log-likelihood of observed path
+#   fit()             - fit the model to a trajectory
+#   diagnose()
+#   dispersal_from()  - simulate dispersal from a starting point
 path_propagation_model <- R6Class("path_propagation_model",
   public = list(
     propagation_steps = NULL,  # Should be set externally
@@ -1051,7 +1053,7 @@ jaguar <- R6Class("jaguar",
       self$track_cells <- cellFromXY(brazil_ras, 
                           self$track[, c("longitude", "latitude")])
       self$landscape <- self$get_landscape()
-      self$results <- results
+      self$results <- as.data.frame(results)
 
       dt_scaled <- self$track$dt[2:length(self$track$dt)] / 
                     median(na.exclude(self$track$dt))
@@ -1108,31 +1110,149 @@ jaguar <- R6Class("jaguar",
       return(list(raster = brazil_ras_crop, dataframe = brazil_ras_crop_df))
     },
 
+    eval_ss = function(par, env_type = "1o") {
+      sl_emp   <- na.exclude(self$track$sl[-(self$outliers)])
+      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+      ss <- step_selection_model$new()
+      obj <- ss$prepare_objects(self$track_cells, max_dist, rdf = brdf)
+      obj$outliers <- self$outliers
+      ss$diagnose(par, obj, env_type = env_type)
+    },
+
+    # pp_objects ---------------------------------------------------------------
+    pp_objects = function(n_jump, env_type = "1o", holdout_frac = NULL, training = TRUE) {
+      tc   <- self$track_cells
+      out  <- self$outliers
+      mult <- self$multipliers
+
+      sl_emp   <- na.exclude(self$track$sl[-(out)])
+      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+
+      if (!is.null(holdout_frac)) {
+        hold <- seq_len(ceiling(length(tc) * holdout_frac))
+        if (training) {
+          tc   <- tc[hold]
+          mult <- mult[seq_len(length(hold) - 1)]
+        } else {
+          tc   <- tc[-hold]
+          out  <- out[out > max(hold)] - length(hold)
+          mult <- mult[(length(hold) + 1):length(mult)]
+        }
+      }
+
+      step_size <- n_jump + 1
+      pp <- path_propagation_model$new()
+      pp$propagation_steps <- min(max(1, ceiling(max_dist / step_size)) + 1, 9)
+      obj <- pp$prepare_objects(tc, max_dist, step_size, rdf = brdf)
+      obj$outliers    <- as.integer(out)
+      obj$multipliers <- as.integer(mult)
+      list(model = pp, objects = obj, max_dist = max_dist)
+    },
+
+    # fit_pp -------------------------------------------------------------------
+    # Use case 1: fit PP with n_jump
+    fit_pp = function(par_start, env_type = "1o", max_jump = NULL, clamp = 2) {
+      sl_emp   <- na.exclude(self$track$sl[-(self$outliers)])
+      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+      if (is.null(max_jump)) max_jump <- min(max_dist - 1, 8)
+
+      env_idx <- seq_len(length(par_start) - 2)
+      par_start[env_idx] <- pmin(pmax(par_start[env_idx], -clamp), clamp)
+
+      best <- list(result = NULL, ll = Inf, n_jump = 0)
+      worse_count <- 0
+
+      for (n_j in 0:max_jump) {
+        if (worse_count > 2) break
+        message(paste0("n_jump = ", n_j))
+        setup <- self$pp_objects(n_j, env_type)
+        res <- setup$model$fit(self$track_cells, max_dist, rdf = brdf,
+          par_start = par_start, outliers = self$outliers,
+          step_size = n_j + 1, env_type = env_type,
+          multipliers = self$multipliers)
+        if (!is.na(res[1])) par_start <- res$par        # warm-start next n_j
+        if (!is.na(res[1]) && res$ll < best$ll) {
+          best <- list(result = res, ll = res$ll, n_jump = n_j)
+          worse_count <- 0
+        } else {
+          worse_count <- worse_count + 1
+        }
+      }
+      best$result$n_jump <- best$n_jump
+      return(best$result)
+    },
+
+    # eval_pp ------------------------------------------------------------------
+    # Use case 2: evaluate LL at given parameters
+    eval_pp = function(par, n_jump, env_type = "1o") {
+      setup <- self$pp_objects(n_jump, env_type)
+      ll  <- setup$model$log_likelihood(par, setup$objects, sim = FALSE, env_type = env_type)
+      return(setup$model$diagnose(par, setup$objects, env_type = env_type))
+    },
+
+    # holdout_pp ---------------------------------------------------------------
+    # Use case 3: holdout analysis
+    holdout_pp = function(par_start, env_type = "1o", frac = 0.7, max_jump = NULL,
+                          clamp = 2) {
+      sl_emp   <- na.exclude(self$track$sl[-(self$outliers)])
+      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+      if (is.null(max_jump)) max_jump <- min(max_dist - 1, 8)
+
+      env_idx <- seq_len(length(par_start) - 2)
+      par_start[env_idx] <- pmin(pmax(par_start[env_idx], -clamp), clamp)
+
+      # Fit on training set
+      tc_train   <- self$track_cells[seq_len(ceiling(length(self$track_cells) * frac))]
+      best <- list(result = NULL, ll = Inf, n_jump = 0)
+      worse_count <- 0
+
+      for (n_j in 0:max_jump) {
+        if (worse_count > 2) break
+        setup <- self$pp_objects(n_j, env_type, holdout_frac = frac, training = TRUE)
+        res <- setup$model$fit(tc_train, max_dist, rdf = brdf,
+          par_start = par_start, outliers = setup$objects$outliers,
+          step_size = n_j + 1, env_type = env_type,
+          multipliers = as.integer(setup$objects$multipliers))
+        if (!is.na(res[1])) par_start <- res$par
+        if (!is.na(res[1]) && res$ll < best$ll) {
+          best <- list(result = res, ll = res$ll, n_jump = n_j)
+          worse_count <- 0
+        } else {
+          worse_count <- worse_count + 1
+        }
+      }
+
+      # Evaluate on holdout set
+      hold_setup <- self$pp_objects(best$n_jump, env_type, holdout_frac = frac,
+                                    training = FALSE)
+      ll_hold <- hold_setup$model$log_likelihood(best$result$par, hold_setup$objects,
+        sim = FALSE, env_type = env_type)
+
+      return(list(train = best$result, n_jump = best$n_jump,
+          holdout_nll = ll_hold, holdout_n = length(hold_setup$objects$obs)))
+    },
+
     ## calculate_ll ------------------------------------------------------------
-    calculate_ll = function(env_type) {
+    calculate_ll = function(env_type, par_ss = NULL, par_pp = NULL, n_jump = NULL) {
       if (is.null(self$results)) stop("No fitted results.")
-      npar <- length(grep("ss_par", names(self$results))) 
-      max_dist <- ceiling(1.1 * max(self$track$sl / 1000, na.rm = TRUE))
-      
-      batch <- empirical_batch$new(list(holdout_set = FALSE, env_type = env_type))
-      ll_m <- batch$process_individual(
-        self$id,
-        step_selection_model$new(),
-        path_propagation_model$new(),
-        diagnose_par = list(
-          ss     = as.numeric(self$results[, paste0("ss_par", seq_len(npar))]),
-          pp     = as.numeric(self$results[, paste0("pp_par", seq_len(npar))]),
-          n_jump = ifelse(is.na(self$results$pp_njump), 0, self$results$pp_njump),
-          env_type = env_type
-        )
-      )
-      return(list(ll_m[[1]], ll_m[[2]], ll_null))
+      npar <- length(grep("ss_par", names(self$results)))
+
+      if (is.null(par_ss)) par_ss <- as.numeric(self$results[, 
+                                            ..paste0("ss_par", seq_len(npar))])
+      if (is.null(par_pp)) par_pp <- as.numeric(self$results[, 
+                                            ..paste0("pp_par", seq_len(npar))])
+      if (is.null(n_jump))  n_jump <- ifelse(is.na(self$results$pp_njump), 0, 
+                                              self$results$pp_njump)
+
+      return(list(ss = self$eval_ss(par_ss, env_type = env_type),
+          pp = self$eval_pp(par_pp, n_jump = n_jump, env_type = env_type)))
     },
 
     ## calculate_null_ll -------------------------------------------------------
     calculate_null_ll = function() {
-      sl <- self$track$sl
-      sl_emp <- if (length(self$outliers)) na.exclude(sl[-self$outliers]) else na.exclude(sl)
+      sl     <- self$track$sl
+      ocheck <- length(self$outliers) >= 1
+      sl_emp <- if (ocheck) na.exclude(sl[-self$outliers]) else na.exclude(sl)
       max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
 
       fit <- distance_model$new()$fit(
@@ -1143,10 +1263,50 @@ jaguar <- R6Class("jaguar",
       valid <- valid[!is.na(obj$obs[valid])]
       m_i   <- rowSums(!is.na(obj$nbhd))[valid]
 
-      list(ll_unif = sum(log(m_i)),
-          ll_dist = fit$ll,
-          k       = fit$k,
-          n       = length(valid))
+      return(list(ll_unif = sum(log(m_i)),
+                  ll_dist = fit$ll,
+                  k       = fit$k,
+                  n       = length(valid)))
+    },
+
+    ## calculate_limit_case_ll -------------------------------------------------
+    calculate_limit_case_ll = function() {
+      ocheck <- length(self$outliers) >= 1
+      sl_emp <- if (ocheck) na.exclude(sl[-self$outliers]) else na.exclude(sl)
+      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+      ## ... incomplete
+    },
+
+    ## benchmark ---------------------------------------------------------------
+    benchmark = function(n_jump = 0, env_type = "1o") {
+      track <- self$track
+      track_cells <- self$track_cells
+      
+      dt_scaled <- track$dt[2:length(track$dt)] / median(na.exclude(track$dt))
+      dt_discrete <- round(dt_scaled)
+      max_multiple <- 5L
+      multipliers <- pmax(dt_discrete, 1L)
+      outliers <- which(dt_discrete < 1 | dt_discrete > max_multiple)
+      
+      sl_emp <- na.exclude(track$sl[-outliers])
+      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+      
+      step_size <- n_jump + 1
+      pp <- path_propagation_model$new()
+      pp$propagation_steps <- min(max(1, ceiling(max_dist / step_size)) + 1, 9)
+      objects <- pp$prepare_objects(track_cells, max_dist, step_size, rdf = brdf)
+      objects$outliers <- outliers
+      objects$multipliers <- as.integer(multipliers)
+      
+      gc()
+      mem_mb <- gc()[2, 2]
+      cat("Memory after prepare:", mem_mb, "MB\n")
+      cat("osize:", jag_meta$osize[jag_meta$ID == self$id], "MB\n")
+      cat("Multiplier:", mem_mb / (jag_meta$osize[jag_meta$ID == self$id]), "\n")
+      cat("ncell_local:", (2 * max_dist + 1)^2, " n_obs:", length(track_cells), "\n")
+      
+      return(list(pp = pp, objects = objects, max_dist = max_dist, outliers = outliers,
+          multipliers = multipliers))
     }
   ))
 
@@ -1187,20 +1347,20 @@ empirical_batch <- R6Class("empirical_batch",
       
       # PP wave optimization
       # cost proxy per individual: total object size
-      cost <- jag_meta$osize[match(i_todo, jag_meta$ID)]
-      ord <- order(cost, decreasing = TRUE)
-      i_todo <- i_todo[ord]
-      cost <- cost[ord]
-
       mem_budget <- self$config$mem_budget
       core_cap   <- self$config$n_cores
+      per_worker_base <- 1.5e9 # ~1.5gb overhead per core?
+      work_multiplier <- 2   # how much does osize inflate
+      effective_budget <- mem_budget - core_cap * per_worker_base
+      cost <- min(2e6, jag_meta$osize[match(i_todo, jag_meta$ID)] * work_multiplier)
 
       waves <- list()
       w <- integer(0)
       wcost <- 0 
 
       for (j in seq_along(i_todo)) {
-        if (length(w) > 0 && (wcost + cost[j] > mem_budget || length(w) >= core_cap)) {
+        if (length(w) > 0 && (wcost + cost[j] > effective_budget || 
+                                length(w) >= core_cap)) {
           waves[[length(waves) + 1]] <- w
           w <- integer(0)
           wcost <- 0
@@ -1268,18 +1428,9 @@ empirical_batch <- R6Class("empirical_batch",
       message(paste0("Processing jaguar #", i))
       # Create jaguar instance and get data
       jag <- jaguar$new(i)
-      track <- jag$get_track()
       track_cells <- jag$track_cells
-      n_obs <- length(track_cells)
-
-      dt_scaled <- track$dt[2:length(track$dt)] / median(na.exclude(track$dt))
-      dt_discrete <- round(dt_scaled)
-      max_multiple <- 5L # lower bound for 'true' outliers
-      multipliers <- pmax(dt_discrete, 1L)
-      outliers <- which(dt_discrete < 1 | dt_discrete > max_multiple)
-      if (length(outliers) > 0) dt_discrete <- dt_discrete[-outliers]
-
-      # Calculate max distance for this individual
+      outliers    <- jag$outliers
+      multipliers <- jag$multipliers
       sl_emp <- na.exclude(track$sl[-outliers])
       max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
             
@@ -1309,6 +1460,8 @@ empirical_batch <- R6Class("empirical_batch",
                                           rdf = brdf)
         obj_pp$outliers <- as.integer(outliers)
         obj_pp$multipliers <- as.integer(multipliers)
+
+        print(diagnose_par$pp)
 
         return(list(
           ss = ss_model$diagnose(diagnose_par$ss, obj_ss, env_type = env_type),

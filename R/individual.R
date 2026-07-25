@@ -3,13 +3,24 @@ source("R/classes.R")
 
 test_warmstart <- FALSE
 
-ss_res <- readRDS("data/output/emp_ss_1o.rds")
-pp_res <- readRDS("data/output/emp_pp_2026-07-17.rds")
-r1 <- results_set$new(r_ss = "data/output/emp_ss_1o.rds", 
-        r_pp = "data/output/emp_pp_2026-07-17.rds", env_type = "1o")$res_table
+ssfn <- "data/output/emp_ss_1o_mm1.rds"
+ppfn <- "data/output/emp_pp_1o_mm1.rds"
+r1 <- results_set$new(r_ss = ssfn, r_pp = ppfn, env_type = "1o")$res_table
 
-id  <- 113
-jag <- jaguar$new(id)
+check_m_scaling <- function(id) {
+    print(id)
+    jag <- jaguar$new(id, max_multiple = 2)
+    valid <- setdiff(seq_along(jag$multipliers), jag$outliers)
+    d <- data.frame(sl = jag$track$sl[-1][valid], m  = jag$multipliers[valid])
+    d <- d[d$sl > 0, ]
+    coef(lm(log(sl) ~ log(m), data = d))[2] %>% as.numeric
+}
+check_m_scaling(jag_id$jag_id[65])
+m_sc <- sapply(jag_id$jag_id, check_m_scaling)
+
+### test whether warm starting with ss best fit is helping--------------------
+
+ss_res <- readRDS(ssfn); pp_res <- readRDS(ppfn)
 par0 <- ss_res[[which(jag_id$jag_id == id)]]$par
 par1 <- pp_res[[which(jag_id$jag_id == id)]]$par
 
@@ -20,9 +31,6 @@ if (test_warmstart) {
     result2   <- jag$fit_pp(par1, env_type = "1o")
     saveRDS(list("warm" = result, "cold" = result2), "data/output/test.rds")
 }
-
-# result2   <- jag$fit_pp(par1, env_type = "1o", n_jump = 5, clamp = Inf)
-# par2 <- c(2.56, -1.15, -.38, -14.2, 5.72, -7.5, -9.7, 0.77, -9.88)
 
 ssfit <- jag$fit_ss(par0)
 ppfit <- jag$fit_pp(par0)

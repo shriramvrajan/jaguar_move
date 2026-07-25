@@ -5,17 +5,16 @@ set.seed(7)                 # For reproducibility
 
 fit_individuals <- 1
 test_holdout    <- 0
-parallel        <- 0   # Whether to use parallel processing
+parallel        <- 1   # Whether to use parallel processing
 
-# 1 for step selection, 2 for path propagation
-model_type <- 1
+model_type <- 1    # 1 for step selection, 2 for path propagation
 env_type   <- "1o" # "1o" or "2o" or "mix", env_function argument
 
 if (fit_individuals) {
     files <- list.files("data/output", pattern = "out_\\d+\\.rds")
     # this object is currently generated in results.R, find a better place for it
     k_fit <- readRDS("data/output/k_fitted_start_values.rds")
-    ss_warm <- switch(env_type, "1o" = readRDS("data/output/emp_ss_1o.rds"),
+    ss_warm <- switch(env_type, "1o" = NULL,
                                 "2o" = NULL)
 
     config <- list(   
@@ -23,9 +22,10 @@ if (fit_individuals) {
         model_type        = model_type,
         env_type          = env_type,
         npar              = switch(env_type, "1o" = 9, "2o" = 15, "mix" = 10), 
+        max_multiple      = 1,
 
-        # NULL = all individuals, or vector of specific IDs
-        individuals       = jag_id$jag_id[1:3], 
+        # jag_id$jag_id = all, or vector of specific IDs
+        individuals       = jag_id$jag_id, 
         # individuals       = as.numeric(gsub("\\D", "", files)), # Save existing results
 
         # Holdout set parameters
@@ -34,8 +34,8 @@ if (fit_individuals) {
 
         # Parallel processing parameters
         parallel = parallel,
-        n_cores  = 20,             # Number of cores to use if parallel
-        mem_budget = 0.75 * 94e9,
+        n_cores  = 10,             # Number of cores to use if parallel
+        mem_budget = 0.7 * 94e9,
 
         # Model fitting options
         fit_model      = TRUE    # Whether to fit the model (T/F)
@@ -50,7 +50,7 @@ if (fit_individuals) {
                             switch(config$model_type, "ss", "pp"), "_",
                             Sys.Date(), ".rds"))
 
-    source("~/memplot.R") # save memory use plot, only works on vasco
+    # source("~/memplot.R") # save memory use plot, only works on vasco
 }
 
 ## Holdout set evaluation ======================================================

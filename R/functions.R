@@ -54,6 +54,13 @@ message <- function(m, f = "data/output/run_log.txt") {
     cat(m, file = f, append = TRUE, sep = "\n")
 }
 
+# Get the mode
+get_mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+
 # Convert vector of cell numbers to raster with values at those cells and NAs
 to_raster <- function(vals, cells, template) {
   r <- template * NA
@@ -657,3 +664,17 @@ plot_dispersal_comparison <- function(p_ss, p_pp, max_displacement, id) {
       # forest_cover <- terra::crop(brazil_ras[[4]], plot_extent)
       # terra::plot(forest_cover, main = "Forest cover")
 }
+
+## Miscellaneous ===============================================================
+
+# Fitting k parameter
+
+# k_fit <- data.frame(
+#   id = sort(res$ID),
+#   k = sapply(sort(res$ID), function(i) {
+#     print(i)
+#     jag <- jaguar$new(id = i, results = res[res$ID == i, ])
+#     nulls <- jag$calculate_null_ll()
+#     return(nulls$k)
+#   }))
+# saveRDS(k_fit, "data/output/k_fitted_start_values.rds")

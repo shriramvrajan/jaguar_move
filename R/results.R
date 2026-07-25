@@ -7,11 +7,21 @@ Rcpp::sourceCpp("R/propagate.cpp")
 
 ## Data and functions ==========================================================
 
-r1 <- results_set$new(r_ss = "data/output/emp_ss_1o.rds", 
-                      r_pp = "data/output/emp_pp_2026-07-17.rds", env_type = "1o")
+r1 <- results_set$new(r_ss = "data/output/emp_ss_2026-07-24.rds", 
+                      r_pp = "data/output/emp_pp_2026-07-25.rds", env_type = "1o")
+
+jag_meta$regular_moves <- sapply(seq_len(nrow(jag_meta)), function(i) {
+    print(i)
+    jag_meta$nmove[i] - length(jaguar$new(jag_meta$ID[i], 
+                                max_multiple = 2)$outliers)
+  })
+
 res0 <- r1$res_table
 res0 <- res0[which(!is.na(res0$pp_aic)), ]
+res0 <- res0[which(res0$pp_conv == 0), ]
 res <- merge(res0, jag_meta, by = c("ID", "biome"))
+res <- res[which(res$nmove >= 100), ]
+
 
 ## ouuuaoo
 # jdt <- lapply(jag_meta$ID, function(i) jaguar$new(i)$track$dt)
@@ -34,12 +44,13 @@ p_aic <- ggplot(res, aes(x = ss_aic, y = pp_aic)) +
     labs(x = "Step selection AIC", y = "Path propagation AIC")
 plot(p_aic)
 
-diff <- res$ss_aic - res$pp_aic
-print(sort(diff))
-diff[diff < -4] <- -4
-hist(diff, 70, border = NA)
-abline(v = 2, lty = 2, col = "red")
-length(which(diff > 2))
+summ <- data.frame(id = res$ID, ss_ll = res$ss_ll, pp_ll = res$pp_ll,
+                  diff = (res$ss_aic - res$pp_aic) / res$regular_moves, 
+                  conv = res$pp_conv)
+# summ <- summ[-which(summ$conv == 52), ]
+summ$diff[summ$diff < -4] <- -4
+summ <- summ[order(summ$diff), ]
+summ
 
 ### Deviance explained ---------------------------------------------------------
 dev_exp <- function(i) {
@@ -52,22 +63,26 @@ dev_exp <- function(i) {
   return(data.frame(id = i, de_dist = de_dist, 
                       de_ss = de_ss, de_pp = de_pp))
 }
-# k_fit <- data.frame(
-#   id = sort(res$ID),
-#   k = sapply(sort(res$ID), function(i) {
-#     print(i)
-#     jag <- jaguar$new(id = i, results = res[res$ID == i, ])
-#     nulls <- jag$calculate_null_ll()
-#     return(nulls$k)
-#   }))
-# saveRDS(k_fit, "data/output/k_fitted_start_values.rds")
-dev <- do.call(rbind, lapply(res$ID, dev_exp))
-dev_plot <- data.frame(
-  ID = res$ID,
-  val = c(dev$de_dist, dev$de_ss - dev$de_dist, dev$de_pp - dev$de_ss),
-  col = rep(c("gray", "red", "blue"), each = nrow(dev))
-)
 
+cat("SS worse than distance:", sum(dev$de_ss < dev$de_dist), "\n",
+    "PP worse than SS:     ", sum(dev$de_pp < dev$de_ss),   "\n")
+
+dev_plot <- data.frame(
+  id   = rep(dev$id, 3),
+  val  = c(dev$de_dist, dev$de_ss - dev$de_dist, dev$de_pp - dev$de_ss),
+  part = factor(rep(c("distance", "+ environment", "+ path"), each = nrow(dev)),
+                levels = c("+ path", "+ environment", "distance")))
+dev_plot$id <- factor(dev_plot$id, levels = dev$id[order(dev$de_pp)])
+
+ggplot(dev_plot, aes(x = id, y = val, fill = part)) +
+  geom_col(width = 0.85) +
+  scale_fill_manual(name = NULL,
+    values = c(distance = "grey70", `+ environment` = "firebrick",
+               `+ path` = "steelblue")) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(x = NULL, y = "deviance explained") +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 6))
 dev_plot$col <- factor(dev_plot$col, levels = c("blue", "red", "gray"))
 
 ggplot(dev_plot, aes(x = ID,  y = val, fill = col)) +
@@ -93,8 +108,8 @@ cor(res$nmove, h$nll_ss - h$nll_pp, use = "pairwise.complete.obs")
 
 ## Individual analysis =========================================================
 
-ll_compare <- function(id, env_type = "1o") {
-    j_i <- jaguar$new(id = id, results = res[res$ID == id, ])
+ll_compare <- function(id, env_type = "1o", m = 2) {
+    j_i <- jaguar$new(id = id, results = res[res$ID == id, ], max_multiple = m)
     track <- j_i$track[, c("longitude", "latitude")]
     cells <- j_i$track_cells
     land <- j_i$get_landscape()
@@ -135,7 +150,7 @@ ll_compare <- function(id, env_type = "1o") {
     return(sim)
 }
 
-bb <- ll_compare(58)
+bb <- ll_compare(110)
 
 id <- 117
 jj <- jaguar$new(id, results = res[res$ID == id, ])

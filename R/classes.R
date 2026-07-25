@@ -1060,9 +1060,12 @@ jaguar <- R6Class("jaguar",
     outliers = NULL,
     max_dist = NULL,
     max_multiple = NULL,
+    scale_time = NULL,
 
-    initialize = function(id = NULL, results = NULL, max_multiple = 1) {
+    initialize = function(id = NULL, results = NULL, max_multiple = 2,
+                          scale_time = FALSE) {
       self$max_multiple <- max_multiple
+      self$scale_time <- scale_time
       self$id <- as.numeric(id)
       self$track <- self$get_track()
       self$track_cells <- cellFromXY(brazil_ras, 
@@ -1071,14 +1074,18 @@ jaguar <- R6Class("jaguar",
       self$results <- as.data.frame(results)
 
       dt_scaled <- self$track$dt[2:length(self$track$dt)] / 
-                    median(na.exclude(self$track$dt))
+                    get_mode(na.exclude(self$track$dt))
       dt_discrete <- round(dt_scaled)
-      max_multiple <- self$max_multiple # lower bound for 'true' outliers
-      self$multipliers <- pmax(dt_discrete, 1L)
-      self$outliers <- which(dt_discrete < 1 | dt_discrete > max_multiple)
+      self$outliers <- which(dt_discrete < 1 | dt_discrete > self$max_multiple) + 1
+      self$multipliers <- if (self$scale_time) {
+                              as.integer(pmax(dt_discrete, 1L)) 
+                            } else { 
+                              rep(1L, length(dt_discrete))
+                            }
 
       sl_all <- self$track$sl
-      sl_emp <- na.exclude(if (length(self$outliers)) sl_all[-self$outliers] else sl_all)
+      sl_emp <- na.exclude(if (length(self$outliers)) 
+         sl_all[-(self$outliers + 1)] else sl_all)
       self$max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
     },
 
@@ -1269,15 +1276,14 @@ jaguar <- R6Class("jaguar",
           holdout_nll = ll_hold, holdout_n = length(hold_setup$objects$obs)))
     },
 
-    ## calculate_ll ------------------------------------------------------------
+    # calculate_ll ------------------------------------------------------------
     calculate_ll = function(env_type, par_ss = NULL, par_pp = NULL, n_jump = NULL) {
       if (is.null(self$results)) stop("No fitted results.")
       npar <- length(grep("ss_par", names(self$results)))
-
-      if (is.null(par_ss)) par_ss <- as.numeric(self$results[, 
-                                            ..paste0("ss_par", seq_len(npar))])
-      if (is.null(par_pp)) par_pp <- as.numeric(self$results[, 
-                                            ..paste0("pp_par", seq_len(npar))])
+      ss_ind <- grep("ss_par", names(self$results))
+      pp_ind <- grep("pp_par", names(self$results))
+      if (is.null(par_ss)) par_ss <- as.numeric(self$results[, ss_ind])
+      if (is.null(par_pp)) par_pp <- as.numeric(self$results[, pp_ind])
       if (is.null(n_jump))  n_jump <- ifelse(is.na(self$results$pp_njump), 0, 
                                               self$results$pp_njump)
 
@@ -1285,7 +1291,7 @@ jaguar <- R6Class("jaguar",
           pp = self$eval_pp(par_pp, n_jump = n_jump, env_type = env_type)))
     },
 
-    ## calculate_null_ll -------------------------------------------------------
+    # calculate_null_ll -------------------------------------------------------
     calculate_null_ll = function() {
       sl     <- self$track$sl
       ocheck <- length(self$outliers) >= 1
@@ -1305,27 +1311,20 @@ jaguar <- R6Class("jaguar",
                   n       = length(valid)))
     },
 
-    ## calculate_limit_case_ll -------------------------------------------------
+    # calculate_limit_case_ll -------------------------------------------------
     calculate_limit_case_ll = function() {
       ocheck <- length(self$outliers) >= 1
       max_dist <- self$max_dist
       ## ... incomplete
     },
 
-    ## benchmark ---------------------------------------------------------------
+    # benchmark ---------------------------------------------------------------
     benchmark = function(n_jump = 0, env_type = "1o") {
       track <- self$track
       track_cells <- self$track_cells
-      
-      dt_scaled <- track$dt[2:length(track$dt)] / median(na.exclude(track$dt))
-      dt_discrete <- round(dt_scaled)
-      max_multiple <- self$max_multiple
-      multipliers <- pmax(dt_discrete, 1L)
-      outliers <- which(dt_discrete < 1 | dt_discrete > max_multiple)
-      
-      sl_all <- self$track$sl
-      sl_emp <- na.exclude(if (length(self$outliers)) sl_all[-self$outliers] else sl_all)
-      max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
+      outliers    <- self$outliers
+      multipliers <- self$multipliers
+      max_dist    <- self$max_dist
       
       step_size <- n_jump + 1
       pp <- path_propagation_model$new()
@@ -1376,35 +1375,44 @@ empirical_batch <- R6Class("empirical_batch",
       # order of total object size (proxy for time it takes to run) so that 
       # we don't waste core time
       i_todo <- setdiff(individuals_to_process, private$get_completed_ids())
-      order_i <- jag_meta$osize[which(jag_meta$ID %in% i_todo)] %>%
-        order(., decreasing = FALSE) # Smallest osize i.e. easiest fits first
-      i_todo <- i_todo[order_i]
+      i_todo <- i_todo[order(jag_meta$osize[match(i_todo, jag_meta$ID)])]
+      # smallest first
       message(paste0("Processing ", length(i_todo), " individuals"))
       
-      # PP wave optimization
-      # cost proxy per individual: total object size
-      mem_budget <- self$config$mem_budget
-      core_cap   <- self$config$n_cores
-      per_worker_base <- 1.5e9 # ~1.5gb overhead per core?
-      work_multiplier <- 2   # how much does osize inflate
-      effective_budget <- mem_budget - core_cap * per_worker_base
-      cost <- min(2e6, jag_meta$osize[match(i_todo, jag_meta$ID)] * work_multiplier)
+      core_cap <- self$config$n_cores
 
-      waves <- list()
-      w <- integer(0)
-      wcost <- 0 
+      waves <- if (self$config$model_type == 1) {
+        # SS: negligible per-worker memory, no batching
+        list(i_todo)
+      } else {
+        # PP wave optimization
+        # cost proxy per individual: total object size
+        mem_budget <- self$config$mem_budget
+        per_core_extra <- 1.5e9  # ~1.5gb overhead per core?
+        inflation_risk <- 2      # how much does osize inflate, conservative estimate
+        effective_budget <- mem_budget - core_cap * per_core_extra
+        cost <- pmin(2e9, jag_meta$osize[match(i_todo, jag_meta$ID)] * inflation_risk)
 
-      for (j in seq_along(i_todo)) {
-        if (length(w) > 0 && (wcost + cost[j] > effective_budget || 
-                                length(w) >= core_cap)) {
-          waves[[length(waves) + 1]] <- w
-          w <- integer(0)
-          wcost <- 0
+        out <- list()
+        w <- integer(0)
+        wcost <- 0
+
+        for (j in seq_along(i_todo)) {
+          if (cost[j] > effective_budget) {
+            message(paste0("Individual ", i_todo[j], " exceeds budget alone (",
+                           signif(cost[j] / 1e9, 3), " GB); will run solo."))
+          } else if (length(w) > 0 && (wcost + cost[j] > effective_budget ||
+                                       length(w) >= core_cap)) {
+            out[[length(out) + 1]] <- w
+            w <- integer(0)
+            wcost <- 0
+          }
+          w <- c(w, i_todo[j])
+          wcost <- wcost + cost[j]
         }
-        w <- c(w, i_todo[j])
-        wcost <- wcost + cost[j]
+        if (length(w) > 0) out[[length(out) + 1]] <- w
+        out
       }
-      if (length(w) > 0) waves[[length(waves) + 1]] <- w
 
       message(paste0("Scheduled ", length(i_todo), " individuals in ", 
                       length(waves), " waves"))
@@ -1412,18 +1420,21 @@ empirical_batch <- R6Class("empirical_batch",
       if (self$config$parallel) {
         batch_config <- self$config
         k_fit <- self$k_fit
-        ss_warm <- self$ss_warm
+        ss_warm <- self$ss_warm_par
+
+        cl <- makeCluster(core_cap, outfile = "")
+        on.exit(try(stopCluster(cl), silent = TRUE), add = TRUE)
+        registerDoParallel(cl)
+        parallel::clusterEvalQ(cl, {
+          source("R/functions.R")
+          source("R/classes.R")
+        })
+
         for (w_i in seq_along(waves)) {
           wave <- waves[[w_i]]
-          n_cores_wave <- min(length(wave), core_cap)
           message(paste0("Wave ", w_i, "/", length(waves), ": ",
-                    length(wave), " individuals on ", n_cores_wave, " cores"))
-          cl <- makeCluster(n_cores_wave)
-          registerDoParallel(cl)
-          parallel::clusterEvalQ(cl, {
-            source("R/functions.R")
-            source("R/classes.R")
-          })
+                    length(wave), " individuals on", core_cap, " cores"))
+
           foreach(i = wave, .export = c("batch_config", "k_fit", "ss_warm"),
                   .errorhandling = "pass") %dopar% {
                     ss_model <- step_selection_model$new()
@@ -1431,10 +1442,10 @@ empirical_batch <- R6Class("empirical_batch",
                     batch <- empirical_batch$new(batch_config, 
                                                k_fit = k_fit, ss_warm = ss_warm)
                     batch$process_individual(i, ss_model, pp_model)
-                  }
-          stopCluster(cl)           
+                  } 
           message("Parallel processing complete")    
         }
+        stopCluster(cl)
       } else {
           results <- list()
           for (i in i_todo) {                    
@@ -1463,7 +1474,9 @@ empirical_batch <- R6Class("empirical_batch",
     process_individual = function(i, ss_model, pp_model, diagnose_par = NULL) {
       message(paste0("Processing jaguar #", i))
       # Create jaguar instance and get data
-      jag <- jaguar$new(i)
+      mm <- self$config$max_multiple %||% 1
+      jag <- jaguar$new(i, max_multiple = mm, 
+                        scale_time = self$config$scale_time %||% FALSE)
       track_cells <- jag$track_cells
       outliers    <- jag$outliers
       multipliers <- jag$multipliers
@@ -1505,7 +1518,7 @@ empirical_batch <- R6Class("empirical_batch",
       }
 
       # Starting parameters
-      ss_i <- self$ss_warm[[which(jag_id$jag_id == i)]] 
+      ss_i <- self$ss_warm_par[[which(jag_id$jag_id == i)]] 
       if (is.list(ss_i) && length(ss_i$par) == self$config$npar) {
         par_start <- ss_i$par
         message("Warm starting from step selection fit")

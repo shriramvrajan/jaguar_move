@@ -5,7 +5,7 @@ set.seed(7)                 # For reproducibility
 
 fit_individuals <- 1
 test_holdout    <- 0
-parallel        <- 1   # Whether to use parallel processing
+parallel        <- 0   # Whether to use parallel processing
 
 model_type <- 1    # 1 for step selection, 2 for path propagation
 env_type   <- "1o" # "1o" or "2o" or "mix", env_function argument
@@ -14,7 +14,7 @@ if (fit_individuals) {
     files <- list.files("data/output", pattern = "out_\\d+\\.rds")
     # this object is currently generated in results.R, find a better place for it
     k_fit <- readRDS("data/output/k_fitted_start_values.rds")
-    ss_warm <- switch(env_type, "1o" = NULL,
+    ss_warm <- switch(env_type, "1o" = readRDS("data/output/emp_ss_1o_mm1.rds"),
                                 "2o" = NULL)
 
     config <- list(   
@@ -22,14 +22,14 @@ if (fit_individuals) {
         model_type        = model_type,
         env_type          = env_type,
         npar              = switch(env_type, "1o" = 9, "2o" = 15, "mix" = 10), 
-        max_multiple      = 1,
+        max_multiple      = 2,
 
         # jag_id$jag_id = all, or vector of specific IDs
         individuals       = jag_id$jag_id, 
         # individuals       = as.numeric(gsub("\\D", "", files)), # Save existing results
 
         # Holdout set parameters
-        holdout_set  = TRUE,     # Whether to reserve holdout set (T/F)
+        holdout_set  = FALSE,     # Whether to reserve holdout set (T/F)
         holdout_frac = 0.6,       # Proportion of data to use for training
 
         # Parallel processing parameters

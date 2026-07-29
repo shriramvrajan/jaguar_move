@@ -1,14 +1,9 @@
 rm(list = ls())
-library(pheatmap)
-library(scales)
 source("R/functions.R")
 source("R/classes.R")
 Rcpp::sourceCpp("R/propagate.cpp")
 
 ## Data and functions ==========================================================
-
-r1 <- results_set$new(r_ss = "data/output/emp_ss_2026-07-24.rds", 
-                      r_pp = "data/output/emp_pp_2026-07-25.rds", env_type = "1o")
 
 jag_meta$regular_moves <- sapply(seq_len(nrow(jag_meta)), function(i) {
     print(i)
@@ -16,23 +11,16 @@ jag_meta$regular_moves <- sapply(seq_len(nrow(jag_meta)), function(i) {
                                 max_multiple = 2)$outliers)
   })
 
+r1 <- results_set$new(r_ss = "data/output/emp_ss_1o_mm2.rds", 
+                      r_pp = "data/output/emp_pp_2026-07-26.rds", env_type = "1o")
+
+
 res0 <- r1$res_table
-res0 <- res0[which(!is.na(res0$pp_aic)), ]
-res0 <- res0[which(res0$pp_conv == 0), ]
+if (anyNA(res0$pp_aic)) res0 <- res0[which(!is.na(res0$pp_aic)), ]
+if (any(res0$pp_conv != 0)) res0 <- res0[which(res0$pp_conv == 0), ]
 res <- merge(res0, jag_meta, by = c("ID", "biome"))
-res <- res[which(res$nmove >= 100), ]
-
-
-## ouuuaoo
-# jdt <- lapply(jag_meta$ID, function(i) jaguar$new(i)$track$dt)
-# names(jdt) <- jag_meta$ID
-# par(mfrow = c(3, 3))
-# for (id in names(jdt)) {
-#   hist(jdt[[id]], 100, col = "black", main = id, border = NA)
-# }
-# jag <- jaguar$new(114)
-# b   <- jag$benchmark()
-# system.time(b$pp$log_likelihood(rnorm(9), b$objects, sim = FALSE))
+res <- res[which(res$regular_moves >= 100), ]
+print(paste(nrow(res), "individuals"))
 
 ## Aggregate analysis ==========================================================
 
@@ -53,16 +41,7 @@ summ <- summ[order(summ$diff), ]
 summ
 
 ### Deviance explained ---------------------------------------------------------
-dev_exp <- function(i) {
-  print(i)
-  jag <- jaguar$new(id = i, results = res[res$ID == i, ])
-  nulls <- jag$calculate_null_ll()
-  de_dist <- 1 - nulls$ll_dist / nulls$ll_unif
-  de_ss <- 1 - res$ss_ll[res$ID == i] / nulls$ll_unif
-  de_pp <- 1 - res$pp_ll[res$ID == i] / nulls$ll_unif
-  return(data.frame(id = i, de_dist = de_dist, 
-                      de_ss = de_ss, de_pp = de_pp))
-}
+
 
 cat("SS worse than distance:", sum(dev$de_ss < dev$de_dist), "\n",
     "PP worse than SS:     ", sum(dev$de_pp < dev$de_ss),   "\n")
@@ -107,48 +86,6 @@ cor(res$nmove, h$nll_ss - h$nll_pp, use = "pairwise.complete.obs")
 
 
 ## Individual analysis =========================================================
-
-ll_compare <- function(id, env_type = "1o", m = 2) {
-    j_i <- jaguar$new(id = id, results = res[res$ID == id, ], max_multiple = m)
-    track <- j_i$track[, c("longitude", "latitude")]
-    cells <- j_i$track_cells
-    land <- j_i$get_landscape()
-    sl_emp   <- na.exclude(j_i$get_track()$sl)
-    max_dist <- ceiling(1.1 * max(sl_emp) / 1000)
-    # extended neighborhood
-    enbhd <- unique(as.numeric(na.exclude(make_nbhd(brdf, j_i$track_cells, 
-                                                  sz = max_dist))))
-
-    n_env <- if (env_type == "2o") 13 else if (env_type == "1o") 7 else stop()
-    ss_par <- as.numeric(j_i$results[, paste0("ss_par", seq_len(n_env))])
-    pp_par <- as.numeric(j_i$results[, paste0("pp_par", seq_len(n_env))])
-
-    ss_phi <- pointwise_env(ss_par, enbhd, brdf, scale_from = enbhd) #env_type defaults to "2o"
-    pp_phi <- pointwise_env(pp_par, enbhd, brdf, scale_from = enbhd)
-
-    ss_ras <- trim(to_raster(ss_phi, enbhd, brazil_ras[[1]]))
-    pp_ras <- trim(to_raster(pp_phi, enbhd, brazil_ras[[1]]))
-
-    sim <- j_i$calculate_ll(env_type)
-    non_outliers <- as.numeric(names(sim$ss$p_obs)) 
-    delta <- abs(sim$ss$ll_obs) - abs(sim$pp$ll_obs)
-
-    range_d <- range(delta, na.rm = TRUE)
-    midpoint <- (0 - range_d[1]) / (range_d[2] - range_d[1])
-    f_palette <- gradient_n_pal(colours = c("red", rgb(0, 0, 0, 0.4), "cyan"),
-                                values = c(0, midpoint, 1))
-    bins <- f_palette(scales::rescale(delta))
-
-    par(mfrow = c(1, 2))
-    terra::plot(ss_ras, main = "Step selection", col = gray.colors(100))
-    points(track, col = "black", pch = 19, cex = 0.5)
-    points(track[non_outliers, ], col = "blue", pch = 19, cex = 0.8)   
-    terra::plot(pp_ras, main = "Path propagation", col = gray.colors(100))
-    points(track, col = "black", pch = 19, cex = 0.5)
-    points(track[non_outliers, ], col = "blue", pch = 19, cex = 0.8)   
-
-    return(sim)
-}
 
 bb <- ll_compare(110)
 

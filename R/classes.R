@@ -1071,12 +1071,13 @@ jaguar <- R6Class("jaguar",
       self$track_cells <- cellFromXY(brazil_ras, 
                           self$track[, c("longitude", "latitude")])
       self$landscape <- self$get_landscape()
-      self$results <- as.data.frame(results)
+      self$results <- results[which(results$ID == self$id), ] %>%
+                        as.data.frame
 
       dt_scaled <- self$track$dt[2:length(self$track$dt)] / 
                     get_mode(na.exclude(self$track$dt))
       dt_discrete <- round(dt_scaled)
-      self$outliers <- which(dt_discrete < 1 | dt_discrete > self$max_multiple) + 1
+      self$outliers <- which(dt_discrete < 1 | dt_discrete > self$max_multiple)
       self$multipliers <- if (self$scale_time) {
                               as.integer(pmax(dt_discrete, 1L)) 
                             } else { 
@@ -1518,7 +1519,9 @@ empirical_batch <- R6Class("empirical_batch",
       }
 
       # Starting parameters
-      ss_i <- self$ss_warm_par[[which(jag_id$jag_id == i)]] 
+      ss_i <- if (is.list(self$ss_warm_par)) {
+                self$ss_warm_par[[which(jag_id$jag_id == i)]]
+              } else NULL
       if (is.list(ss_i) && length(ss_i$par) == self$config$npar) {
         par_start <- ss_i$par
         message("Warm starting from step selection fit")
@@ -1583,13 +1586,9 @@ empirical_batch <- R6Class("empirical_batch",
         if (!is.null(result)) result$n_jump <- checkpoint$best_n_jump
         if (file.exists(check_file)) file.remove(check_file)
       }
-      
-      # Save individual result
-      if (!is.na(result[1])) {
-        saveRDS(result, paste0("data/output/out_", i, ".rds"))
-      } else {
-        saveRDS(NA, paste0("data/output/NA_", i, ".rds"))
-      }
+      # save individual result
+      saveRDS(if (is.list(result) && !is.null(result$par)) result else NA,
+              paste0("data/output/", if (ok) "out_" else "NA_", i, ".rds"))
       
       return(result)
     }

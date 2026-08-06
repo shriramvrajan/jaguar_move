@@ -593,7 +593,8 @@ simulation_config <- R6Class("simulation_config",
 
         # Model parameters
         env_response = NULL,
-        step_size = NULL,
+        step_size    = NULL,
+        gen_step     = NULL,
         obs_interval = NULL,
 
         # Simulation parameters
@@ -616,6 +617,7 @@ simulation_config <- R6Class("simulation_config",
             self$autocorr_strength <- autocorr_strength
             self$env_response <- env_response
             self$step_size <- step_size
+            self$gen_step <- gen_step %||% step_size
             self$obs_interval <- obs_interval
             self$n_individuals <- n_individuals
             self$n_steps <- n_steps
@@ -627,8 +629,10 @@ simulation_config <- R6Class("simulation_config",
         },
 
         # Derived properties
-        max_dist = function() self$step_size * (self$obs_interval + 1),
-        propagation_steps = function() self$obs_interval + 2,
+        max_dist = function() self$gen_step * (self$obs_interval + 1),
+        propagation_steps = function() {
+          ceiling(self$max_dist() / self$step_size) + 1
+        },
 
         save = function(filepath) {
             params <- list(
@@ -640,6 +644,7 @@ simulation_config <- R6Class("simulation_config",
                 n_steps           = self$n_steps,
                 env_response      = self$env_response,
                 step_size         = self$step_size,
+                gen_step          = self$gen_step,
                 obs_interval      = self$obs_interval
             )
             saveRDS(params, filepath)            
@@ -691,11 +696,11 @@ movement_simulator <- R6Class("movement_simulator",
               
               path_i <- jag_path(x0, y0, self$config$n_steps, 
                                 par = self$config$env_response, 
-                                neighb = self$config$step_size,
+                                neighb = self$config$gen_step,
                                 rdf = rdf)
 
               # Proportion of barriers encountered
-              nbhd <- make_nbhd(rdf = rdf, i = path_i$cell, sz = self$config$step_size)
+              nbhd <- make_nbhd(rdf = rdf, i = path_i$cell, sz = self$config$gen_step)
               barrier_cells <- which(rdf$sim1 == self$config$b_value)
               prop_barrier <- sum(apply(nbhd, 1, function(x) sum(x %in% barrier_cells))) / length(nbhd)
 
@@ -779,7 +784,7 @@ movement_simulator <- R6Class("movement_simulator",
             ss_result <- ss_model$fit(trajectory, max_dist, rdf = rdf, 
                         par_start, sim = TRUE)
             
-            pp_model$propagation_steps <- self$config$propagation_steps()
+            pp_model$propagation_steps <- propagation_steps
             pp_result <- pp_model$fit(trajectory, max_dist, rdf = rdf,
               par_start, sim = TRUE, step_size = step_size)
             
@@ -1010,6 +1015,8 @@ simulation_batch <- R6Class("simulation_batch",
         results_list[[name]] <- data.frame(
           config_name = name,
           individual = seq_along(fits),
+          gen_step = config$gen_step,
+          step_size = config$step_size,
           ll_step = ll_step,
           ll_pp = ll_pp,
           ll_diff_per_obs = ll_diff_per_obs,
@@ -1029,6 +1036,9 @@ simulation_batch <- R6Class("simulation_batch",
         config_name = configs,
         autocorr_range = sapply(configs, function(x) {  
             unique(results_df$autocorr_range[results_df$config_name == x])
+        }),
+        gen_step = sapply(configs, function(x) {
+            unique(results_df$gen_step[results_df$config_name == x])
         }),
         obs_interval = sapply(configs, function(x) {
             unique(results_df$obs_interval[results_df$config_name == x])
@@ -1587,8 +1597,9 @@ empirical_batch <- R6Class("empirical_batch",
         if (file.exists(check_file)) file.remove(check_file)
       }
       # save individual result
-      saveRDS(if (is.list(result) && !is.null(result$par)) result else NA,
-              paste0("data/output/", if (ok) "out_" else "NA_", i, ".rds"))
+      save_ok <- is.list(result) && !is.null(result$par)
+      saveRDS(if (save_ok) result else NA,
+              paste0("data/output/", if (save_ok) "out_" else "NA_", i, ".rds"))
       
       return(result)
     }
@@ -1647,7 +1658,12 @@ results_set <- R6Class("results_set",
         out <- as.data.frame(mat)
         names(out) <- cnames
         out[[paste0(prefix, "_aic")]] <- aic
-        out
+        # results[[i]] ~ jag_id$jag_id[i], realign to jag_meta rows
+        ids <- if (!is.null(names(results))) as.numeric(names(results))
+                else as.numeric(jag_id$jag_id)
+        out <- out[match(as.numeric(jag_meta$ID), ids), , drop = FALSE]
+        rownames(out) <- NULL
+        return(out)
       }
 
       parts <- list(jag_meta[, c("ID", "biome")])

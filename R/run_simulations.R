@@ -3,8 +3,62 @@ skip_data <- TRUE
 source("R/functions.R")  
 source("R/classes.R")       
 
-test_barrier    <- FALSE
-test_2dsweep    <- TRUE
+test_jumpgrain  <- 1
+test_barrier    <- 0
+test_2dsweep    <- 0
+
+## Jump x grain test ===========================================================
+
+# Hypothesis: ll_diff per obs depends on the landscape through 
+#   p = obs_interval + 1            i.e. substeps per fix
+#   s = gen_step / autocorr_range   i.e. substep in units of grain (?)
+if (test_jumpgrain) {
+    param_grid <- expand.grid(gen_step = c(1, 2, 4),
+                              s        = c(0.05, 0.1, 0.2, 0.4),
+                              p        = c(2, 4, 8))
+    param_grid$autocorr_range <- param_grid$gen_step / param_grid$s
+    param_grid$obs_interval   <- param_grid$p - 1
+    param_grid <- param_grid[param_grid$autocorr_range <= 40, ]  # keep patches < env_size/10
+
+    batch <- simulation_batch$new()
+    batch$configs <- lapply(seq_len(nrow(param_grid)), function(i) {
+        g <- param_grid[i, ]
+        simulation_config$new(
+            name           = sprintf("jg_j%s_s%s_p%s", g$gen_step, g$s, g$p),
+            obs_interval   = g$obs_interval,
+            gen_step       = g$gen_step,   # truth
+            step_size      = g$gen_step,   # model d_jump: well-specified
+            autocorr_range = g$autocorr_range,
+            n_steps = 1000, n_individuals = 12,
+            env_response = c(4, -3, 0.5, 0),
+            b_density = 0, env_size = 400, autocorr_strength = 10,
+            n_cores = 4)
+    })
+
+    done_files <- list.files("data/output", pattern = "^sim_jg.*\\.rds$")
+    batch$done <- gsub("^sim_|\\.rds$", "", done_files)
+    batch$run_all(parallel = TRUE)
+    out <- batch$get_results()
+    saveRDS(out, paste0("simulations/jumpgrain_",
+            format(Sys.time(), "%Y%m%d_%H%M%S"), ".rds"))
+
+    r    <- out$summary
+    r$p  <- r$obs_interval + 1
+    r$s  <- r$gen_step / r$autocorr_range
+
+    pc <- ggplot(r, aes(s, ll_diff_per_obs, colour = factor(p))) +
+        geom_line(aes(group = interaction(p, gen_step)), alpha = 0.35) +
+        geom_point(aes(shape = factor(gen_step)), size = 2.5) +
+        scale_x_log10() +
+        labs(x = "substep length / autocorrelation range  (s)",
+             y = "median LL (SS - PP) per obs",
+             colour = "substeps per fix (p)", shape = "jump (cells/tick)") +
+        theme_minimal()
+    ggsave(paste0("figs/sims/jumpgrain_collapse_",
+            format(Sys.time(), "%Y%m%d_%H%M%S"), ".pdf"), pc, width = 8, height = 5)
+    print(pc)
+    file.remove(list.files("data/output", pattern = "sim_jg", full.names = TRUE))
+}
 
 ## Barrier density study =======================================================
 if (test_barrier) {

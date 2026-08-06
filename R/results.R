@@ -5,111 +5,72 @@ Rcpp::sourceCpp("R/propagate.cpp")
 
 ## Data and functions ==========================================================
 
-jag_meta$regular_moves <- sapply(seq_len(nrow(jag_meta)), function(i) {
-    print(i)
-    jag_meta$nmove[i] - length(jaguar$new(jag_meta$ID[i], 
-                                max_multiple = 2)$outliers)
-  })
+nmove_by_multiple <- function(m) {
+  sapply(seq_len(nrow(jag_meta)), function(i) {
+      print(i)
+      jag_meta$nmove[i] - 
+        length(jaguar$new(jag_meta$ID[i], max_multiple = m)$outliers)
+    })
+}
 
-r1 <- results_set$new(r_ss = "data/output/emp_ss_1o_mm2.rds", 
-                      r_pp = "data/output/emp_pp_2026-07-26.rds", env_type = "1o")
+### All filtering decisions must be explicit here
+res_process <- function(r, m = 1) {
+  res0 <- r$res_table
+  if (anyNA(res0$pp_aic)) res0 <- res0[which(!is.na(res0$pp_aic)), ]
+  if (anyNA(res0$ss_aic)) res0 <- res0[which(!is.na(res0$ss_aic)), ]
+  if (any(res0$pp_conv != 0)) res0 <- res0[which(res0$pp_conv == 0), ]
+  res <- merge(res0, jag_meta, by = c("ID", "biome"))
+  nmoves <- data.frame(ID = as.numeric(jag_meta$ID),
+                       nmove = nmove_by_multiple(m))
+  res <- merge(res, nmoves, by = "ID")
+  res <- res[res$nmove.y >= 30, ]  # nmove.x is total moves from jag_meta
+  stopifnot(!anyNA(res$ID))       
+  print(paste(nrow(res), "individuals"))
+  return(res)
+}
 
-
-res0 <- r1$res_table
-if (anyNA(res0$pp_aic)) res0 <- res0[which(!is.na(res0$pp_aic)), ]
-if (any(res0$pp_conv != 0)) res0 <- res0[which(res0$pp_conv == 0), ]
-res <- merge(res0, jag_meta, by = c("ID", "biome"))
-res <- res[which(res$regular_moves >= 100), ]
-print(paste(nrow(res), "individuals"))
+res <- results_set$new(r_ss = "data/output/emp_ss_1o_m1.rds", 
+                       r_pp = "data/output/emp_pp_1o_m1.rds", env_type = "1o") %>%
+                        res_process(., m = 1)
 
 ## Aggregate analysis ==========================================================
 
 ### AIC ------------------------------------------------------------------------   
-p_aic <- ggplot(res, aes(x = ss_aic, y = pp_aic)) +
-    geom_point(aes(color = nmove)) +
-    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
-    geom_text(aes(label = ID), vjust = -0.7, size = 3) +
-    labs(x = "Step selection AIC", y = "Path propagation AIC")
-plot(p_aic)
 
 summ <- data.frame(id = res$ID, ss_ll = res$ss_ll, pp_ll = res$pp_ll,
-                  diff = (res$ss_aic - res$pp_aic) / res$regular_moves, 
-                  conv = res$pp_conv)
+                  diff = (res$ss_aic - res$pp_aic), 
+                  conv = res$pp_conv,
+                  nmove = res$nmove.y,
+                  biome = res$biome,
+                  meand = res$meandist,
+                  jump = res$pp_njump,
+                  sched = as.numeric(gsub("[^0-9.]", "", res$Planned.Schedule)))
 # summ <- summ[-which(summ$conv == 52), ]
 summ$diff[summ$diff < -4] <- -4
 summ <- summ[order(summ$diff), ]
 summ
 
+print(length(which(summ$diff > 2)) / nrow(summ))
+print(length(which(summ$ss_ll > summ$pp_ll)) / nrow(summ))
+hist(summ$ss_ll - summ$pp_ll, 40, col = rgb(0, 0, 1), border = NA)
+abline(v = 0, lwd = 3, col = "red")
+
+
 ### Deviance explained ---------------------------------------------------------
-
-
+dev <- do.call(rbind, lapply(res$ID, function(i) dev_exp(i, res = res)))
 cat("SS worse than distance:", sum(dev$de_ss < dev$de_dist), "\n",
     "PP worse than SS:     ", sum(dev$de_pp < dev$de_ss),   "\n")
 
-dev_plot <- data.frame(
-  id   = rep(dev$id, 3),
-  val  = c(dev$de_dist, dev$de_ss - dev$de_dist, dev$de_pp - dev$de_ss),
-  part = factor(rep(c("distance", "+ environment", "+ path"), each = nrow(dev)),
-                levels = c("+ path", "+ environment", "distance")))
-dev_plot$id <- factor(dev_plot$id, levels = dev$id[order(dev$de_pp)])
-
-ggplot(dev_plot, aes(x = id, y = val, fill = part)) +
-  geom_col(width = 0.85) +
-  scale_fill_manual(name = NULL,
-    values = c(distance = "grey70", `+ environment` = "firebrick",
-               `+ path` = "steelblue")) +
-  coord_cartesian(ylim = c(0, 1)) +
-  labs(x = NULL, y = "deviance explained") +
-  theme_minimal(base_size = 11) +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 6))
-dev_plot$col <- factor(dev_plot$col, levels = c("blue", "red", "gray"))
-
-ggplot(dev_plot, aes(x = ID,  y = val, fill = col)) +
-  geom_col() + 
-  scale_fill_identity() +
-  ylim(0, 1)
 
 ### Holdout analysis -----------------------------------------------------------
-h <- readRDS("data/output/holdout_1o_2026-07-09.rds")
-h$biome <- res$biome.x
-h$nmove <- res$nmove
-ind <- is.na(h$nll_ss) | is.na(h$nll_pp)
-h <- h[-which(ind), ]
-hold <- ggplot(h, aes(x = nll_ss / nmove, y = nll_pp / nmove)) +
-    geom_point(aes(color = as.factor(biome))) +
+h <- readRDS("data/output/holdout_1o_m1_f0.6_2026-08-05.rds")
+hold <- ggplot(h, aes(x = nll_ss, y = nll_pp)) +
+    geom_point(aes(color = "blue")) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
     geom_text(aes(label = ID), vjust = -0.7, size = 3) 
 plot(hold)
+hh <- merge(res[, c("ID","nmove.y")], h, by = "ID")
 
-plot(res$nmove, h$nll_ss - h$nll_pp)
-cor(res$nmove, h$nll_ss - h$nll_pp, use = "pairwise.complete.obs")
-
-
-## Individual analysis =========================================================
-
-bb <- ll_compare(110)
-
-id <- 117
-jj <- jaguar$new(id, results = res[res$ID == id, ])
-ppnew <- jj$results[, paste0("pp_par", seq_len(9))] %>% as.numeric
-ppnew[9] <- -5
-ll <- jj$calculate_ll("1o")
-ll2 <- jj$calculate_ll(env_type = "1o", par_pp = ppnew)
-plot(ll2$ss$ll_obs, ll2$pp$ll_obs)
-abline(0, 1)
-
-# ind <- c(12, 22, 50, 54, 99, 117)
-# diag <- list()
-# for (i in ind) {
-#     print(i)
-#     comp <- ll_compare(ind)
-#     out <- setNames(list(t(comp$ss$p_surface), comp$pp$p_surface), c("ss", "pp"))
-#     diag <- c(diag, out)
-#     rm(comp)
-#     rm(out)
-#     gc()
-# } 
-# saveRDS(diag, "data/output/diagnostics.rds")
 
 ## Grain? ======================================================================
 
@@ -147,7 +108,7 @@ grain_tbl <- do.call(rbind, lapply(res$ID, function(id) {
   )
 }))
 
-outlier_ids <- c(12, 22, 50, 54, 99, 117)
+# outlier_ids <- c(12, 22, 50, 54, 99, 117)
 pl <- merge(grain_tbl,
             res[, c("ID", "biome", "ss_aic", "pp_aic", "ss_ll", "pp_ll", "pp_njump")],
             by = "ID")
@@ -158,7 +119,7 @@ pl$outlier <- pl$ID %in% outlier_ids
 
 # (A) The empirical Figure 3: individuals scattered on the prediction plane.
 p1 <- ggplot(pl, aes(sl_cells, grain)) +
-  geom_point(aes(fill = dAIC, shape = outlier), size = 3,
+  geom_point(aes(fill = dAIC), size = 3,
              colour = "grey20", stroke = 0.3) +
   scale_shape_manual(values = c("FALSE" = 21, "TRUE" = 24), guide = "none") +
   scale_fill_viridis_c(option = "magma", name = expression(Delta*AIC),

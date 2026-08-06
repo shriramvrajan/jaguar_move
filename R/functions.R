@@ -438,7 +438,7 @@ plot_path <- function(path, int = obs_interval, vgram = FALSE,
 
 # 3. Results -------------------------------------------------------------------
 
-dev_exp <- function(i, res = res) {
+dev_exp <- function(i, res) {
   print(i)
   jag <- jaguar$new(id = i, results = res[res$ID == i, ])
   nulls <- jag$calculate_null_ll()
@@ -450,7 +450,7 @@ dev_exp <- function(i, res = res) {
 }
 
 
-ll_compare <- function(id, env_type = "1o", m = 2) {
+ll_compare <- function(id, res, env_type = "1o", m = 2) {
   # currently assumes a results object named 'res', fix later
     j_i <- jaguar$new(id = id, results = res[res$ID == id, ], max_multiple = m)
     track <- j_i$track[, c("longitude", "latitude")]

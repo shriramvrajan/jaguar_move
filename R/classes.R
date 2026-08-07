@@ -610,7 +610,8 @@ simulation_config <- R6Class("simulation_config",
                         autocorr_strength = 5, n_cores = 15,
                         env_response = c(-1.5, 1.5, -0.2, exp(1)),
                         b_density = 0, b_width = 2, b_length = 20, b_value = 99,
-                        step_size = 1, obs_interval = 1, n_steps = 1000) {
+                        step_size = 1, gen_step = NULL, obs_interval = 1, 
+                        n_steps = 1000) {
             self$name <- name
             self$env_size <- env_size
             self$autocorr_range <- autocorr_range
@@ -844,15 +845,16 @@ movement_simulator <- R6Class("movement_simulator",
     },
 
     # plot_fits ----------------------------------------------------------------
-    plot_fits = function(results) {
+    plot_fits = function(results, save = FALSE) {
       for (i in seq_along(results)) {
         print(i)
         result <- results[[i]]
         # print(result)
         if (!is.list(result) || identical(result$step_selection, NA) ||
               identical(result$path_propagation, NA)) next
-        cairo_pdf(filename = paste0("figs/sims/currentpaths/fit_", self$config$name, 
-                "_ind_", i, ".pdf"), width = 10, height = 5)
+
+        if (save) cairo_pdf(filename = paste0("figs/sims/currentpaths/fit_", 
+          self$config$name, "_ind_", i, ".pdf"), width = 10, height = 5)
         par(mfrow = c(1, 2))
         
         # Panel 1: path on landscape
@@ -1061,22 +1063,25 @@ simulation_batch <- R6Class("simulation_batch",
 #   $get_landscape() - get cropped landscape raster and dataframe for the track
 jaguar <- R6Class("jaguar",
   public = list(
-    id = NULL,
-    track = NULL,
-    track_cells = NULL,
-    landscape = NULL,
-    results = NULL,
-    multipliers = NULL,
-    outliers = NULL,
-    max_dist = NULL,
-    max_multiple = NULL,
-    scale_time = NULL,
+    id            = NULL,
+    obs_interval  = NULL,
+    track         = NULL,
+    track_cells   = NULL,
+    landscape     = NULL,
+    results       = NULL,
+    multipliers   = NULL,
+    outliers      = NULL,
+    max_dist      = NULL,
+    max_multiple  = NULL,
+    scale_time    = NULL,
 
     initialize = function(id = NULL, results = NULL, max_multiple = 2,
                           scale_time = FALSE) {
+      self$id <- as.numeric(id)
       self$max_multiple <- max_multiple
       self$scale_time <- scale_time
-      self$id <- as.numeric(id)
+      
+      self$obs_interval <- obs_interval
       self$track <- self$get_track()
       self$track_cells <- cellFromXY(brazil_ras, 
                           self$track[, c("longitude", "latitude")])
@@ -1084,8 +1089,8 @@ jaguar <- R6Class("jaguar",
       self$results <- results[which(results$ID == self$id), ] %>%
                         as.data.frame
 
-      dt_scaled <- self$track$dt[2:length(self$track$dt)] / 
-                    get_mode(na.exclude(self$track$dt))
+      dt_base   <- get_mode(round(na.exclude(self$track$dt)))
+      dt_scaled <- self$track$dt[-1] / dt_base
       dt_discrete <- round(dt_scaled)
       self$outliers <- which(dt_discrete < 1 | dt_discrete > self$max_multiple)
       self$multipliers <- if (self$scale_time) {
@@ -1103,6 +1108,8 @@ jaguar <- R6Class("jaguar",
     ## get_track ---------------------------------------------------------------
     get_track = function() {
       dat <- jag_move[ID == self$id]
+      keep <- seq(1, nrow(dat), by = self$obs_interval + 1)
+      dat <- dat[keep, ]
       dat$timestamp <- as.POSIXct(dat$timestamp, 
                               format = "%m/%d/%Y %H:%M")
       dat$year <- as.numeric(format(dat$timestamp, "%Y"))
@@ -1113,7 +1120,7 @@ jaguar <- R6Class("jaguar",
       dat$hr <- format(dat$timestamp, "%H:%M")
       dat$hr <- as.numeric(gsub(":[0-9][0-9]", "", dat$hr))
       
-      path <- jag_move[ID == self$id]
+      path <- jag_move[ID == self$id][keep, ]
       path$t <- lubridate::mdy_hm(as.character(path$timestamp))
       path <- vect(path, geom = c("longitude", "latitude"), crs = wgs84)
       path <- project(path, epsg5880)
@@ -1124,7 +1131,7 @@ jaguar <- R6Class("jaguar",
       dat$sl <- c(NA, st$sl_)             # step lengths in m
       dat$ta <- c(NA, st$ta_)             # turn angles in radians
       dat$dir <- c(NA, st$direction_p)    # bearing in radians
-      dat$dt <- c(NA, as.numeric(st$dt_)) # time interval in minutes
+      dat$dt <- c(NA, as.numeric(st$dt_, units = "mins")) # time interval in minutes
       dat$spd <- dat$sl / dat$dt
       return(dat[, c("timestamp", "longitude", "latitude", "ID", "year", "mon", 
                     "day", "hr", "sl", "ta", "dir", "dt", "spd")])
@@ -1484,10 +1491,13 @@ empirical_batch <- R6Class("empirical_batch",
     ## process_individual ------------------------------------------------------
     process_individual = function(i, ss_model, pp_model, diagnose_par = NULL) {
       message(paste0("Processing jaguar #", i))
+      # maybe just skip jaguar 114 or something idk 
+
       # Create jaguar instance and get data
       mm <- self$config$max_multiple %||% 1
       jag <- jaguar$new(i, max_multiple = mm, 
-                        scale_time = self$config$scale_time %||% FALSE)
+                        scale_time   = self$config$scale_time %||% FALSE,
+                        obs_interval = self$config$obs_interval %||% 0)
       track_cells <- jag$track_cells
       outliers    <- jag$outliers
       multipliers <- jag$multipliers
@@ -1505,6 +1515,14 @@ empirical_batch <- R6Class("empirical_batch",
           if (length(outliers) > 0) outliers <- outliers - length(hold)
           multipliers <- multipliers[(length(hold) + 1):length(multipliers)] 
         }
+      }
+
+      n_valid <- length(track_cells) - 1 - 
+                    sum(outliers %in% seq_len(length(track_cells) - 1))
+      if (n_valid < 30) { # minimum sample size, usable transitions
+        message(paste0(i, ": sample size ", n_valid, " after thinning; skip"))
+        saveRDS(NA, paste0("data/output/NA_", i, ".rds"))
+        return(NA)
       }
 
       # Diagnosis mode: skip fitting and return diagnostic info

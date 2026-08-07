@@ -18,7 +18,8 @@ if (test_jumpgrain) {
                               p        = c(2, 4, 8))
     param_grid$autocorr_range <- param_grid$gen_step / param_grid$s
     param_grid$obs_interval   <- param_grid$p - 1
-    param_grid <- param_grid[param_grid$autocorr_range <= 40, ]  # keep patches < env_size/10
+    param_grid <- param_grid[param_grid$autocorr_range <= 40, ]  
+    # keep patches < env_size/10
 
     batch <- simulation_batch$new()
     batch$configs <- lapply(seq_len(nrow(param_grid)), function(i) {
@@ -26,10 +27,10 @@ if (test_jumpgrain) {
         simulation_config$new(
             name           = sprintf("jg_j%s_s%s_p%s", g$gen_step, g$s, g$p),
             obs_interval   = g$obs_interval,
-            gen_step       = g$gen_step,   # truth
-            step_size      = g$gen_step,   # model d_jump: well-specified
+            gen_step       = g$gen_step,   # true generating step
+            step_size      = g$gen_step,   # model d_jump
             autocorr_range = g$autocorr_range,
-            n_steps = 1000, n_individuals = 12,
+            n_steps = 1000, n_individuals = 30,
             env_response = c(4, -3, 0.5, 0),
             b_density = 0, env_size = 400, autocorr_strength = 10,
             n_cores = 4)
@@ -47,16 +48,16 @@ if (test_jumpgrain) {
     r$s  <- r$gen_step / r$autocorr_range
 
     pc <- ggplot(r, aes(s, ll_diff_per_obs, colour = factor(p))) +
-        geom_line(aes(group = interaction(p, gen_step)), alpha = 0.35) +
-        geom_point(aes(shape = factor(gen_step)), size = 2.5) +
+        geom_line(aes(group = interaction(p, gen_step)), alpha = 1) +
+        geom_point(aes(shape = factor(gen_step)), size = 4) +
         scale_x_log10() +
         labs(x = "substep length / autocorrelation range  (s)",
-             y = "median LL (SS - PP) per obs",
+             y = "mean log(L) advantage per obs",
              colour = "substeps per fix (p)", shape = "jump (cells/tick)") +
         theme_minimal()
+    pc
     ggsave(paste0("figs/sims/jumpgrain_collapse_",
             format(Sys.time(), "%Y%m%d_%H%M%S"), ".pdf"), pc, width = 8, height = 5)
-    print(pc)
     file.remove(list.files("data/output", pattern = "sim_jg", full.names = TRUE))
 }
 

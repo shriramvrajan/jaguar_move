@@ -62,7 +62,6 @@ get_mode <- function(x) {
   ux[which.max(tabulate(match(x, ux)))]
 }
 
-
 # Convert vector of cell numbers to raster with values at those cells and NAs
 to_raster <- function(vals, cells, template) {
   r <- template * NA
@@ -86,6 +85,15 @@ plot_pdf <- function(path, expr, x = 5, y = 5) {
 }
 
 # 1. Movement model ============================================================
+
+# Get # moves for all jaguars given a maximum multiple of modal time interval
+nmove_by_multiple <- function(m) {
+  sapply(seq_len(nrow(jag_meta)), function(i) {
+      print(i)
+      jag_meta$nmove[i] - 
+        length(jaguar$new(jag_meta$ID[i], max_multiple = m)$outliers)
+    })
+}
 
 # Output neighborhood as matrix
 # r:    Raster object
@@ -229,7 +237,7 @@ gen_landscape <- function(size = 100, beta = 1, s = 0.03, r = 10, n = 0,
       
       # Add nugget
       if (n > 0) out_mat <- out_mat + matrix(rnorm(size^2, 0, sqrt(n)), size, size)
-      if (any(out_mat < 0)) out_mat[out_mat < 0] <- 0
+      # if (any(out_mat < 0)) out_mat[out_mat < 0] <- 0
 
       # Add barriers
       if (b_density > 0) {

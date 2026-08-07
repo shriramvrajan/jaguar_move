@@ -3,8 +3,9 @@ source("R/functions.R")
 source("R/classes.R")       
 set.seed(7)                 # For reproducibility
 
-fit_individuals <- 0
-test_holdout    <- 1
+fit_individuals <- 1
+holdout_set     <- 0
+test_holdout    <- 0
 parallel        <- 1   # Whether to use parallel processing
 
 model_type <- 1    # 1 for step selection, 2 for path propagation
@@ -23,14 +24,15 @@ if (fit_individuals) {
         env_type          = env_type,
         npar              = switch(env_type, "1o" = 9, "2o" = 15, "mix" = 10), 
         max_multiple      = 1,
+        obs_interval      = 1,
 
         # jag_id$jag_id = all, or vector of specific IDs
-        # individuals       = jag_id$jag_id, 
-        individuals       = as.numeric(gsub("\\D", "", files)), # Save existing results
+        individuals       = jag_id$jag_id, 
+        # individuals       = as.numeric(gsub("\\D", "", files)), # Save existing results
 
         # Holdout set parameters
-        holdout_set  = TRUE,     # Whether to reserve holdout set (T/F)
-        holdout_frac = 0.6,       # Proportion of data to use for training
+        holdout_set  = holdout_set,   # Whether to reserve holdout set (T/F)
+        holdout_frac = 0.6,           # Proportion of data to use for training
 
         # Parallel processing parameters
         parallel = parallel,
@@ -49,7 +51,8 @@ if (fit_individuals) {
     saveRDS(results, paste0("data/output/emp_", 
                             switch(config$model_type, "ss", "pp"), "_",
                             config$env_type, "_m",
-                            config$max_multiple, "_",
+                            config$max_multiple, "_o",
+                            config$obs_interval, "_",
                             Sys.Date(), ".rds"))
 
     # source("~/memplot.R") # save memory use plot, only works on vasco
@@ -76,8 +79,10 @@ if (test_holdout) {
     pp_cols <- paste0("pp_par", seq_len(npar))
 
     ss_model <- step_selection_model$new()
-    blank <- function(id) data.frame(ID = id, nll_ss = NA_real_, nll_pp = NA_real_,
-                                   n_ss = NA_integer_, n_pp = NA_integer_)
+    blank <- function(id) {
+        data.frame(ID = id, nll_ss = NA_real_, nll_pp = NA_real_,
+                   n_ss = NA_integer_, n_pp = NA_integer_)
+    }
     rows <- which(!is.na(res$ss_ll) & !is.na(res$pp_ll))
 
     ### Change seq_len(nrow(res)) part
@@ -92,7 +97,8 @@ if (test_holdout) {
             return(blank(id))
 
         # Reconstruct holdout split analogous to process_individual
-        jag_i <- jaguar$new(id, max_multiple = max_multiple, scale_time = scale_time)
+        jag_i <- jaguar$new(id, max_multiple = max_multiple, 
+            scale_time = scale_time, obs_interval = 0)
         if (nrow(jag_i$track) <= 100) return(blank(id))
         track_i <- jag_i$track_cells
         hold      <- seq_len(ceiling(length(track_i) * holdout_frac))

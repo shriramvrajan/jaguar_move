@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include <limits>
 using namespace Rcpp;
 
 // Compute full path propagation negative log-likelihood in one shot.
@@ -18,6 +19,7 @@ double path_propagation_ll_cpp(
   NumericVector attract_raw,
   double k_exp,
   double bg_rate,
+  double p_stay,
   IntegerMatrix nbhd_i,
   IntegerVector to_dest_vec,
   IntegerVector obs,
@@ -43,11 +45,22 @@ double path_propagation_ll_cpp(
     if (obs.size() != n_obs - 1)
       Rcpp::stop("obs has %d elements, expected %d", obs.size(), n_obs - 1);
 
-    // 1. Dispersal kernel (replaces calculate_dispersal_kernel)
+    // 1. Dispersal kernel, centre held out at p_stay
     std::vector<double> kernel(ncol_inner);
+    int kcenter = 0;
+    for (int j = 1; j < ncol_inner; j++)
+      if (inner_dists[j] < inner_dists[kcenter]) kcenter = j;
+
+    double off_sum = 0.0;
     for (int j = 0; j < ncol_inner; j++) {
-      kernel[j] = k_exp * std::exp(-k_exp * inner_dists[j]);
+      kernel[j] = (j == kcenter) ? 0.0 : k_exp * std::exp(-k_exp * inner_dists[j]);
+      off_sum += kernel[j];
     }
+    if (off_sum > 0.0) {
+      double scale = (1.0 - p_stay) / off_sum;
+      for (int j = 0; j < ncol_inner; j++) kernel[j] *= scale;
+    }
+    kernel[kcenter] = p_stay;
 
     // 2. Transition probabilities (replaces env_function + apply_kernel)
     std::vector<double> attract(n_total * ncol_inner, 0.0);
@@ -62,10 +75,14 @@ double path_propagation_ll_cpp(
         attract[row + col * n_total] = val; 
         row_sum += val;
       }
-      if (std::isfinite(row_sum) && row_sum > 0.0) {
+      if (std::isfinite(row_sum) && row_sum >= std::numeric_limits<double>::min()) {
         double inv = 1.0 / row_sum;
         for (int col = 0; col < ncol_inner; col++) {
-          attract[row + col * n_total] *= inv; // normalize
+          attract[row + col * n_total] *= inv;
+        }
+      } else {
+        for (int col = 0; col < ncol_inner; col++) {
+          attract[row + col * n_total] = 0.0;
         }
       }
     }
@@ -125,11 +142,11 @@ double path_propagation_ll_cpp(
         for (int cell = 0; cell < ncell_local; cell++) {
           col_sum += next_buf[base + cell];
         }
-        if (std::isfinite(col_sum) && col_sum > 0.0) {
+        if (std::isfinite(col_sum) && col_sum >= std::numeric_limits<double>::min()) {
           double inv = 1.0 / col_sum;
-          for (int cell = 0; cell < ncell_local; cell++) {
-            next_buf[base + cell] *= inv;
-          }
+          for (int cell = 0; cell < ncell_local; cell++) next_buf[base + cell] *= inv;
+        } else {
+          Rcpp::stop("block %d unnormalisable at step %d (col_sum = %g)", i, step, col_sum);
         }
       }
 
@@ -160,6 +177,7 @@ List path_propagation_diagnose_cpp(
   NumericVector attract_raw,
   double k_exp,
   double bg_rate,
+  double p_stay,
   IntegerMatrix nbhd_i,
   IntegerVector to_dest_vec,
   IntegerVector obs,
@@ -188,9 +206,19 @@ List path_propagation_diagnose_cpp(
       
     // 1. Dispersal kernel
     std::vector<double> kernel(ncol_inner);
+    int kcenter = 0;
+    for (int j = 1; j < ncol_inner; j++)
+      if (inner_dists[j] < inner_dists[kcenter]) kcenter = j;   // distance 0
+    double off_sum = 0.0;
     for (int j = 0; j < ncol_inner; j++) {
-      kernel[j] = k_exp * std::exp(-k_exp * inner_dists[j]);
+      kernel[j] = (j == kcenter) ? 0.0 : k_exp * std::exp(-k_exp * inner_dists[j]);
+      off_sum += kernel[j];
     }
+    if (off_sum > 0.0) {
+      double scale = (1.0 - p_stay) / off_sum;
+      for (int j = 0; j < ncol_inner; j++) kernel[j] *= scale;
+    }
+    kernel[kcenter] = p_stay;
 
     // 2. Transition probabilities
     std::vector<double> attract(n_total * ncol_inner, 0.0);
@@ -205,10 +233,14 @@ List path_propagation_diagnose_cpp(
         attract[row + col * n_total] = val;
         row_sum += val;
       }
-      if (std::isfinite(row_sum) && row_sum > 0.0) {
+      if (std::isfinite(row_sum) && row_sum >= std::numeric_limits<double>::min()) {
         double inv = 1.0 / row_sum;
         for (int col = 0; col < ncol_inner; col++) {
           attract[row + col * n_total] *= inv;
+        }
+      } else {
+        for (int col = 0; col < ncol_inner; col++) {
+          attract[row + col * n_total] = 0.0;
         }
       }
     }
@@ -262,9 +294,11 @@ List path_propagation_diagnose_cpp(
         double col_sum = 0.0;
         int base = i * ncell_local;
         for (int cell = 0; cell < ncell_local; cell++) col_sum += next_buf[base + cell];
-        if (std::isfinite(col_sum) && col_sum > 0.0) {
+        if (std::isfinite(col_sum) && col_sum >= std::numeric_limits<double>::min()) {
           double inv = 1.0 / col_sum;
           for (int cell = 0; cell < ncell_local; cell++) next_buf[base + cell] *= inv;
+        } else {
+          Rcpp::stop("block %d unnormalisable at step %d (col_sum = %g)", i, step, col_sum);
         }
       }
 
@@ -372,9 +406,11 @@ List path_propagation_diagnose_cpp(
         double col_sum = 0.0;
         int base = i * ncell_local;
         for (int cell = 0; cell < ncell_local; cell++) col_sum += next_buf[base + cell];
-        if (std::isfinite(col_sum) && col_sum > 0.0) {
+        if (std::isfinite(col_sum) && col_sum >= std::numeric_limits<double>::min()) {
           double inv = 1.0 / col_sum;
           for (int cell = 0; cell < ncell_local; cell++) next_buf[base + cell] *= inv;
+        } else {
+          Rcpp::stop("block %d unnormalisable at step %d (col_sum = %g)", i, step, col_sum);
         }
       }
       std::swap(current, next_buf);

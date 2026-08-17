@@ -90,8 +90,12 @@ step_selection_model <- R6Class("step_selection_model",
       # Extract kernel parameters
       k_exp   <- ifelse(sim, exp(par[length(par)]), exp(par[length(par) - 1]))
       bg_rate <- ifelse(sim, 0, plogis(par[length(par)]))
-      kernel <- calculate_dispersal_kernel(max_dispersal_dist = objects$max_dist, 
-                                          kfun = function(x) dexp(x, k_exp))
+      kernel <- if (sim) {
+        calculate_dispersal_kernel(max_dispersal_dist = objects$max_dist,
+                                   kfun = function(x) dexp(x, k_exp))
+      } else {
+        stay_kernel(objects$max_dist, k_exp, plogis(par[length(par) - 2]))
+      }
       # Calculate environmental attraction
       attract0 <- env_function(objects$env_ss, par, objects$nbhd_ss, sim = sim,
                                type = env_type)
@@ -131,13 +135,13 @@ step_selection_model <- R6Class("step_selection_model",
       lbound <- if (sim) {
         c(rep(-Inf, length(par_start)))
       } else {
-        c(rep(-Inf, length(par_start) - 2), -5, -30)
+        c(rep(-Inf, length(par_start) - 2), -10, -5, -30)
       }
 
       ubound <- if (sim) {
         c(rep(Inf, length(par_start)))
       } else {
-        c(rep(Inf, length(par_start) - 2), 5, -2)
+        c(rep(Inf, length(par_start) - 2), 10, 5, -2)
       }
 
       tryCatch({
@@ -344,13 +348,15 @@ path_propagation_model <- R6Class("path_propagation_model",
     log_likelihood = function(par, objects, sim, debug = FALSE, env_type = "1o") {
       n_obs       <- length(objects$obs) + 1
       ncell_local <- (2 * objects$max_dist + 1)^2
+      p_stay  <- if (sim) NA else plogis(par[length(par) - 2])
       k_exp   <- if (sim) exp(par[length(par)]) else exp(par[length(par) - 1])
       bg_rate <- if (sim) 0 else plogis(par[length(par)])
       attract_raw <- as.numeric(env_function(objects$env_i, par, nbhd = NULL,
                                               sim = sim, type = env_type))
       path_propagation_ll_cpp(
-        k_exp = k_exp, bg_rate = bg_rate, attract_raw = attract_raw,
-        nbhd_i = objects$nbhd_i, to_dest_vec = as.integer(objects$to_dest_vec),
+        p_stay = p_stay, k_exp = k_exp, bg_rate = bg_rate, 
+        attract_raw = attract_raw, nbhd_i = objects$nbhd_i, 
+        to_dest_vec = as.integer(objects$to_dest_vec),
         obs = as.integer(objects$obs), outliers = as.integer(objects$outliers),
         multipliers = as.integer(objects$multipliers),
         inner_dists = objects$inner_dists, ncell_local = as.integer(ncell_local),
@@ -390,12 +396,12 @@ path_propagation_model <- R6Class("path_propagation_model",
       lbound <- if (sim) {
         c(rep(-Inf, length(par_start)))
       } else {
-        c(rep(-Inf, length(par_start) - 2), -5, -30)
+        c(rep(-Inf, length(par_start) - 3), -10, -5, -30)
       }
       ubound <- if (sim) {
         c(rep(Inf, length(par_start)))
       } else {
-        c(rep(Inf, length(par_start) - 2), 5, -2)
+        c(rep(Inf, length(par_start) - 3), 10, 5, -2)
       }
       # Fit model
       tryCatch({
@@ -432,6 +438,7 @@ path_propagation_model <- R6Class("path_propagation_model",
     diagnose = function(par, objects, sim = FALSE, env_type) {
       ncell_local <- (2 * objects$max_dist + 1)^2
       n_obs <- length(objects$obs) + 1
+      p_stay  <- if (sim) NA_real_ else plogis(par[length(par) - 2])
       k_exp <- exp(par[length(par) - 1])
       bg_rate <- plogis(par[length(par)])
       attract_raw <- as.numeric(env_function(objects$env_i, par, nbhd = NULL,
@@ -444,17 +451,13 @@ path_propagation_model <- R6Class("path_propagation_model",
         stop()
       }
       path_propagation_diagnose_cpp(
-        k_exp = k_exp,
-        bg_rate = bg_rate,
-        attract_raw = attract_raw,
-        nbhd_i = objects$nbhd_i,
+        p_stay = p_stay, k_exp = k_exp, bg_rate = bg_rate,
+        attract_raw = attract_raw, nbhd_i = objects$nbhd_i,
         to_dest_vec = as.integer(objects$to_dest_vec),
-        obs = as.integer(objects$obs),
-        outliers = as.integer(objects$outliers),
+        obs = as.integer(objects$obs), outliers = as.integer(objects$outliers),
         multipliers = as.integer(objects$multipliers),
-        inner_dists = objects$inner_dists,
-        ncell_local = as.integer(ncell_local),
-        n_obs = as.integer(n_obs),
+        inner_dists = objects$inner_dists, 
+        ncell_local = as.integer(ncell_local), n_obs = as.integer(n_obs),
         n_steps = as.integer(self$propagation_steps)
       )
     },
@@ -1190,7 +1193,7 @@ jaguar <- R6Class("jaguar",
     # fit_ss --------------------------------------------------------------
     fit_ss = function(par_start, env_type = "1o", clamp = Inf, gao = FALSE,
                       gao_control = list()) {
-      env_idx <- seq_len(length(par_start) - 2)
+      env_idx <- seq_len(length(par_start) - 3)
       par_start[env_idx] <- pmin(pmax(par_start[env_idx], -clamp), clamp)
 
       ss  <- step_selection_model$new()
@@ -1204,12 +1207,12 @@ jaguar <- R6Class("jaguar",
     # fit_pp -------------------------------------------------------------------
     # Use case 1: fit PP with n_jump
     fit_pp = function(par_start, env_type = "1o", max_jump = NULL, 
-               n_jump = NULL, clamp = 2, gao = gao, gao_control = gao_control) {
+               n_jump = NULL, clamp = 2, gao = FALSE, gao_control = list()) {
       max_dist <- self$max_dist
       if (is.null(max_jump)) max_jump <- min(max_dist - 1, 8)
       print(max_jump)
 
-      env_idx <- seq_len(length(par_start) - 2)
+      env_idx <- seq_len(length(par_start) - 3)
       par_start[env_idx] <- pmin(pmax(par_start[env_idx], -clamp), clamp)
 
       best <- list(result = NULL, ll = Inf, n_jump = 0)
@@ -1570,9 +1573,10 @@ empirical_batch <- R6Class("empirical_batch",
         par_start <- ss_i$par
         message("Warm starting from step selection fit")
       } else {
-        par_start <- c(rnorm(self$config$npar - 2, sd = 0.1), # environmental vars
-                      log(self$k_fit$k[which(self$k_fit$id == i)]),      # k_exp 
-                      -15)                           # bg_rate ~ 0  
+        par_start <- c(rnorm(self$config$npar - 3, sd = 0.1), # environmental vars
+                      -0.5,                                      # logit p_stay
+                      log(self$k_fit$k[which(self$k_fit$id == i)]),   # k_exp 
+                      -20)                                         # bg_rate ~ 0  
       }
 
       # Fit models based on config
@@ -1580,7 +1584,9 @@ empirical_batch <- R6Class("empirical_batch",
         # Step selection
         result <- ss_model$fit(track_cells, max_dist, rdf = brdf, 
                                env_type = self$config$env_type,
-                               par_start = par_start, outliers = outliers)
+                               par_start = par_start, outliers = outliers,
+                               gao = self$config$gao %||% FALSE,
+                              gao_control = self$config$gao_control %||% list())
       } else if (self$config$model_type == 2) {
         check_file <- paste0("data/output/partial_", i, ".rds")
         # The check_file loop prevents rerunning n_jump iterations for the case
@@ -1599,7 +1605,9 @@ empirical_batch <- R6Class("empirical_batch",
           message(paste0("n_jump = ", n_j, ", steps = ", pp_model$propagation_steps))
           res <- pp_model$fit(track_cells, max_dist, rdf = brdf, 
             par_start = par_start, outliers = outliers, step_size = n_j + 1,
-            env_type = self$config$env_type, multipliers = multipliers)
+            env_type = self$config$env_type, multipliers = multipliers,
+            gao = self$config$gao %||% FALSE,
+            gao_control = self$config$gao_control %||% list())
           if (!is.na(res[1])) par_start <<- res$par # warm start next radius
           if (!is.na(res[1]) && res$ll < checkpoint$best_ll) {
             checkpoint$best_ll <<- res$ll

@@ -171,6 +171,17 @@ env_function <- function(env, par, nbhd = NULL, sim = FALSE, type = "2o") {
   }
 }
 
+stay_kernel <- function(max_dist, k_exp, p_stay) {
+  kern <- calculate_dispersal_kernel(max_dispersal_dist = max_dist,
+                                     kfun = function(x) dexp(x, k_exp))
+  center <- (length(kern) + 1) / 2         
+  kern[center] <- 0
+  s <- sum(kern, na.rm = TRUE)
+  if (s > 0) kern <- kern * (1 - p_stay) / s
+  kern[center] <- p_stay
+  return(kern)
+}
+
 apply_kernel <- function(attract0, kernel, bg_rate = 0) {
   # kernel <- kernel / sum(kernel, na.rm = T)
   na_mask <- is.na(attract0)
@@ -794,7 +805,7 @@ vary_par <- function(ini_par, ncore, scalar = 1.5) {
 ## ncore:        number of cores to use for parallel
 ## p_change:     mutation, cross over, co-dominance: keep at default
 gao <- function(par, le_func, wrap_optim = wrapper, par_restr = NULL, 
-                control = list(), exit_t_same = 0, ngen = 20, maxit = 30, 
+                control = list(), exit_t_same = 0, ngen = 5, maxit = 30, 
                 ncore = 15, p_change = c(.5, .25, .25), ...) {
     # operations of gm - create population, select who survives based on 
     # "fitness". Has mutation and cross-over (which in this case includes 
@@ -868,7 +879,7 @@ gao_bounded <- function(par, le_func, control, lower = -Inf, upper = Inf,
 ## Run GAO instead of optim. Returns same kind of list as optim.
 fit_with_gao <- function(le_func, par_start, lbound, ubound,
                          gao_control = list(), ...) {
-  ctrl <- modifyList(list(ngen = 6, maxit = 100, ncore = 4,
+  ctrl <- modifyList(list(ngen = 6, maxit = 100, ncore = 15,
                           exit_t_same = 3, scalar = 1.5, factr = 1e9),
                      gao_control)
 

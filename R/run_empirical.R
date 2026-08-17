@@ -6,9 +6,12 @@ set.seed(7)                 # For reproducibility
 fit_individuals <- 1
 holdout_set     <- 0
 test_holdout    <- 0   # why are these different idk
-parallel        <- 1   # Whether to use parallel processing
 
-model_type <- 2    # 1 for step selection, 2 for path propagation
+use_gao         <- 1   # Genetic algorithm for optim 
+parallel        <- 0   # Whether to use parallel processing
+n_cores         <- 15
+
+model_type <- 1    # 1 for step selection, 2 for path propagation
 env_type   <- "1o" # "1o" or "2o" or "mix", env_function argument
 
 if (fit_individuals) {
@@ -22,9 +25,9 @@ if (fit_individuals) {
         # Model parameters (npar = number of parameters)
         model_type        = model_type,
         env_type          = env_type,
-        npar              = switch(env_type, "1o" = 9, "2o" = 15, "mix" = 10), 
+        npar              = switch(env_type, "1o" = 10, "2o" = 16, "mix" = 11), 
         max_multiple      = 1,
-        obs_interval      = 2,
+        obs_interval      = 0,  # 0 = use all observations, 1 = every other observation, etc.
 
         # jag_id$jag_id = all, or vector of specific IDs
         individuals       = jag_id$jag_id, 
@@ -35,13 +38,16 @@ if (fit_individuals) {
         holdout_frac = 0.6,           # Proportion of data to use for training
 
         # Parallel processing parameters
-        parallel = parallel,
-        n_cores  = 10,             # Number of cores to use if parallel
+        parallel = if (use_gao) 0 else parallel,
+        n_cores  = n_cores,             # Number of cores to use if parallel
         mem_budget = 0.7 * 94e9,
 
         # Model fitting options
-        fit_model      = TRUE    # Whether to fit the model (T/F)
+        fit_model      = TRUE,    # Whether to fit the model (T/F)
         # model_calcnull = FALSE    # Whether to calculate null model likelihood (T/F)
+        gao            = use_gao, 
+        gao_control    = list(ncore = n_cores, ngen = 5, maxit = 40,
+                              exit_t_same = 3)
     )
 
     batch <- empirical_batch$new(config, k_fit = k_fit, ss_warm_par = ss_warm)
@@ -74,7 +80,7 @@ if (test_holdout) {
         env_type = env_type
     )$res_table %>% as.data.frame
 
-    npar <- switch(env_type, "1o" = 9, "2o" = 15, "mix" = 10)
+    npar <- switch(env_type, "1o" = 10, "2o" = 16, "mix" = 11)
     ss_cols <- paste0("ss_par", seq_len(npar))
     pp_cols <- paste0("pp_par", seq_len(npar))
 

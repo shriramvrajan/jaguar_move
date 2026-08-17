@@ -11,11 +11,19 @@ jag <- jaguar$new(62, results = r1)
 sspar <- as.numeric(jag$results[paste0("ss_par", 1:9)])
 pppar <- as.numeric(jag$results[paste0("pp_par", 1:9)])
 
+set.seed(7)
+
 p0 <- rnorm(length(sspar), sd = 0.1)
-f <- jag$fit_ss(par_start = p0)
+f1 <- jag$fit_ss(par_start = p0)
 f2 <- jag$fit_ss(par_start = p0, gao = TRUE)
 
 f3 <- jag$fit_pp(par_start = p0, n_jump = 0)
+f4 <- jag$fit_pp(par_start = p0, n_jump = 0, gao = TRUE)
+
+f4p <- c(700.670495, 89.088115, 264.815601, -418.576186, -362.213550,
+         309.996117, -226.065342, 4.996431, -2)
+e <- jag$eval_pp(par = f4p, n_jump = 0, env_type = "1o")
+e0 <- jag$eval_ss(par = f2$par, env_type = "1o")
 
 # brdf <- readRDS("data/env_layers.rds")
 # ssfit0 <- jag$fit_ss(par = sspar)

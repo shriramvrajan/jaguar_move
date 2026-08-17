@@ -87,11 +87,12 @@ plot_pdf <- function(path, expr, x = 5, y = 5) {
 # 1. Movement model ============================================================
 
 # Get # moves for all jaguars given a maximum multiple of modal time interval
-nmove_by_multiple <- function(m) {
+nmove_by_multiple <- function(m, obs_interval = 0) {
   sapply(seq_len(nrow(jag_meta)), function(i) {
       print(i)
       jag_meta$nmove[i] - 
-        length(jaguar$new(jag_meta$ID[i], max_multiple = m)$outliers)
+        length(jaguar$new(jag_meta$ID[i], max_multiple = m, 
+                                          obs_interval = obs_interval)$outliers)
     })
 }
 
@@ -732,7 +733,174 @@ plot_dispersal_comparison <- function(p_ss, p_pp, max_displacement, id) {
       # terra::plot(forest_cover, main = "Forest cover")
 }
 
-## Miscellaneous ===============================================================
+# 5. GAO =======================================================================
+## Genetic optim algorithm written by Brian Leung & helper functions
+
+wrapper <- function(par, le_func, control, ...) {
+    return(optim(par, le_func, control = control, ...))
+}
+
+change <- function(par, p_change, ncore) {
+    tp <- sample(1:3, ncore, replace = T, prob = p_change)
+    for (i in 2:ncore) {
+        if (tp[i] == 1) { # mutation
+            par[i, ] <- par[i, ] * (.8 + .4 * runif(ncol(par)))
+        } else if (tp[i] == 2) { # cross over
+            s <- sample(1:ncore, 1) # find other parent
+            t <- sample(seq_len(ncol(par)), 1) # choose 1 trait to swap
+            par[i, t] <- par[s, t]
+            # also mutate one other trait to ensure sure no exact duplicates
+            t <- sample(seq_len(ncol(par)), 1) 
+            par[i, t] <- par[i, t] * (.8 + .4 * runif(1))
+        } else { # co-dominance
+            s <- sample(1:ncore, 1) # find other parent
+            par[i, ] <- (par[i, ] + par[s, ]) / 2
+            # also mutate one other trait to ensure sure no exact duplicates
+            t <- sample(seq_len(ncol(par)), 1)
+            par[i, t] <- par[i, t] * (.8 + .4 * runif(1))
+        }
+    }
+    return(par)
+}
+
+vary_par <- function(ini_par, ncore, scalar = 1.5) {
+    #** iterate through remaining cores allocated to project
+    #** set DIFFERENT starting values
+    ini_par2 <- matrix(NA, nrow = ncore, ncol = length(ini_par))
+    if (!is.null(names(ini_par))) {
+        colnames(ini_par2) <- names(ini_par)
+    }
+    ini_par2[1, ] <- ini_par
+
+
+    if (length(scalar) == 1) {
+        scalar <- rep(scalar, length(ini_par))
+    }
+    for (j in seq_along(ini_par)) {
+        ini_par2[2:ncore, j] <- ini_par[j] * (scalar[j] * runif(ncore - 1))
+    } #+1/scalar[j]) #the null model does not have b (which is the parameter of interest in our case)
+    return(ini_par2)
+}
+
+ # p_change: mutation,cross over, co-dominance - issue with none, is that all might be identical
+## par:          starting parameter
+## le_func:      function to minimize
+## wrap_optim:   optim wrapper, keep default
+## par_restr:
+## control:      same as control argument in optim
+## exit_t_same:  exit on convergence
+## ngen:         number of generations
+## maxit:        maximum # of iterations
+## ncore:        number of cores to use for parallel
+## p_change:     mutation, cross over, co-dominance: keep at default
+gao <- function(par, le_func, wrap_optim = wrapper, par_restr = NULL, 
+                control = list(), exit_t_same = 0, ngen = 20, maxit = 30, 
+                ncore = 15, p_change = c(.5, .25, .25), ...) {
+    # operations of gm - create population, select who survives based on 
+    # "fitness". Has mutation and cross-over (which in this case includes 
+    # independent assortment). Can also mix the values of both (e.g midpoint).
+    # keep the best performer. Choose others based on their likelihoods.
+    control$maxit <- maxit
+    options(cores = ncore)
+
+    if (is.data.frame(par) == F) {
+        par <- vary_par(par, ncore)
+    }
+    n_t_same <- 0
+    mem_min <- 0
+    for (gen in 1:ngen){
+        mem_optim <- foreach(i = 1:ncore) %dopar% { # simplify
+                # evaluate restrictions first, and make sure that par is 
+                # actually valid. If it is not, replace with par[1,] since it is valid
+                if (!is.null(par_restr)) {
+                    if (par_restr(par[i, ]) == T) {
+                        par[i, ] <- par[1, ]
+                    }
+                }
+
+                tmp_optim <- wrap_optim(par[i, ], le_func, control, ...)
+                # 			print("XX")
+                return(unlist(c(value = tmp_optim$value, tmp_optim$par)))
+            }
+        mem_optim <- as.matrix(do.call(rbind, mem_optim))
+        # now compare - keep the best one, allow the others to reproduce
+        min <- mem_optim[which.min(mem_optim[, "value"]), ]
+        if (exit_t_same > 0) {
+            if (n_t_same == 0 || all(mem_min == min[-1])) {
+                n_t_same <- n_t_same + 1
+            } else {
+                mem_min <- min[-1]
+                n_t_same <- 0
+            }
+            if (n_t_same >= exit_t_same) {
+                break
+            }
+        }
+        par[1, ] <- min[-1]
+        # for each individual, decide which change or whether to do it
+        # which individuals survive?
+        p <- exp(-(mem_optim[, 1] - min["value"]))
+        s <- sample(1:ncore, ncore - 1, replace = T, prob = p) # new individuals
+        # take parameter outcomes of each of the optims (remove likelihood values)
+        par[-1, ] <- mem_optim[s, -1] 
+        par <- change(par, p_change, ncore)
+
+        print(Sys.time())
+        print(min[-1])
+        print(c(gen, min["value"]))
+    }
+    return(list(value = min["value"], par = unlist(min[-1])))
+}
+
+## Optim wrapper that keeps L-BFGS-B bounds
+gao_bounded <- function(par, le_func, control, lower = -Inf, upper = Inf, 
+                        method = "L-BFGS-B", ...) {
+    par <- pmin(pmax(as.numeric(unlist(par)), lower), upper) # clamp
+    out <- tryCatch(
+      optim(par, le_func, method = method, lower = lower, upper = upper,
+            control = control, ...),
+      error = function(e) list(par = par, value = 1e12, convergence = 99L))
+
+    if (!is.finite(out$value)) out$value <- 1e12   # gao's sample(prob=) dies on NA
+    return(out)
+}
+
+## Run GAO instead of optim. Returns same kind of list as optim.
+fit_with_gao <- function(le_func, par_start, lbound, ubound,
+                         gao_control = list(), ...) {
+  ctrl <- modifyList(list(ngen = 6, maxit = 100, ncore = 4,
+                          exit_t_same = 3, scalar = 1.5, factr = 1e9),
+                     gao_control)
+
+  # Reuse existing backend or register one
+  if (foreach::getDoParWorkers() < 2) {
+    doParallel::registerDoParallel(cores = ctrl$ncore)
+    on.exit({
+      try(doParallel::stopImplicitCluster(), silent = TRUE)
+      foreach::registerDoSEQ()
+    }, add = TRUE)
+  } else {
+    ctrl$ncore <- min(ctrl$ncore, foreach::getDoParWorkers())
+  }
+
+  # Seed the population, keep par_start as row 1 and clamp to bounds
+  pop <- vary_par(as.numeric(par_start), ctrl$ncore, scalar = ctrl$scalar)
+  pop[1, ] <- as.numeric(par_start)
+  pop <- t(apply(pop, 1, function(p) pmin(pmax(p, lbound), ubound)))
+
+  # Pass dataframe to gao, I think it reruns vary_par otherwise...
+  res <- gao(par = as.data.frame(pop), le_func = le_func,
+             wrap_optim = gao_bounded,
+             control = list(factr = ctrl$factr),
+             exit_t_same = ctrl$exit_t_same, ngen = ctrl$ngen,
+             maxit = ctrl$maxit, ncore = ctrl$ncore,
+             lower = lbound, upper = ubound, ...)
+
+  list(par = as.numeric(res$par), value = as.numeric(res$value),
+       convergence = 0)   
+}
+
+# Miscellaneous ================================================================
 
 # Fitting k parameter
 

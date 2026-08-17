@@ -1,25 +1,30 @@
 source("R/functions.R")
 source("R/classes.R")
 
-test_warmstart <- FALSE
-
-ssfn <- "data/output/emp_ss_1o_mm2.rds"
-ppfn <- "data/output/emp_pp_1o_mm2.rds"
+ssfn <- "data/output/emp_ss_1o_m1.rds"
+ppfn <- "data/output/emp_pp_1o_m1.rds"
 r1 <- results_set$new(r_ss = ssfn, r_pp = ppfn, env_type = "1o")$res_table
 
-## test the forest-focal brdf
+## test the forest-focal brdf --------------------------------------------------
 
-jag <- jaguar$new(63, results = r1)
+jag <- jaguar$new(62, results = r1)
 sspar <- as.numeric(jag$results[paste0("ss_par", 1:9)])
+pppar <- as.numeric(jag$results[paste0("pp_par", 1:9)])
 
-brdf <- readRDS("data/env_layers.rds")
-ssfit0 <- jag$fit_ss(par = sspar)
+p0 <- rnorm(length(sspar), sd = 0.1)
+f <- jag$fit_ss(par_start = p0)
+f2 <- jag$fit_ss(par_start = p0, gao = TRUE)
 
-brdf <- readRDS("data/env_layers_fc9.rds")
-ssfit1 <- jag$fit_ss(par = sspar)
+f3 <- jag$fit_pp(par_start = p0, n_jump = 0)
+
+# brdf <- readRDS("data/env_layers.rds")
+# ssfit0 <- jag$fit_ss(par = sspar)
+
+# brdf <- readRDS("data/env_layers_fc9.rds")
+# ssfit1 <- jag$fit_ss(par = sspar)
 
 
-### test whether warm starting with ss best fit is helping--------------------
+### test whether warm starting with ss best fit is helping ---------------------
 
 ss_res <- readRDS(ssfn); pp_res <- readRDS(ppfn)
 par0 <- ss_res[[which(jag_id$jag_id == id)]]$par
@@ -43,6 +48,7 @@ message(paste("PP log(L):", r2$ll_total, "| n_jump =", ppfit$n_jump,
               "| best_r =", r2$best_r))
 
 ## nesting check: multipliers off
+
 jag_flat <- jag$clone(deep = TRUE) # necessary for r6, no overwriting!
 jag_flat$multipliers[] <- 1L
 r3 <- jag_flat$eval_pp(par = ssfit$par, n_jump = jag$max_dist - 1, env_type = "1o")

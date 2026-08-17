@@ -122,7 +122,8 @@ step_selection_model <- R6Class("step_selection_model",
 
     ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, rdf, par_start, sim = FALSE, 
-                  outliers = integer(0), env_type = "1o") {
+                  outliers = integer(0), env_type = "1o", gao = FALSE,
+                  gao_control = list()) {
       objects <- self$prepare_objects(trajectory, max_dist, rdf, sim)
       objects$outliers <- outliers
       # Fit model
@@ -140,13 +141,20 @@ step_selection_model <- R6Class("step_selection_model",
       }
 
       tryCatch({
-        par_out <- optim(par_start, self$log_likelihood, objects = objects, 
-                        sim = sim,  method = "L-BFGS-B", 
-                        env_type = env_type,
-                        lower = lbound,
-                        upper = ubound,
+        if (gao) {
+          par_out <- fit_with_gao(le_func = self$log_likelihood, 
+            par_start = par_start, lbound = lbound, ubound = ubound, 
+            gao_control = gao_control, objects = objects, sim = sim, 
+            env_type = env_type)
+        } else {
+          par_out <- optim(par_start, self$log_likelihood, objects = objects, 
+                          sim = sim,  method = "L-BFGS-B", 
+                          env_type = env_type,
+                          lower = lbound,
+                          upper = ubound,
                         control = list(maxit = 400, factr = 1e9))
                         # Max iterations and tolerance factor
+        }
         
         ll <- self$log_likelihood(par_out$par, objects, sim, env_type = env_type)
         return(list(
@@ -351,7 +359,8 @@ path_propagation_model <- R6Class("path_propagation_model",
 
     ## fit ---------------------------------------------------------------------
     fit = function(trajectory, max_dist, step_size, rdf, par_start, sim = FALSE, 
-                  outliers = integer(0), env_type = "1o", multipliers = NULL) {
+                  outliers = integer(0), env_type = "1o", multipliers = NULL,
+                  gao = FALSE, gao_control = list()) {
       if (is.null(multipliers)) multipliers <- rep(1, length(trajectory) - 1)
       multipliers <- as.integer(multipliers)
       valid_m <- setdiff(seq_along(multipliers), outliers)
@@ -390,11 +399,17 @@ path_propagation_model <- R6Class("path_propagation_model",
       }
       # Fit model
       tryCatch({
-        par_out <- optim(par_start, trace_ll, objects = objects,                         
-                        sim = sim,  env_type = env_type, method = "L-BFGS-B", 
-                        lower = lbound,
-                        upper = ubound,
-                        control = list(maxit = 400, factr = 1e9)) 
+        par_out <- if (gao) {
+          fit_with_gao(self$log_likelihood, par_start, lbound, ubound,
+                       gao_control, objects = objects, sim = sim,
+                       env_type = env_type)
+        } else {
+          optim(par_start, trace_ll, objects = objects,                         
+                sim = sim,  env_type = env_type, method = "L-BFGS-B", 
+                lower = lbound,
+                upper = ubound,
+                control = list(maxit = 400, factr = 1e9))
+        }
                         
         ll <- self$log_likelihood(par_out$par, objects, sim, env_type = env_type)
         traced_ll <- do.call(rbind, trace_log) %>% as.data.frame
@@ -1059,7 +1074,7 @@ simulation_batch <- R6Class("simulation_batch",
 ## Empirical testing ===========================================================
 
 # Jaguar class to handle data related to a single individual
-#   $get_track() - get processed track data with movement metrics
+#   $get_track()     - get processed track data with movement metrics
 #   $get_landscape() - get cropped landscape raster and dataframe for the track
 jaguar <- R6Class("jaguar",
   public = list(
@@ -1076,7 +1091,7 @@ jaguar <- R6Class("jaguar",
     scale_time    = NULL,
 
     initialize = function(id = NULL, results = NULL, max_multiple = 2,
-                          scale_time = FALSE) {
+                          obs_interval = 0, scale_time = FALSE) {
       self$id <- as.numeric(id)
       self$max_multiple <- max_multiple
       self$scale_time <- scale_time
@@ -1173,14 +1188,15 @@ jaguar <- R6Class("jaguar",
     },
 
     # fit_ss --------------------------------------------------------------
-    fit_ss = function(par_start, env_type = "1o", clamp = Inf) {
+    fit_ss = function(par_start, env_type = "1o", clamp = Inf, gao = FALSE,
+                      gao_control = list()) {
       env_idx <- seq_len(length(par_start) - 2)
       par_start[env_idx] <- pmin(pmax(par_start[env_idx], -clamp), clamp)
 
       ss  <- step_selection_model$new()
       res <- ss$fit(self$track_cells, self$max_dist, rdf = brdf,
                     par_start = par_start, outliers = self$outliers,
-                    env_type = env_type)
+                    env_type = env_type, gao = gao, gao_control = gao_control)
       if (length(res) == 1 && is.na(res[1])) return(NULL)
       res
     },
@@ -1188,7 +1204,7 @@ jaguar <- R6Class("jaguar",
     # fit_pp -------------------------------------------------------------------
     # Use case 1: fit PP with n_jump
     fit_pp = function(par_start, env_type = "1o", max_jump = NULL, 
-                      n_jump = NULL, clamp = 2) {
+               n_jump = NULL, clamp = 2, gao = gao, gao_control = gao_control) {
       max_dist <- self$max_dist
       if (is.null(max_jump)) max_jump <- min(max_dist - 1, 8)
       print(max_jump)
@@ -1207,7 +1223,7 @@ jaguar <- R6Class("jaguar",
         res <- pp$fit(self$track_cells, max_dist, rdf = brdf,
           par_start = par_start, outliers = self$outliers,
           step_size = n_j + 1, env_type = env_type,
-          multipliers = self$multipliers)
+          multipliers = self$multipliers, gao = gao, gao_control = gao_control)
         if (is.null(res) || (length(res) == 1 && is.na(res[1]))) next
         par_start <- res$par                             # warm-start next n_j
         if (res$ll < best$ll) {
@@ -1615,6 +1631,7 @@ empirical_batch <- R6Class("empirical_batch",
         if (file.exists(check_file)) file.remove(check_file)
       }
       # save individual result
+      if (is.list(result)) result$n_valid <- n_valid # sample size of transitions
       save_ok <- is.list(result) && !is.null(result$par)
       saveRDS(if (save_ok) result else NA,
               paste0("data/output/", if (save_ok) "out_" else "NA_", i, ".rds"))
@@ -1658,16 +1675,16 @@ results_set <- R6Class("results_set",
         first <- Position(is.list, results)
         if (is.na(first)) return(NULL)
         npar <- length(results[[first]]$par)
-        ncols <- npar + 2L + has_njump
+        ncols <- npar + 3L + has_njump
 
         mat <- t(vapply(results, function(r) {
-          if (!is.list(r)) return(rep(NA_real_, ncols))
-          c(r$par, r$ll, r$convergence, 
-            if (has_njump) r$n_jump %||% NA_real_)
+          if (!is.list(r)) return(rep(NA, ncols))
+          c(r$par, r$ll, r$convergence, r$n_valid %||% NA,
+            if (has_njump) r$n_jump %||% NA)
         }, numeric(ncols)))
 
         cnames <- c(paste0(prefix, "_par", seq_len(npar)),
-                    paste0(prefix, c("_ll", "_conv")))
+                    paste0(prefix, c("_ll", "_conv", "_n")))
         if (has_njump) cnames <- c(cnames, paste0(prefix, "_njump"))
 
         k <- ifelse(has_njump, npar + 2, npar)

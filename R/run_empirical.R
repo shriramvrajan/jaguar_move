@@ -5,10 +5,10 @@ set.seed(7)                 # For reproducibility
 
 fit_individuals <- 1
 holdout_set     <- 0
-test_holdout    <- 0
+test_holdout    <- 0   # why are these different idk
 parallel        <- 1   # Whether to use parallel processing
 
-model_type <- 1    # 1 for step selection, 2 for path propagation
+model_type <- 2    # 1 for step selection, 2 for path propagation
 env_type   <- "1o" # "1o" or "2o" or "mix", env_function argument
 
 if (fit_individuals) {
@@ -24,7 +24,7 @@ if (fit_individuals) {
         env_type          = env_type,
         npar              = switch(env_type, "1o" = 9, "2o" = 15, "mix" = 10), 
         max_multiple      = 1,
-        obs_interval      = 1,
+        obs_interval      = 2,
 
         # jag_id$jag_id = all, or vector of specific IDs
         individuals       = jag_id$jag_id, 

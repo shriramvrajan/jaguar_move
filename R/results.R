@@ -36,6 +36,22 @@ res_process <- function(r, m = 1, obs_interval = 0) {
   return(res)
 }
 
+res <- results_set$new(r_ss = "data/output/emp_ss_1o_m1.rds", 
+                       r_pp = "data/output/emp_ss_1o_gao.rds", env_type = "1o") %>%
+                       res_process(., m = 1, obs_interval = 0)
+
+res2 <- results_set$new(r_ss = "data/output/emp_pp_1o_m1.rds",
+                        r_pp = "data/output/emp_pp_1o_m1_o0_2026-08-19.rds", env_type = "1o") %>%
+                        res_process(., m = 1, obs_interval = 0)
+
+ind1 <- which(res$ID %in% intersect(res$ID, res2$ID))
+ind2 <- which(res2$ID %in% intersect(res$ID, res2$ID))
+df <- data.frame(id = intersect(res$ID, res2$ID),
+                 ss = res$ss_ll[ind1], ssg = res$pp_ll[ind1], 
+                 pp = res2$ss_ll[ind2], ppg = res2$pp_ll[ind2])
+
+###
+
 res0 <- results_set$new(r_ss = "data/output/emp_ss_1o_m1.rds", 
                        r_pp = "data/output/emp_pp_1o_m1.rds", env_type = "1o") %>%
                         res_process(., m = 1, obs_interval = 0)

@@ -8,7 +8,7 @@ holdout_set     <- 0
 test_holdout    <- 0   # why are these different idk
 
 use_gao         <- 1   # Genetic algorithm for optim 
-parallel        <- 0   # Whether to use parallel processing
+parallel        <- 0   # Whether to use parallel processing (assuming no GAO)
 n_cores         <- 15
 
 model_type <- 1    # 1 for step selection, 2 for path propagation

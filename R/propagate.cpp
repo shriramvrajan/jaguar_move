@@ -109,14 +109,15 @@ double path_propagation_ll_cpp(
       int m_i = multipliers[i];
       if (m_i > max_m) max_m = m_i;
     }
-    int max_r = (n_steps - 1) / max_m;   // max base-rate that stays in range
+    int max_r = (n_steps - 1) / max_m;   // max baserate that stays in range
     std::vector<double> total_ll(max_r + 1, 0.0);  // one accumulator per candidate r
-
+    std::vector<int>    n_contrib(max_r + 1, 0);  // keep track of contributions to avoid 0s
     // Step 0: depth=0 for all transitions, contributes to r=0 (the SS baseline)
     for (int i = 0; i < n_obs - 1; i++) {
       if (is_outlier[i] || IntegerVector::is_na(obs[i])) continue;
       double p = current[obs[i] - 1 + i * ncell_local];
       total_ll[0] += std::log(std::max(p, floor_val));
+      n_contrib[0]++;
     }
 
     // Steps 1..n_steps-1: propagate, then credit each transition to its base-rate
@@ -162,12 +163,16 @@ double path_propagation_ll_cpp(
           if (r >= 1 && r <= max_r) {                  // within searchable range
             double p = current[obs[i] - 1 + i * ncell_local];
             total_ll[r] += std::log(std::max(p, floor_val));
+            n_contrib[r]++;
           }
         }
       }
     }
 
-    double best_ll = *std::max_element(total_ll.begin(), total_ll.end());
+    double best_ll = -std::numeric_limits<double>::infinity();
+    for (int r = 0; r <= max_r; r++)
+      if (n_contrib[r] > 0 && total_ll[r] > best_ll) best_ll = total_ll[r];
+    if (!std::isfinite(best_ll)) return R_PosInf;   // no valid contribution case
     return -best_ll;
   }
  
@@ -321,11 +326,13 @@ List path_propagation_diagnose_cpp(
     }
     int max_r = (n_steps - 1) / max_m;
     NumericVector total_ll_by_r(max_r + 1, 0.0);
+    std::vector<int> n_contrib(max_r + 1, 0);   // same as above, avoid 0s
 
     // r=0: all valid transitions at step 0
     for (int i = 0; i < n_transitions; i++) {
       if (is_outlier[i] || IntegerVector::is_na(obs[i])) continue;
       total_ll_by_r[0] += ll_obs_all[0 + i * n_steps];   // step 0 value
+      n_contrib[0]++;
     }
     // r>=1: each transition at step r * m_i
     for (int r = 1; r <= max_r; r++) {
@@ -334,15 +341,17 @@ List path_propagation_diagnose_cpp(
         int target = r * multipliers[i];
         if (target < n_steps) {
           total_ll_by_r[r] += ll_obs_all[target + i * n_steps];
+          n_contrib[r]++;
         }
       }
     }
 
     int best_r = 0;
     double best_r_ll = total_ll_by_r[0];
-    for (int r = 1; r <= max_r; r++) {
-      if (total_ll_by_r[r] > best_r_ll) { best_r_ll = total_ll_by_r[r]; best_r = r; }
-    }
+    for (int r = 0; r <= max_r; r++)
+      if (n_contrib[r] > 0 && total_ll_by_r[r] > best_r_ll) {
+        best_r_ll = total_ll_by_r[r]; best_r = r;
+      }
     
     int best_step = 0;
     double best_ll = ll_by_step[0];

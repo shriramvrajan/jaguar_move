@@ -135,13 +135,13 @@ step_selection_model <- R6Class("step_selection_model",
       lbound <- if (sim) {
         c(rep(-Inf, length(par_start)))
       } else {
-        c(rep(-Inf, length(par_start) - 2), -10, -5, -30)
+        c(rep(-Inf, length(par_start) - 3), -10, -5, -30)
       }
 
       ubound <- if (sim) {
         c(rep(Inf, length(par_start)))
       } else {
-        c(rep(Inf, length(par_start) - 2), 10, 5, -2)
+        c(rep(Inf, length(par_start) - 3), 10, 5, -2)
       }
 
       tryCatch({
@@ -1279,7 +1279,7 @@ jaguar <- R6Class("jaguar",
       max_dist <- self$max_dist
       if (is.null(max_jump)) max_jump <- min(max_dist - 1, 8)
 
-      env_idx <- seq_len(length(par_start) - 2)
+      env_idx <- seq_len(length(par_start) - 3)
       par_start[env_idx] <- pmin(pmax(par_start[env_idx], -clamp), clamp)
 
       # Fit on training set
@@ -1391,12 +1391,18 @@ empirical_batch <- R6Class("empirical_batch",
     config = NULL,
     k_fit = NULL,
     ss_warm_par = NULL,
+    out_dir = NULL,
     results = list(),
 
     initialize = function(config, k_fit, ss_warm_par) {
       self$config <- config
       self$k_fit  <- k_fit
       self$ss_warm_par <- ss_warm_par
+      self$out_dir <- file.path("data/output", sprintf("%s_%s_m%s_o%s%s",
+        switch(config$model_type, "ss", "pp"), config$env_type,
+        config$max_multiple %||% 1, config$obs_interval %||% 0,
+        if (config$holdout_set) "_holdout" else ""))
+      dir.create(self$out_dir, recursive = TRUE, showWarnings = FALSE)
     },
 
     ## run_all -----------------------------------------------------------------
@@ -1494,16 +1500,10 @@ empirical_batch <- R6Class("empirical_batch",
 
       # If there are already completed results, load and combine
       results <- lapply(seq_len(82), function(i) {
-        f <- paste0("data/output/out_", jag_id$jag_id[i], ".rds")
+        f <- file.path(self$out_dir, paste0("out_", jag_id$jag_id[i], ".rds"))
         if (file.exists(f)) return(readRDS(f)) else return(NA)
       })
       self$results <- results
-
-      # Clean up temporary output files 
-      outfiles <- c(list.files("data/output", pattern = "^out_.*\\.rds$"),
-                    list.files("data/output", pattern = "^NA_.*\\.rds$"))
-      file.remove(file.path("data/output", outfiles))
-
       return(results)
     },
     
@@ -1540,7 +1540,7 @@ empirical_batch <- R6Class("empirical_batch",
                     sum(outliers %in% seq_len(length(track_cells) - 1))
       if (n_valid < 30) { # minimum sample size, usable transitions
         message(paste0(i, ": sample size ", n_valid, " after thinning; skip"))
-        saveRDS(NA, paste0("data/output/NA_", i, ".rds"))
+        saveRDS(NA, file.path(self$out_dir, paste0("NA_", i, ".rds")))
         return(NA)
       }
 
@@ -1588,7 +1588,7 @@ empirical_batch <- R6Class("empirical_batch",
                                gao = self$config$gao %||% FALSE,
                               gao_control = self$config$gao_control %||% list())
       } else if (self$config$model_type == 2) {
-        check_file <- paste0("data/output/partial_", i, ".rds")
+        check_file <- file.path(self$out_dir, paste0("partial_", i, ".rds"))
         # The check_file loop prevents rerunning n_jump iterations for the case
         # where a core crashes without completing evaluation (happens).
 
@@ -1642,7 +1642,7 @@ empirical_batch <- R6Class("empirical_batch",
       if (is.list(result)) result$n_valid <- n_valid # sample size of transitions
       save_ok <- is.list(result) && !is.null(result$par)
       saveRDS(if (save_ok) result else NA,
-              paste0("data/output/", if (save_ok) "out_" else "NA_", i, ".rds"))
+              file.path(self$out_dir, paste0(if (save_ok) "out_" else "NA_", i, ".rds")))
       
       return(result)
     }
@@ -1650,7 +1650,7 @@ empirical_batch <- R6Class("empirical_batch",
   
   private = list(
     get_completed_ids = function() {
-      outfiles <- list.files("data/output", pattern = "^(out|NA)_.*\\.rds$") 
+      outfiles <- list.files(self$out_dir, pattern = "^(out|NA)_.*\\.rds$") 
       ids <- gsub("^(out|NA)_|\\.rds$", "", outfiles) %>% as.numeric
       if (any(is.na(ids))) ids <- ids[!is.na(ids)]
       return(ids)

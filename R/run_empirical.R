@@ -2,6 +2,8 @@ rm(list = ls())
 source("R/functions.R")     
 source("R/classes.R")       
 set.seed(7)                 # For reproducibility
+RhpcBLASctl::blas_set_num_threads(1)   
+data.table::setDTthreads(1)
 
 fit_individuals <- 1
 holdout_set     <- 0
@@ -51,7 +53,9 @@ if (fit_individuals) {
     )
 
     batch <- empirical_batch$new(config, k_fit = k_fit, ss_warm_par = ss_warm)
+    if (use_gao) doParallel::registerDoParallel(cores = n_cores)
     results <- batch$run_all()
+    if (use_gao) foreach::registerDoSEQ()  # Reset parallel processing to serial
 
     message("Saving results...")
     saveRDS(results, paste0("data/output/emp_", 

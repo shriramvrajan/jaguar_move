@@ -820,7 +820,8 @@ gao <- function(par, le_func, wrap_optim = wrapper, par_restr = NULL,
     n_t_same <- 0
     mem_min <- 0
     for (gen in 1:ngen){
-        mem_optim <- foreach(i = 1:ncore) %dopar% { # simplify
+        mem_optim <- foreach(i = 1:ncore, .combine = rbind,
+                             .errorhandling = "remove") %dopar% { # simplify
                 # evaluate restrictions first, and make sure that par is 
                 # actually valid. If it is not, replace with par[1,] since it is valid
                 if (!is.null(par_restr)) {
@@ -851,8 +852,9 @@ gao <- function(par, le_func, wrap_optim = wrapper, par_restr = NULL,
         # for each individual, decide which change or whether to do it
         # which individuals survive?
         p <- exp(-(mem_optim[, 1] - min["value"]))
-        s <- sample(1:ncore, ncore - 1, replace = T, prob = p) # new individuals
-        # take parameter outcomes of each of the optims (remove likelihood values)
+        p[!is.finite(mem_optim[, 1])] <- 0 
+        if (all(p == 0)) p <- rep(1, length(p))
+        s <- sample(seq_len(nrow(mem_optim)), ncore - 1, replace = TRUE, prob = p)
         par[-1, ] <- mem_optim[s, -1] 
         par <- change(par, p_change, ncore)
 

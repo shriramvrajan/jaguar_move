@@ -6,20 +6,21 @@ Rcpp::sourceCpp("R/propagate.cpp")
 ## Simulations =================================================================
 
 # Jump vs grain study
-res <- readRDS("simulations/jumpgrain_20260806_233834.rds")$summary
-p  <- ggplot(r, aes(s, ll_diff_per_obs, colour = factor(p))) +
-      geom_line(aes(group = interaction(p, gen_step)), alpha = 1) +
-      geom_point(aes(shape = factor(gen_step)), size = 4) +
-      scale_x_log10() +
-      labs(x = "substep length / autocorrelation range  (s)",
-            y = "mean log(L) advantage per obs",
-            colour = "substeps per fix (p)", shape = "jump (cells/tick)") +
-      theme_minimal()
-plot(p)
+# res <- readRDS("simulations/jumpgrain_20260806_233834.rds")$summary
+# p  <- ggplot(r, aes(s, ll_diff_per_obs, colour = factor(p))) +
+#       geom_line(aes(group = interaction(p, gen_step)), alpha = 1) +
+#       geom_point(aes(shape = factor(gen_step)), size = 4) +
+#       scale_x_log10() +
+#       labs(x = "substep length / autocorrelation range  (s)",
+#             y = "mean log(L) advantage per obs",
+#             colour = "substeps per fix (p)", shape = "jump (cells/tick)") +
+#       theme_minimal()
+# plot(p)
 
 ## Empirical ===================================================================
 
-### All filtering decisions must be explicit here
+### Keeping this function deliberately outside of results_set class
+### All filtering decisions must be made explicit here
 res_process <- function(r, m = 1, obs_interval = 0) {
   res0 <- r$res_table
   if (anyNA(res0$pp_aic)) res0 <- res0[which(!is.na(res0$pp_aic)), ]
@@ -37,53 +38,35 @@ res_process <- function(r, m = 1, obs_interval = 0) {
 }
 
 res <- results_set$new(r_ss = "data/output/emp_ss_1o_m1.rds", 
-                       r_pp = "data/output/emp_ss_1o_gao.rds", env_type = "1o") %>%
+                       r_pp = "data/output/emp_pp_1o_m1.rds", env_type = "1o") %>%
                        res_process(., m = 1, obs_interval = 0)
 
-res2 <- results_set$new(r_ss = "data/output/emp_pp_1o_m1.rds",
-                        r_pp = "data/output/emp_pp_1o_m1_o0_2026-08-19.rds", env_type = "1o") %>%
+res2 <- results_set$new(r_ss = "data/output/emp_ss_1o_gao.rds",
+                        r_pp = "data/output/emp_pp_1o_m1_o0_2026-08-21.rds", env_type = "1o") %>%
                         res_process(., m = 1, obs_interval = 0)
 
 ind1 <- which(res$ID %in% intersect(res$ID, res2$ID))
 ind2 <- which(res2$ID %in% intersect(res$ID, res2$ID))
 df <- data.frame(id = intersect(res$ID, res2$ID),
-                 ss = res$ss_ll[ind1], ssg = res$pp_ll[ind1], 
-                 pp = res2$ss_ll[ind2], ppg = res2$pp_ll[ind2])
+      ss = res$ss_ll[ind1], pp = res$pp_ll[ind1], nj = res$pp_njump[ind1],
+      ssg = res2$ss_ll[ind2], ppg = res2$pp_ll[ind2], njg = res2$pp_njump[ind2])
+de <- do.call(rbind, lapply(df$id, function(i) dev_exp(i, res = res2)))
+df <- merge(df, de)
+df <- df[order(df$de_pp - df$de_ss), ]
 
-###
+plot(df$nj, pch = 19, cex = 2, col = rgb(1, 0, 0, 0.5))
+points(df$njg, pch = 19, cex = 2, col = rgb(0, 0, 1, 0.5))
+cor(df$nj, df$njg)
 
-res0 <- results_set$new(r_ss = "data/output/emp_ss_1o_m1.rds", 
-                       r_pp = "data/output/emp_pp_1o_m1.rds", env_type = "1o") %>%
-                        res_process(., m = 1, obs_interval = 0)
+ll_compare(117, res = res)
+ll_compare(61, res = res2)
 
-res1 <- results_set$new(r_ss = "data/output/emp_ss_1o_m1_o1_2026-08-07.rds",
-                        r_pp = "data/output/emp_pp_1o_m1_o1_2026-08-12.rds", env_type = "1o") %>%
-                        res_process(., m = 1, obs_interval = 0)
+dev_exp(117, res = res)
+dev_exp(117, res = res2)
 
-res2 <- results_set$new(r_ss = "data/output/emp_ss_1o_m1_o2_2026-08-13.rds",
-                        r_pp = "data/output/emp_pp_1o_m1_o2_2026-08-14.rds", env_type = "1o") %>%
-                        res_process(., m = 1, obs_interval = 0)
-
-## all three compared
-all <- merge(res0[, c("ID", "ss_aic", "pp_aic")], 
-               res1[, c("ID", "ss_aic", "pp_aic")], by = "ID") %>%
-       merge(., res2[, c("ID", "ss_aic", "pp_aic")], by = "ID")
-names(all) <- c("ID", "ss0", "pp0", "ss1", "pp1", "ss2", "pp2")
-all$diff0 <- all$ss0 - all$pp0; all$diff0[all$diff0 < -4] <- -4
-all$diff1 <- all$ss1 - all$pp1; all$diff1[all$diff1 < -4] <- -4
-all$diff2 <- all$ss2 - all$pp2; all$diff2[all$diff2 < -4] <- -4
-
-cor(all[, c("ss0", "ss1", "ss2")])
-cor(all[, c("pp0", "pp1", "pp2")])
-cor(all[, c("diff0", "diff1", "diff2")])
-
-hist(all$diff0, 20, col = rgb(0, 0, 1, 0.5), border = NA)
-hist(all$diff1, 20, col = rgb(0, 1, 0, 0.5), border = NA, add = TRUE)
-hist(all$diff2, 10, col = rgb(1, 0, 0, 0.5), border = NA, add = TRUE)
-
-all$ID[which(all$diff0 > 2 & all$diff1 < 2 & all$diff2 < 2)]
-all$ID[which(all$diff0 < 2 & all$diff1 > 2 & all$diff2 < 2)]
-all$ID[which(all$diff0 < 2 & all$diff1 < 2 & all$diff2 > 2)]
+j <- jaguar$new(41); o <- j$pp_objects(2)
+p <- c(rnorm(7, sd = .1), -0.5, log(1), -20)
+system.time(replicate(20, o$model$log_likelihood(p, o$objects, sim = FALSE, env_type = "1o")))
 
 ## Aggregate analysis ----------------------------------------------------------
 

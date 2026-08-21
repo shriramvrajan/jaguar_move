@@ -470,7 +470,7 @@ dev_exp <- function(i, res) {
 }
 
 
-ll_compare <- function(id, res, env_type = "1o", m = 2) {
+ll_compare <- function(id, res, env_type = "1o", m = 1) {
   # currently assumes a results object named 'res', fix later
     j_i <- jaguar$new(id = id, results = res[res$ID == id, ], max_multiple = m)
     track <- j_i$track[, c("longitude", "latitude")]
@@ -793,7 +793,7 @@ vary_par <- function(ini_par, ncore, scalar = 1.5) {
     return(ini_par2)
 }
 
- # p_change: mutation,cross over, co-dominance - issue with none, is that all might be identical
+ # p_change: mutation, cross over, co-dominance - issue with none, is that all might be identical
 ## par:          starting parameter
 ## le_func:      function to minimize
 ## wrap_optim:   optim wrapper, keep default
@@ -820,8 +820,7 @@ gao <- function(par, le_func, wrap_optim = wrapper, par_restr = NULL,
     n_t_same <- 0
     mem_min <- 0
     for (gen in 1:ngen){
-        mem_optim <- foreach(i = 1:ncore, .combine = rbind,
-                             .errorhandling = "remove") %dopar% { # simplify
+        mem_optim <- foreach(i = 1:ncore, .errorhandling = "remove") %dopar% { # simplify
                 # evaluate restrictions first, and make sure that par is 
                 # actually valid. If it is not, replace with par[1,] since it is valid
                 if (!is.null(par_restr)) {

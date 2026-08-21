@@ -292,7 +292,7 @@ path_propagation_model <- R6Class("path_propagation_model",
         env_i = env_i,
         nbhd_i = nbhd_i,
         to_dest = to_dest,
-        to_dest_vec = as.vector(to_dest),
+        to_dest_vec = as.vector(to_dest), 
         dest = dest,
         obs = obs,
         max_dist = max_dist,
@@ -305,43 +305,6 @@ path_propagation_model <- R6Class("path_propagation_model",
       )
       message("Path propagation objects prepared.")   
       return(result)
-    },
-
-    ## build_kernel ------------------------------------------------------------
-    build_kernel = function(par, objects, sim, env_type) { 
-      # Currently vestigial!
-      max_dist   <- objects$max_dist
-      ncell_local <- (2 * max_dist + 1)^2 
-      step_size  <- objects$step_size
-      n_obs      <- length(objects$obs) + 1
-      k_exp   <- ifelse(sim, exp(par[length(par)]), exp(par[length(par) - 1]))
-      bg_rate <- ifelse(sim, 0, plogis(par[length(par)]))
-
-      # Matrices of dimension (n_obs * ncell_local) rows x 9 columns
-      env_i      <- objects$env_i
-      nbhd_i     <- objects$nbhd_i
-      to_dest    <- objects$to_dest
-      dest       <- objects$dest
-
-      # Build dispersal kernel
-      kernel <- calculate_dispersal_kernel(max_dispersal_dist = step_size, 
-                    kfun = function(x) dexp(x, k_exp))
-
-      # Calculate environmental attraction
-      attract0 <- env_function(env_i, par, nbhd = nbhd_i, sim = sim, 
-                                type = env_type)
-      attract <- apply_kernel(attract0, kernel)
-
-      current <- propagate_cpp(
-        attract_vec  = as.vector(attract),
-        to_dest_vec  = objects$to_dest_vec,
-        ncell        = ncell_local,
-        nobs         = n_obs,
-        # nsteps       = self$propagation_steps,
-        bg_rate      = bg_rate,
-        ncol_dest    = ncol(objects$dest)
-      )
-      return(current)
     },
 
     ## log_likelihood ----------------------------------------------------------
@@ -1226,7 +1189,7 @@ jaguar <- R6Class("jaguar",
         res <- pp$fit(self$track_cells, max_dist, rdf = brdf,
           par_start = par_start, outliers = self$outliers,
           step_size = n_j + 1, env_type = env_type,
-          multipliers = self$multipliers, gao = gao, gao_control = gao_control)
+          multipliers = self$multipliers, gao = FALSE, gao_control = gao_control)
         if (is.null(res) || (length(res) == 1 && is.na(res[1]))) next
         par_start <- res$par                             # warm-start next n_j
         if (res$ll < best$ll) {
@@ -1234,6 +1197,21 @@ jaguar <- R6Class("jaguar",
           worse_count <- 0
         } else {
           worse_count <- worse_count + 1
+        }
+      }
+
+      if (!is.null(best$result) && gao) {
+        nj <- best$n_jump
+        message(paste0("Refining n_jump = ", nj, " with GAO"))
+        pp <- path_propagation_model$new()
+        pp$propagation_steps <- ceiling(max_dist / (nj + 1))
+        ref <- pp$fit(self$track_cells, max_dist, rdf = brdf,
+          par_start = best$result$par, outliers = self$outliers,
+          step_size = nj + 1, env_type = env_type,
+          multipliers = self$multipliers,
+          gao = TRUE, gao_control = gao_control)
+        if (!is.null(ref) && !is.na(ref[1]) && ref$ll < best$ll) {
+          best <- list(result = ref, ll = ref$ll, n_jump = nj)
         }
       }
       best$result$n_jump <- best$n_jump
@@ -1606,7 +1584,7 @@ empirical_batch <- R6Class("empirical_batch",
           res <- pp_model$fit(track_cells, max_dist, rdf = brdf, 
             par_start = par_start, outliers = outliers, step_size = n_j + 1,
             env_type = self$config$env_type, multipliers = multipliers,
-            gao = self$config$gao %||% FALSE,
+            gao = FALSE, # no GAO to find jump, just later for final fit
             gao_control = self$config$gao_control %||% list())
           if (!is.na(res[1])) par_start <<- res$par # warm start next radius
           if (!is.na(res[1]) && res$ll < checkpoint$best_ll) {
@@ -1635,6 +1613,17 @@ empirical_batch <- R6Class("empirical_batch",
         # where path propagation is the same as step selection.
 
         result <- checkpoint$best_result
+        if (!is.null(result) && self$config$gao) {
+          nj <- checkpoint$best_n_jump
+          message(paste0("Running best n_jump = ", nj, " through GAO"))
+          pp_model$propagation_steps <- ceiling(max_dist / (nj + 1))
+          ref <- pp_model$fit(track_cells, max_dist, rdf = brdf,
+            par_start = result$par, outliers = outliers, step_size = nj + 1,
+            env_type = self$config$env_type, multipliers = multipliers,
+            gao = TRUE, gao_control = self$config$gao_control %||% list())
+          if (!is.na(ref[1]) && ref$ll < result$ll) result <- ref
+        }
+        if (!is.null(result)) result$n_jump <- checkpoint$best_n_jump
         if (!is.null(result)) result$n_jump <- checkpoint$best_n_jump
         if (file.exists(check_file)) file.remove(check_file)
       }

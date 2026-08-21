@@ -2,19 +2,24 @@ rm(list = ls())
 source("R/functions.R")     
 source("R/classes.R")       
 set.seed(7)                 # For reproducibility
-RhpcBLASctl::blas_set_num_threads(1)   
 data.table::setDTthreads(1)
 
-fit_individuals <- 1
-holdout_set     <- 0
-test_holdout    <- 0   # why are these different idk
+## Master switches =============================================================
+
+fit_individuals        <- 1
+    just_save_existing <- 0
+
+holdout_set      <- 0
+    test_holdout <- 0   # why are these different idk
 
 use_gao         <- 1   # Genetic algorithm for optim 
-parallel        <- 0   # Whether to use parallel processing (assuming no GAO)
-n_cores         <- 15
+parallel        <- 0   # Parallelize by individual (!! only if not using GAO !!)
+n_cores         <- 15  # For both GAO and individual parallelization
 
-model_type <- 1    # 1 for step selection, 2 for path propagation
+model_type <- 2    # 1 for step selection, 2 for path propagation
 env_type   <- "1o" # "1o" or "2o" or "mix", env_function argument
+
+## Fitting individuals =========================================================
 
 if (fit_individuals) {
     files <- list.files("data/output", pattern = "out_\\d+\\.rds")
@@ -22,6 +27,9 @@ if (fit_individuals) {
     k_fit <- readRDS("data/output/k_fitted_start_values.rds")
     ss_warm <- switch(env_type, "1o" = "emp_ss_1o_m2.rds",
                                 "2o" = NULL)
+
+    existing <- as.numeric(gsub("\\D", "", files))
+    full_set <- jag_id$jag_id
 
     config <- list(   
         # Model parameters (npar = number of parameters)
@@ -32,8 +40,7 @@ if (fit_individuals) {
         obs_interval      = 0,  # 0 = use all observations, 1 = every other observation, etc.
 
         # jag_id$jag_id = all, or vector of specific IDs
-        individuals       = jag_id$jag_id, 
-        # individuals       = as.numeric(gsub("\\D", "", files)), # Save existing results
+        individuals       = if (just_save_existing) existing else full_set,
 
         # Holdout set parameters
         holdout_set  = holdout_set,   # Whether to reserve holdout set (T/F)
@@ -54,6 +61,7 @@ if (fit_individuals) {
 
     batch <- empirical_batch$new(config, k_fit = k_fit, ss_warm_par = ss_warm)
     if (use_gao) doParallel::registerDoParallel(cores = n_cores)
+    message(paste0(foreach::getDoParWorkers(), " cores"))
     results <- batch$run_all()
     if (use_gao) foreach::registerDoSEQ()  # Reset parallel processing to serial
 
